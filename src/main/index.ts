@@ -18,12 +18,13 @@ function createWindow(): void {
 
   mainWindow = new BrowserWindow({
     width: 800,
-    height: 80,
+    height: 300,
     x: Math.round((screenWidth - 800) / 2),
     y: 120,
     show: false,
     frame: false,
     transparent: true,
+    backgroundColor: '#00000000',
     resizable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
