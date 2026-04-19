@@ -12,24 +12,43 @@ import { is } from '@electron-toolkit/utils'
 let mainWindow: BrowserWindow | null = null
 let isVisible = false
 
-function createWindow(): void {
+const isMac = process.platform === 'darwin'
+const isWindows = process.platform === 'win32'
+
+const WINDOW_WIDTH = 800
+const WINDOW_HEIGHT = 220
+const WINDOW_BOTTOM_MARGIN = 24
+
+function getWindowPosition(): { x: number; y: number } {
   const primaryDisplay = screen.getPrimaryDisplay()
-  const { width: screenWidth } = primaryDisplay.workAreaSize
+  const { x: workAreaX, y: workAreaY, width: workAreaWidth, height: workAreaHeight } =
+    primaryDisplay.workArea
+
+  return {
+    x: Math.round(workAreaX + (workAreaWidth - WINDOW_WIDTH) / 2),
+    y: Math.round(workAreaY + workAreaHeight - WINDOW_HEIGHT - WINDOW_BOTTOM_MARGIN)
+  }
+}
+
+function createWindow(): void {
+  const { x, y } = getWindowPosition()
 
   mainWindow = new BrowserWindow({
-    width: 800,
-    height: 300,
-    x: Math.round((screenWidth - 800) / 2),
-    y: 120,
+    width: WINDOW_WIDTH,
+    height: WINDOW_HEIGHT,
+    x,
+    y,
     show: false,
     frame: false,
     transparent: true,
-    backgroundColor: '#00000000',
+    backgroundMaterial: isWindows ? 'none' : undefined,
+    backgroundColor: 'rgba(0, 0, 0, 0)',
     resizable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
     hasShadow: false,
-    titleBarStyle: 'hidden',
+    titleBarStyle: isMac ? 'hidden' : undefined,
+    thickFrame: isWindows ? false : undefined,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -39,19 +58,28 @@ function createWindow(): void {
   })
 
   // macOS vibrancy effect
-  if (process.platform === 'darwin') {
+  if (isMac) {
     mainWindow.setVibrancy('ultra-dark')
   }
 
-  // Windows Acrylic / Mica effect (Electron 22+ supports setBackgroundMaterial)
-  if (process.platform === 'win32') {
+  // Keep the full window transparent. Renderer-level styling handles the frosted bar.
+  if (isWindows) {
     try {
-      // Electron 22+ API for Windows backdrop
-      mainWindow.setBackgroundMaterial('acrylic')
+      mainWindow.setBackgroundMaterial('auto')
     } catch {
-      // Fallback: transparent window, CSS handles the frosted glass appearance
+      // Older Electron/Windows versions can ignore this safely.
     }
+
+    // Re-apply transparent paint color at runtime for Windows compositors.
+    mainWindow.setBackgroundColor('rgba(0, 0, 0, 0)')
   }
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    // Force renderer roots to stay transparent even in dev/HMR reloads.
+    mainWindow?.webContents.insertCSS(
+      'html, body, #root, :root { background: transparent !important; }'
+    )
+  })
 
   mainWindow.on('ready-to-show', () => {
     // Don't show on start – wait for shortcut
@@ -78,9 +106,8 @@ function createWindow(): void {
 function showWindow(): void {
   if (!mainWindow) return
 
-  const primaryDisplay = screen.getPrimaryDisplay()
-  const { width: screenWidth } = primaryDisplay.workAreaSize
-  mainWindow.setPosition(Math.round((screenWidth - 800) / 2), 120, false)
+  const { x, y } = getWindowPosition()
+  mainWindow.setPosition(x, y, false)
 
   mainWindow.show()
   mainWindow.focus()

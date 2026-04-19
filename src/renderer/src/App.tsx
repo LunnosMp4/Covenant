@@ -206,7 +206,7 @@ export default function App(): JSX.Element {
   return (
     // Full-screen transparent overlay to capture outside clicks
     <div
-      className="w-screen h-screen flex items-start justify-center pt-4 select-none"
+      className="w-screen h-screen flex items-end justify-center pb-5 select-none"
       style={{ background: 'transparent' }}
       onClick={handleOverlayClick}
     >
