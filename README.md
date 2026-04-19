@@ -37,7 +37,7 @@ npm install
 
 Create a `.env` file at the **repository root**:
 
-`/home/runner/work/Prometheus/Prometheus/.env`
+`<repository-root>/.env`
 
 Add this variable:
 
