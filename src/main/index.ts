@@ -8,6 +8,8 @@ import {
 } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
+import dotenv from 'dotenv'
+import OpenAI from 'openai'
 
 let mainWindow: BrowserWindow | null = null
 let isVisible = false
@@ -18,6 +20,8 @@ const isWindows = process.platform === 'win32'
 const WINDOW_WIDTH = 800
 const WINDOW_HEIGHT = 220
 const WINDOW_BOTTOM_MARGIN = 24
+
+dotenv.config({ path: join(process.cwd(), '.env') })
 
 function getWindowPosition(): { x: number; y: number } {
   const primaryDisplay = screen.getPrimaryDisplay()
@@ -164,4 +168,31 @@ ipcMain.on('hide-window', () => {
   if (mainWindow) {
     mainWindow.hide()
   }
+})
+
+ipcMain.handle('prometheus:chat', async (_event, userPrompt: string) => {
+  const prompt = userPrompt?.trim()
+  if (!prompt) {
+    throw new Error('Prompt cannot be empty.')
+  }
+
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) {
+    throw new Error('OPENAI_API_KEY is missing. Add it to the .env file at project root.')
+  }
+
+  const client = new OpenAI({ apiKey })
+  const completion = await client.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content:
+          "You are Prometheus, a helpful, concise AI assistant integrated into a user's operating system. Keep your answers brief and to the point."
+      },
+      { role: 'user', content: prompt }
+    ]
+  })
+
+  return completion.choices[0]?.message?.content?.trim() || 'No response from model.'
 })

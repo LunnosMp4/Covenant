@@ -7,7 +7,7 @@ A next-generation command bar app for Windows and macOS, inspired by the visual 
 - **Frosted Glass UI** — Deep dark translucent window with `backdrop-blur` and subtle border highlights
 - **Graceful Animations** — Spring-based open/close animations powered by Framer Motion
 - **Global Shortcut** — Press `Alt+Space` (Windows/Linux) or `Option+Space` (macOS) to toggle
-- **Mock AI Function Calling** — Type a command and press Enter to see intent detection in action
+- **OpenAI Chat Integration** — Prompt the assistant directly from the command bar
 - **Cross-Platform Translucency** — Vibrancy (macOS `ultra-dark`) and Acrylic/Mica (Windows)
 
 ## Tech Stack
@@ -33,6 +33,20 @@ A next-generation command bar app for Windows and macOS, inspired by the visual 
 npm install
 ```
 
+### Configure OpenAI API Key
+
+Create a `.env` file at the **repository root**:
+
+`/home/runner/work/Prometheus/Prometheus/.env`
+
+Add this variable:
+
+```bash
+OPENAI_API_KEY=your_openai_api_key_here
+```
+
+> This project uses `OPENAI_API_KEY` (not `VITE_OPENAI_API_KEY`) because OpenAI calls run in the Electron **main process** via IPC, so the key is not exposed to the renderer bundle.
+
 ### Development
 
 ```bash
@@ -53,11 +67,8 @@ Outputs bundled files to `out/`.
 
 1. Launch the app — the window is hidden on startup.
 2. Press **Alt+Space** (or **Option+Space** on macOS) to open the command bar.
-3. Type a command such as:
-   - `open documents folder` → detected as **system_command**
-   - `search electron react` → detected as **web_search**
-   - `open Spotify` → detected as **open_app**
-4. Press **Enter** to process (intent is logged to console in this initial phase).
+3. Type a prompt for Prometheus.
+4. Press **Enter** to send it to OpenAI (`gpt-4o-mini`).
 5. Press **Escape** or click outside to close with a graceful exit animation.
 
 ## Project Structure
