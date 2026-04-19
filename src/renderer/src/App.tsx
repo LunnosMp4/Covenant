@@ -11,30 +11,6 @@ declare global {
   }
 }
 
-function SparkIcon({ loading }: { loading: boolean }): JSX.Element {
-  return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={`flex-shrink-0 ${loading ? 'animate-pulse' : ''}`}
-    >
-      <defs>
-        <linearGradient id="sparkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#F97316" />
-          <stop offset="100%" stopColor="#C2410C" />
-        </linearGradient>
-      </defs>
-      <path
-        d="M12 2L13.5 9H21L15 13.5L17.5 21L12 16.5L6.5 21L9 13.5L3 9H10.5L12 2Z"
-        fill="url(#sparkGrad)"
-      />
-    </svg>
-  )
-}
-
 function SendIcon(): JSX.Element {
   return (
     <svg
@@ -191,7 +167,7 @@ export default function App(): JSX.Element {
             className="flex flex-col w-[750px] max-w-full"
           >
             <div
-              className="flex items-center w-full rounded-2xl overflow-hidden p-2 bg-neutral-900/70 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-black/60"
+              className="flex items-center w-full rounded-2xl overflow-hidden p-2 bg-neutral-900/70 backdrop-blur-2xl border border-white/10"
               style={{
                 WebkitBackdropFilter: 'blur(40px)',
                 backdropFilter: 'blur(40px)',
@@ -199,9 +175,6 @@ export default function App(): JSX.Element {
                   'linear-gradient(135deg, rgba(23, 23, 23, 0.92) 0%, rgba(26, 22, 18, 0.94) 100%)',
               }}
             >
-              <div className="flex items-center justify-center pl-2 pr-1">
-                <SparkIcon loading={isLoading} />
-              </div>
 
               <input
                 ref={inputRef}
