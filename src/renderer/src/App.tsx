@@ -192,19 +192,16 @@ export default function App(): JSX.Element {
           >
             <div
               className="flex items-center w-full rounded-2xl overflow-hidden p-2 bg-neutral-900/70 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-black/60"
-              style={{ WebkitBackdropFilter: 'blur(40px)', backdropFilter: 'blur(40px)' }}
+              style={{
+                WebkitBackdropFilter: 'blur(40px)',
+                backdropFilter: 'blur(40px)',
+                backgroundImage:
+                  'linear-gradient(135deg, rgba(23, 23, 23, 0.92) 0%, rgba(26, 22, 18, 0.94) 100%)',
+              }}
             >
               <div className="flex items-center justify-center pl-2 pr-1">
                 <SparkIcon loading={isLoading} />
               </div>
-
-              <button
-                onClick={() => console.log('Module 2: App Launcher Clicked')}
-                className="flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all duration-150"
-                aria-label="Module 2"
-              >
-                <GridIcon />
-              </button>
 
               <input
                 ref={inputRef}
@@ -226,6 +223,14 @@ export default function App(): JSX.Element {
                 aria-label="Submit prompt"
               >
                 {isLoading ? <SpinnerIcon /> : <SendIcon />}
+              </button>
+
+              <button
+                onClick={() => console.log('Module 2: App Launcher Clicked')}
+                className="flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all duration-150"
+                aria-label="Module 2"
+              >
+                <GridIcon />
               </button>
 
               <button
