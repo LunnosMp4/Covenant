@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import ModulePopup, { type ActivePopup } from './components/ModulePopup'
 
 declare global {
   interface Window {
@@ -48,6 +49,14 @@ function BoltIcon(): JSX.Element {
   )
 }
 
+function CodeIcon(): JSX.Element {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M14.2354 7.14709C14.3167 6.74092 14.0533 6.3458 13.6471 6.26456C13.2409 6.18333 12.8458 6.44674 12.7646 6.85291L14.2354 7.14709ZM10.7646 16.8529C10.6833 17.2591 10.9467 17.6542 11.3529 17.7354C11.7591 17.8167 12.1542 17.5533 12.2354 17.1471L10.7646 16.8529ZM7.97342 15.4921C8.26837 15.7829 8.74323 15.7795 9.03406 15.4846C9.32488 15.1896 9.32153 14.7148 9.02658 14.4239L7.97342 15.4921ZM5.5 12L4.97342 11.4659C4.83048 11.6069 4.75 11.7993 4.75 12C4.75 12.2007 4.83048 12.3931 4.97342 12.5341L5.5 12ZM9.02658 9.57606C9.32153 9.28523 9.32488 8.81037 9.03406 8.51542C8.74323 8.22047 8.26837 8.21712 7.97342 8.50794L9.02658 9.57606ZM15.9773 14.3782C15.6802 14.6669 15.6735 15.1417 15.9622 15.4387C16.2509 15.7358 16.7257 15.7425 17.0227 15.4538L15.9773 14.3782ZM19.5 12L20.0227 12.5378C20.1667 12.3979 20.2486 12.2061 20.25 12.0053C20.2514 11.8046 20.1723 11.6116 20.0303 11.4697L19.5 12ZM17.0303 8.46967C16.7374 8.17678 16.2626 8.17678 15.9697 8.46967C15.6768 8.76256 15.6768 9.23744 15.9697 9.53033L17.0303 8.46967ZM12.7646 6.85291L10.7646 16.8529L12.2354 17.1471L14.2354 7.14709L12.7646 6.85291ZM9.02658 14.4239L6.02658 11.4659L4.97342 12.5341L7.97342 15.4921L9.02658 14.4239ZM6.02658 12.5341L9.02658 9.57606L7.97342 8.50794L4.97342 11.4659L6.02658 12.5341ZM17.0227 15.4538L20.0227 12.5378L18.9773 11.4622L15.9773 14.3782L17.0227 15.4538ZM20.0303 11.4697L17.0303 8.46967L15.9697 9.53033L18.9697 12.5303L20.0303 11.4697Z"/>
+    </svg>
+  )
+}
+
 function SpinnerIcon(): JSX.Element {
   return (
     <svg
@@ -71,7 +80,10 @@ export default function App(): JSX.Element {
   const [query, setQuery] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [aiResponse, setAiResponse] = useState('')
+  const [activePopup, setActivePopup] = useState<ActivePopup | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
+  const moduleButtonsRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (window.electronAPI) {
@@ -82,6 +94,7 @@ export default function App(): JSX.Element {
             setQuery('')
             setIsLoading(false)
             setAiResponse('')
+            setActivePopup(null)
           }, 250)
         }
       })
@@ -97,6 +110,7 @@ export default function App(): JSX.Element {
   }, [visible])
 
   const handleClose = useCallback(() => {
+    setActivePopup(null)
     setVisible(false)
     setTimeout(() => {
       setQuery('')
@@ -105,6 +119,43 @@ export default function App(): JSX.Element {
       window.electronAPI?.hideWindow()
     }, 240)
   }, [])
+
+  const togglePopup = useCallback((popup: ActivePopup) => {
+    setActivePopup((current) => (current === popup ? null : popup))
+  }, [])
+
+  useEffect(() => {
+    if (!activePopup) return
+
+    const handleClickOutsidePopup = (event: MouseEvent) => {
+      const target = event.target as Node
+      const clickedInsidePopup = popupRef.current?.contains(target)
+      const clickedInsideModuleButtons = moduleButtonsRef.current?.contains(target)
+
+      if (!clickedInsidePopup && !clickedInsideModuleButtons) {
+        setActivePopup(null)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutsidePopup)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutsidePopup)
+    }
+  }, [activePopup])
+
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && activePopup) {
+        event.preventDefault()
+        setActivePopup(null)
+      }
+    }
+
+    window.addEventListener('keydown', handleEscape)
+    return () => {
+      window.removeEventListener('keydown', handleEscape)
+    }
+  }, [activePopup])
 
   const handleSubmit = useCallback(async () => {
     const prompt = query.trim()
@@ -133,21 +184,31 @@ export default function App(): JSX.Element {
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'Escape') {
+        if (activePopup) {
+          setActivePopup(null)
+          return
+        }
+
         handleClose()
       } else if (e.key === 'Enter') {
         void handleSubmit()
       }
     },
-    [handleClose, handleSubmit]
+    [activePopup, handleClose, handleSubmit]
   )
 
   const handleOverlayClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (e.target === e.currentTarget) {
+        if (activePopup) {
+          setActivePopup(null)
+          return
+        }
+
         handleClose()
       }
     },
-    [handleClose]
+    [activePopup, handleClose]
   )
 
   return (
@@ -164,17 +225,39 @@ export default function App(): JSX.Element {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 14, scale: 0.97 }}
             transition={{ type: 'spring', damping: 15, stiffness: 120, mass: 0.8 }}
-            className="flex flex-col w-[750px] max-w-full"
+            className="relative flex flex-col w-[750px] max-w-full"
           >
+            <AnimatePresence>
+              {activePopup && (
+                <ModulePopup
+                  activePopup={activePopup}
+                  popupRef={popupRef}
+                  onAddNew={() => console.log('Preference Window Triggered')}
+                />
+              )}
+            </AnimatePresence>
+
             <div
               className="flex items-center w-full rounded-2xl overflow-hidden p-2 bg-neutral-900/70 backdrop-blur-2xl border border-white/10"
               style={{
                 WebkitBackdropFilter: 'blur(40px)',
                 backdropFilter: 'blur(40px)',
                 backgroundImage:
-                  'linear-gradient(135deg, rgba(23, 23, 23, 0.92) 0%, rgba(26, 22, 18, 0.94) 100%)',
+                  'linear-gradient(135deg, rgba(23, 23, 23, 0.92) 0%, rgba(66, 48, 30, 0.94) 100%)',
               }}
             >
+
+              <button
+              onClick={(e) => {
+                e.stopPropagation()
+                togglePopup('module3')
+              }}
+              className="flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all duration-150"
+              aria-label="Module 3"
+              aria-pressed={activePopup === 'module3'}
+            >
+              <BoltIcon />
+            </button>
 
               <input
                 ref={inputRef}
@@ -198,21 +281,31 @@ export default function App(): JSX.Element {
                 {isLoading ? <SpinnerIcon /> : <SendIcon />}
               </button>
 
-              <button
-                onClick={() => console.log('Module 2: App Launcher Clicked')}
-                className="flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all duration-150"
-                aria-label="Module 2"
-              >
-                <GridIcon />
-              </button>
+              <div ref={moduleButtonsRef} className="flex items-center gap-1">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    togglePopup('module2')
+                  }}
+                  className="flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all duration-150"
+                  aria-label="Module 2"
+                  aria-pressed={activePopup === 'module2'}
+                >
+                  <GridIcon />
+                </button>
 
-              <button
-                onClick={() => console.log('Module 3: Workflows Clicked')}
-                className="flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all duration-150"
-                aria-label="Module 3"
-              >
-                <BoltIcon />
-              </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    togglePopup('module3')
+                  }}
+                  className="flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all duration-150"
+                  aria-label="Module 3"
+                  aria-pressed={activePopup === 'module3'}
+                >
+                  <CodeIcon />
+                </button>
+              </div>
             </div>
 
             <AnimatePresence>

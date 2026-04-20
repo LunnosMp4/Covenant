@@ -18,7 +18,7 @@ const isMac = process.platform === 'darwin'
 const isWindows = process.platform === 'win32'
 
 const WINDOW_WIDTH = 800
-const WINDOW_HEIGHT = 220
+const WINDOW_HEIGHT = 420
 const WINDOW_BOTTOM_MARGIN = 48
 
 dotenv.config({ path: join(process.cwd(), '.env') })
