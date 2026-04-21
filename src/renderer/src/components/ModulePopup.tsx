@@ -64,6 +64,7 @@ interface ModulePopupProps {
   popupRef: RefObject<HTMLDivElement>
   onAddNew: () => void
   onSelectItem: (item: PopupItem) => void
+  module4Items?: PopupItem[]
   anchorSide?: PopupAnchorSide
   themeGradient: string
 }
@@ -146,10 +147,16 @@ export default function ModulePopup({
   popupRef,
   onAddNew,
   onSelectItem,
+  module4Items,
   anchorSide = 'right',
   themeGradient
 }: ModulePopupProps): JSX.Element {
-  const items = MODULE_ITEMS[activePopup]
+  const items =
+    activePopup === 'module4'
+      ? module4Items && module4Items.length > 0
+        ? module4Items
+        : []
+      : MODULE_ITEMS[activePopup]
   const anchorClass = anchorSide === 'left' ? 'left-0' : 'right-0'
 
   return (
@@ -165,22 +172,28 @@ export default function ModulePopup({
       <p className="px-2 pb-2 text-xs uppercase tracking-[0.12em] text-neutral-500">{MODULE_LABELS[activePopup]}</p>
 
       <div className="space-y-1">
-        {items.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => onSelectItem(item)}
-            className="flex w-full cursor-pointer items-center gap-3 rounded-xl p-3 text-left text-sm text-neutral-200 transition-colors duration-150 hover:bg-white/5"
-          >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-neutral-300">
-              <ItemIcon icon={item.icon} />
-            </span>
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate">{item.title}</span>
-              {item.subtitle && <span className="mt-0.5 truncate text-xs text-neutral-500">{item.subtitle}</span>}
-            </span>
-          </button>
-        ))}
+        {items.length > 0 ? (
+          items.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onSelectItem(item)}
+              className="flex w-full cursor-pointer items-center gap-3 rounded-xl p-3 text-left text-sm text-neutral-200 transition-colors duration-150 hover:bg-white/5"
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-neutral-300">
+                <ItemIcon icon={item.icon} />
+              </span>
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate">{item.title}</span>
+                {item.subtitle && <span className="mt-0.5 truncate text-xs text-neutral-500">{item.subtitle}</span>}
+              </span>
+            </button>
+          ))
+        ) : (
+          <div className="rounded-xl border border-neutral-800 bg-neutral-900/70 px-3 py-5 text-center text-xs text-neutral-500">
+            No preprompts saved yet.
+          </div>
+        )}
       </div>
 
       <button

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import ModulePopup, { type ActivePopup, type PopupItem } from './components/ModulePopup'
+import type { Preprompt } from './types/preprompt'
 
 interface AppConfig {
   apiKey: string
@@ -21,24 +22,6 @@ const AVAILABLE_THEME_GRADIENT_SET = new Set<string>(AVAILABLE_THEME_GRADIENTS)
 function normalizeThemeGradient(themeGradient: string | undefined): string {
   if (!themeGradient) return DEFAULT_THEME_GRADIENT
   return AVAILABLE_THEME_GRADIENT_SET.has(themeGradient) ? themeGradient : DEFAULT_THEME_GRADIENT
-}
-
-declare global {
-  interface Window {
-    electronAPI?: {
-      hideWindow: () => void
-      openSettings: () => void
-      closeSettings: () => void
-      minimizeSettings: () => void
-      getConfig: () => Promise<AppConfig>
-      saveApiKey: (apiKey: string) => void
-      saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string }) => void
-      updateTheme: (gradientClass: string) => void
-      onThemeUpdated: (callback: (gradientClass: string) => void) => (() => void) | void
-      askPrometheus: (prompt: string) => Promise<string>
-      onToggleVisibility: (callback: (visible: boolean) => void) => void
-    }
-  }
 }
 
 function SendIcon(): JSX.Element {
@@ -110,6 +93,7 @@ export default function App(): JSX.Element {
   const [isLoading, setIsLoading] = useState(false)
   const [aiResponse, setAiResponse] = useState('')
   const [themeGradient, setThemeGradient] = useState<string>(DEFAULT_THEME_GRADIENT)
+  const [preprompts, setPreprompts] = useState<Preprompt[]>([])
   const [activePopup, setActivePopup] = useState<ActivePopup | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const popupRef = useRef<HTMLDivElement>(null)
@@ -120,10 +104,10 @@ export default function App(): JSX.Element {
     let isMounted = true
 
     const loadInitialTheme = async (): Promise<void> => {
-      if (!window.electronAPI?.getConfig) return
+      if (!window.api?.config.getConfig) return
 
       try {
-        const config = await window.electronAPI.getConfig()
+        const config = (await window.api.config.getConfig()) as AppConfig
         if (isMounted) {
           setThemeGradient(normalizeThemeGradient(config.themeGradient))
         }
@@ -136,7 +120,7 @@ export default function App(): JSX.Element {
 
     void loadInitialTheme()
 
-    const unsubscribeThemeListener = window.electronAPI?.onThemeUpdated?.((newGradientClass) => {
+    const unsubscribeThemeListener = window.api?.config.onThemeUpdated?.((newGradientClass) => {
       setThemeGradient(normalizeThemeGradient(newGradientClass))
     })
 
@@ -149,8 +133,8 @@ export default function App(): JSX.Element {
   }, [])
 
   useEffect(() => {
-    if (window.electronAPI) {
-      window.electronAPI.onToggleVisibility((v) => {
+    if (window.api?.window.onToggleVisibility) {
+      window.api.window.onToggleVisibility((v) => {
         setVisible(v)
         if (!v) {
           setTimeout(() => {
@@ -179,9 +163,28 @@ export default function App(): JSX.Element {
       setQuery('')
       setIsLoading(false)
       setAiResponse('')
-      window.electronAPI?.hideWindow()
+      window.api?.window.hideWindow()
     }, 240)
   }, [])
+
+  const loadPreprompts = useCallback(async (): Promise<void> => {
+    if (!window.api?.store.getPreprompts) {
+      setPreprompts([])
+      return
+    }
+
+    try {
+      const savedPreprompts = await window.api.store.getPreprompts()
+      setPreprompts(savedPreprompts)
+    } catch {
+      setPreprompts([])
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activePopup !== 'module4') return
+    void loadPreprompts()
+  }, [activePopup, loadPreprompts])
 
   const togglePopup = useCallback((popup: ActivePopup) => {
     setActivePopup((current) => (current === popup ? null : popup))
@@ -229,12 +232,12 @@ export default function App(): JSX.Element {
     setQuery('')
 
     try {
-      if (!window.electronAPI?.askPrometheus) {
+      if (!window.api?.chat.askPrometheus) {
         setAiResponse('OpenAI chat is only available in the Electron app.')
         return
       }
 
-      const response = await window.electronAPI.askPrometheus(prompt)
+      const response = await window.api.chat.askPrometheus(prompt)
       setAiResponse(response)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to fetch AI response.'
@@ -248,18 +251,7 @@ export default function App(): JSX.Element {
   const handlePopupItemSelect = useCallback(
     (item: PopupItem) => {
       if (activePopup === 'module4' && item.promptText) {
-        const promptToInsert = item.promptText
-
-        setQuery((previous) => {
-          const base = previous.trim()
-          if (!base) {
-            return promptToInsert
-          }
-
-          return `${base}\n\n${promptToInsert}`
-        })
-
-        setTimeout(() => inputRef.current?.focus(), 40)
+        console.log(item.promptText)
       } else {
         console.log(`${item.title} selected`)
       }
@@ -321,10 +313,17 @@ export default function App(): JSX.Element {
                   activePopup={activePopup}
                   popupRef={popupRef}
                   themeGradient={themeGradient}
+                  module4Items={preprompts.map((item) => ({
+                    id: item.id,
+                    title: item.title,
+                    subtitle: item.content,
+                    icon: 'doc',
+                    promptText: item.content
+                  }))}
                   onAddNew={() => {
                     setActivePopup(null)
-                    if (window.electronAPI?.openSettings) {
-                      window.electronAPI.openSettings()
+                    if (window.api?.window.openSettings) {
+                      window.api.window.openSettings()
                     } else {
                       console.log('Settings window is only available in the Electron app.')
                     }

@@ -1,4 +1,8 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { AnimatePresence } from 'framer-motion'
+import ConfirmDeleteModal from './components/ConfirmDeleteModal'
+import PrepromptFormModal from './components/PrepromptFormModal'
+import type { Preprompt } from './types/preprompt'
 
 type SettingsTab = 'general' | 'module2' | 'module3' | 'module4'
 
@@ -16,12 +20,6 @@ interface MockWorkflow {
   title: string
   actionType: WorkflowActionType
   snippet: string
-}
-
-interface MockPreprompt {
-  id: string
-  title: string
-  content: string
 }
 
 interface ThemeOption {
@@ -106,27 +104,6 @@ const MOCK_WORKFLOWS: MockWorkflow[] = [
     title: 'Clean Branches',
     actionType: 'Script',
     snippet: 'git fetch --prune && git branch --merged | grep -v "master"'
-  }
-]
-
-const MOCK_PREPROMPTS: MockPreprompt[] = [
-  {
-    id: 'prompt-1',
-    title: 'Coding Assistant',
-    content:
-      'Act as an expert TypeScript developer. Prioritize clean architecture, explicit types, and production-safe patterns.'
-  },
-  {
-    id: 'prompt-2',
-    title: 'Product Strategy Coach',
-    content:
-      'Help structure feature proposals with objectives, assumptions, risks, and measurable success criteria.'
-  },
-  {
-    id: 'prompt-3',
-    title: 'Documentation Writer',
-    content:
-      'Rewrite technical notes into concise, user-friendly documentation with clear headings and examples.'
   }
 ]
 
@@ -457,7 +434,15 @@ function WorkflowsTab(): JSX.Element {
   )
 }
 
-function PrepromptsTab(): JSX.Element {
+interface PrepromptsTabProps {
+  preprompts: Preprompt[]
+  isLoading: boolean
+  onAdd: () => void
+  onEdit: (preprompt: Preprompt) => void
+  onDelete: (preprompt: Preprompt) => void
+}
+
+function PrepromptsTab({ preprompts, isLoading, onAdd, onEdit, onDelete }: PrepromptsTabProps): JSX.Element {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -467,6 +452,7 @@ function PrepromptsTab(): JSX.Element {
         </div>
         <button
           type="button"
+          onClick={onAdd}
           className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-white"
         >
           Add Preprompt
@@ -474,19 +460,34 @@ function PrepromptsTab(): JSX.Element {
       </div>
 
       <div className="space-y-3">
-        {MOCK_PREPROMPTS.map((item) => (
+        {isLoading ? (
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-900/80 px-4 py-6 text-sm text-neutral-400">
+            Loading preprompts...
+          </div>
+        ) : null}
+
+        {!isLoading && preprompts.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-neutral-700 bg-neutral-900/70 px-4 py-6 text-sm text-neutral-500">
+            No preprompts saved yet. Add your first reusable prompt.
+          </div>
+        ) : null}
+
+        {!isLoading &&
+          preprompts.map((item) => (
           <article key={item.id} className="rounded-2xl border border-neutral-800 bg-neutral-900/80 p-4">
             <div className="flex items-start justify-between gap-4">
               <h3 className="text-sm font-semibold text-neutral-100">{item.title}</h3>
               <div className="flex gap-2">
                 <button
                   type="button"
+                  onClick={() => onEdit(item)}
                   className="rounded-lg border border-transparent px-2.5 py-1.5 text-xs text-neutral-300 transition-colors hover:border-neutral-700 hover:bg-neutral-800"
                 >
                   Edit
                 </button>
                 <button
                   type="button"
+                  onClick={() => onDelete(item)}
                   className="rounded-lg border border-transparent px-2.5 py-1.5 text-xs text-neutral-500 transition-colors hover:border-neutral-700 hover:bg-neutral-800 hover:text-neutral-300"
                 >
                   Delete
@@ -512,6 +513,11 @@ export default function Settings(): JSX.Element {
   const [selectedTheme, setSelectedTheme] = useState(DEFAULT_THEME_GRADIENT)
   const [isSavingApiKey, setIsSavingApiKey] = useState(false)
   const [saveFeedbackMessage, setSaveFeedbackMessage] = useState('')
+  const [preprompts, setPreprompts] = useState<Preprompt[]>([])
+  const [isPrepromptsLoading, setIsPrepromptsLoading] = useState(false)
+  const [isPrepromptFormOpen, setIsPrepromptFormOpen] = useState(false)
+  const [editingPreprompt, setEditingPreprompt] = useState<Preprompt | undefined>(undefined)
+  const [deletingPreprompt, setDeletingPreprompt] = useState<Preprompt | undefined>(undefined)
 
   const dragRegionStyle = { WebkitAppRegion: 'drag' } as CSSProperties
   const noDragRegionStyle = { WebkitAppRegion: 'no-drag' } as CSSProperties
@@ -520,10 +526,10 @@ export default function Settings(): JSX.Element {
     let isMounted = true
 
     const loadConfig = async (): Promise<void> => {
-      if (!window.electronAPI?.getConfig) return
+      if (!window.api?.config.getConfig) return
 
       try {
-        const config = (await window.electronAPI.getConfig()) as AppConfig
+        const config = (await window.api.config.getConfig()) as AppConfig
         if (!isMounted) return
 
         setApiKey(typeof config.apiKey === 'string' ? config.apiKey : '')
@@ -544,21 +550,48 @@ export default function Settings(): JSX.Element {
     }
   }, [])
 
+  useEffect(() => {
+    let isMounted = true
+
+    const loadPreprompts = async (): Promise<void> => {
+      if (!window.api?.store.getPreprompts) return
+
+      try {
+        setIsPrepromptsLoading(true)
+        const savedPreprompts = await window.api.store.getPreprompts()
+        if (!isMounted) return
+        setPreprompts(savedPreprompts)
+      } catch {
+        if (!isMounted) return
+        setPreprompts([])
+      } finally {
+        if (!isMounted) return
+        setIsPrepromptsLoading(false)
+      }
+    }
+
+    void loadPreprompts()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
   const handleMinimizeWindow = (): void => {
-    window.electronAPI?.minimizeSettings?.()
+    window.api?.window.minimizeSettings?.()
   }
 
   const handleCloseWindow = (): void => {
-    window.electronAPI?.closeSettings?.()
+    window.api?.window.closeSettings?.()
   }
 
   const handleSaveOpenAISettings = (): void => {
     try {
       setIsSavingApiKey(true)
-      if (window.electronAPI?.saveOpenAISettings) {
-        window.electronAPI.saveOpenAISettings({ apiKey, proxyUrl })
+      if (window.api?.config.saveOpenAISettings) {
+        window.api.config.saveOpenAISettings({ apiKey, proxyUrl })
       } else {
-        window.electronAPI?.saveApiKey?.(apiKey)
+        window.api?.config.saveApiKey?.(apiKey)
       }
 
       setSaveFeedbackMessage('OpenAI settings saved locally.')
@@ -571,7 +604,40 @@ export default function Settings(): JSX.Element {
   const handleThemeSelect = (gradientClass: string): void => {
     const safeTheme = normalizeThemeGradient(gradientClass)
     setSelectedTheme(safeTheme)
-    window.electronAPI?.updateTheme?.(safeTheme)
+    window.api?.config.updateTheme?.(safeTheme)
+  }
+
+  const handleOpenAddPreprompt = (): void => {
+    setEditingPreprompt(undefined)
+    setIsPrepromptFormOpen(true)
+  }
+
+  const handleOpenEditPreprompt = (preprompt: Preprompt): void => {
+    setEditingPreprompt(preprompt)
+    setIsPrepromptFormOpen(true)
+  }
+
+  const handleClosePrepromptForm = (): void => {
+    setIsPrepromptFormOpen(false)
+    setEditingPreprompt(undefined)
+  }
+
+  const handleSavePreprompt = async (payload: { id?: string; title: string; content: string }): Promise<void> => {
+    if (!window.api?.store.savePreprompt) return
+
+    const updatedPreprompts = await window.api.store.savePreprompt(payload)
+    setPreprompts(updatedPreprompts)
+    setIsPrepromptFormOpen(false)
+    setEditingPreprompt(undefined)
+  }
+
+  const handleConfirmDeletePreprompt = async (): Promise<void> => {
+    const target = deletingPreprompt
+    if (!target || !window.api?.store.deletePreprompt) return
+
+    const updatedPreprompts = await window.api.store.deletePreprompt(target.id)
+    setPreprompts(updatedPreprompts)
+    setDeletingPreprompt(undefined)
   }
 
   const pageTitle = useMemo(() => {
@@ -673,10 +739,43 @@ export default function Settings(): JSX.Element {
             )}
             {activeTab === 'module2' && <AppLauncherTab />}
             {activeTab === 'module3' && <WorkflowsTab />}
-            {activeTab === 'module4' && <PrepromptsTab />}
+            {activeTab === 'module4' && (
+              <PrepromptsTab
+                preprompts={preprompts}
+                isLoading={isPrepromptsLoading}
+                onAdd={handleOpenAddPreprompt}
+                onEdit={handleOpenEditPreprompt}
+                onDelete={(preprompt) => setDeletingPreprompt(preprompt)}
+              />
+            )}
           </main>
         </div>
       </div>
+
+      <AnimatePresence>
+        {isPrepromptFormOpen ? (
+          <PrepromptFormModal
+            initialData={editingPreprompt}
+            onCancel={handleClosePrepromptForm}
+            onSave={(payload) => {
+              void handleSavePreprompt(payload)
+            }}
+          />
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {deletingPreprompt ? (
+          <ConfirmDeleteModal
+            title="Delete Preprompt"
+            message={`Are you sure you want to delete \"${deletingPreprompt.title}\"? This action cannot be undone.`}
+            onCancel={() => setDeletingPreprompt(undefined)}
+            onConfirm={() => {
+              void handleConfirmDeletePreprompt()
+            }}
+          />
+        ) : null}
+      </AnimatePresence>
     </div>
   )
 }

@@ -6,9 +6,11 @@ import {
   screen,
   shell
 } from 'electron'
+import { randomUUID } from 'crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
+import ElectronStore from 'electron-store'
 import dotenv from 'dotenv'
 import OpenAI from 'openai'
 import { ProxyAgent } from 'undici'
@@ -32,10 +34,93 @@ interface AppConfig {
   proxyUrl: string
 }
 
+interface Preprompt {
+  id: string
+  title: string
+  content: string
+}
+
+interface AppStoreSchema {
+  preprompts: Preprompt[]
+}
+
 const DEFAULT_CONFIG: AppConfig = {
   apiKey: '',
   themeGradient: 'from-neutral-900/95 to-neutral-900/95',
   proxyUrl: ''
+}
+
+const StoreClass =
+  (ElectronStore as typeof ElectronStore & { default?: typeof ElectronStore }).default ??
+  ElectronStore
+
+const appStore = new StoreClass<AppStoreSchema>({
+  name: 'preprompts',
+  defaults: {
+    preprompts: []
+  },
+  schema: {
+    preprompts: {
+      type: 'array',
+      default: [],
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          id: { type: 'string' },
+          title: { type: 'string' },
+          content: { type: 'string' }
+        },
+        required: ['id', 'title', 'content']
+      }
+    }
+  }
+})
+
+function getPreprompts(): Preprompt[] {
+  return appStore.get('preprompts', [])
+}
+
+function savePreprompt(payload: Partial<Preprompt>): Preprompt[] {
+  const normalizedTitle = typeof payload.title === 'string' ? payload.title.trim() : ''
+  const normalizedContent = typeof payload.content === 'string' ? payload.content.trim() : ''
+
+  if (!normalizedTitle || !normalizedContent) {
+    throw new Error('Preprompt title and content are required.')
+  }
+
+  const preprompts = getPreprompts()
+  const existingId = typeof payload.id === 'string' ? payload.id.trim() : ''
+
+  if (existingId) {
+    const updated = preprompts.map((item) =>
+      item.id === existingId ? { ...item, title: normalizedTitle, content: normalizedContent } : item
+    )
+
+    appStore.set('preprompts', updated)
+    return updated
+  }
+
+  const created: Preprompt = {
+    id: randomUUID(),
+    title: normalizedTitle,
+    content: normalizedContent
+  }
+
+  const nextPreprompts = [...preprompts, created]
+  appStore.set('preprompts', nextPreprompts)
+  return nextPreprompts
+}
+
+function deletePreprompt(id: string): Preprompt[] {
+  const normalizedId = typeof id === 'string' ? id.trim() : ''
+  if (!normalizedId) {
+    return getPreprompts()
+  }
+
+  const nextPreprompts = getPreprompts().filter((item) => item.id !== normalizedId)
+  appStore.set('preprompts', nextPreprompts)
+  return nextPreprompts
 }
 
 dotenv.config({ path: join(process.cwd(), '.env') })
@@ -340,6 +425,18 @@ ipcMain.on('minimize-settings', () => {
 
 ipcMain.handle('get-config', () => {
   return readConfig()
+})
+
+ipcMain.handle('get-preprompts', () => {
+  return getPreprompts()
+})
+
+ipcMain.handle('save-preprompt', (_event, payload: Partial<Preprompt>) => {
+  return savePreprompt(payload)
+})
+
+ipcMain.handle('delete-preprompt', (_event, prepromptId: string) => {
+  return deletePreprompt(prepromptId)
 })
 
 ipcMain.on('save-api-key', (_event, key: string) => {
