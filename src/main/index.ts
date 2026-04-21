@@ -158,7 +158,6 @@ function getApps(): LauncherApp[] {
 function saveApp(payload: Partial<LauncherApp>): LauncherApp[] {
   const normalizedTitle = typeof payload.title === 'string' ? payload.title.trim() : ''
   const normalizedPath = typeof payload.path === 'string' ? payload.path.trim() : ''
-  const normalizedIconBase64 = typeof payload.iconBase64 === 'string' ? payload.iconBase64 : ''
   const normalizedArguments = typeof payload.arguments === 'string' ? payload.arguments.trim() : ''
 
   if (!normalizedTitle || !normalizedPath) {
@@ -175,7 +174,7 @@ function saveApp(payload: Partial<LauncherApp>): LauncherApp[] {
             ...item,
             title: normalizedTitle,
             path: normalizedPath,
-            iconBase64: normalizedIconBase64,
+            iconBase64: '',
             arguments: normalizedArguments
           }
         : item
@@ -189,7 +188,7 @@ function saveApp(payload: Partial<LauncherApp>): LauncherApp[] {
     id: existingId || randomUUID(),
     title: normalizedTitle,
     path: normalizedPath,
-    iconBase64: normalizedIconBase64,
+    iconBase64: '',
     arguments: normalizedArguments
   }
 

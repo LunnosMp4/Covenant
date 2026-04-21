@@ -365,7 +365,6 @@ export default function App(): JSX.Element {
                     title: item.title,
                     subtitle: item.path,
                     icon: 'grid',
-                    iconDataUrl: item.iconBase64,
                     appPath: item.path,
                     launchArguments: item.arguments
                   }))}

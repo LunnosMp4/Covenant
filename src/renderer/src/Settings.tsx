@@ -161,6 +161,11 @@ function SectionCard({
   )
 }
 
+function getAppBadgeText(title: string): string {
+  const trimmedTitle = title.trim()
+  return trimmedTitle.slice(0, 2).toUpperCase() || 'AP'
+}
+
 interface GeneralTabProps {
   apiKey: string
   onApiKeyChange: (value: string) => void
@@ -351,12 +356,8 @@ function AppLauncherTab({
             key={appItem.id}
             className="grid grid-cols-[80px_1fr_2fr_160px] items-center border-b border-neutral-800 px-4 py-3 text-sm last:border-b-0"
           >
-            <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg border border-neutral-700 bg-neutral-950 text-sm font-semibold text-neutral-200">
-              {appItem.iconBase64 ? (
-                <img src={appItem.iconBase64} alt={`${appItem.title} icon`} className="h-full w-full object-cover" />
-              ) : (
-                appItem.title.slice(0, 1).toUpperCase()
-              )}
+            <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg border border-neutral-700 bg-neutral-950 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-200">
+              {getAppBadgeText(appItem.title)}
             </span>
             <span className="text-neutral-100">{appItem.title}</span>
             <span className="truncate text-neutral-400">{appItem.path}</span>

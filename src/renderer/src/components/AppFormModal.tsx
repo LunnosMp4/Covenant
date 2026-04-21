@@ -31,14 +31,17 @@ function ChevronIcon({ expanded }: { expanded: boolean }): JSX.Element {
   )
 }
 
-function IconPreview({ iconBase64, title }: { iconBase64: string; title: string }): JSX.Element {
+function getAppBadgeText(title: string): string {
+  const trimmedTitle = title.trim()
+  return trimmedTitle.slice(0, 2).toUpperCase() || 'AP'
+}
+
+function IconPreview({ title }: { title: string }): JSX.Element {
   return (
     <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl border border-neutral-700 bg-neutral-950">
-      {iconBase64 ? (
-        <img src={iconBase64} alt={`${title || 'Application'} icon`} className="h-full w-full object-cover" />
-      ) : (
-        <span className="text-xs font-semibold uppercase text-neutral-500">{title ? title.slice(0, 1) : 'A'}</span>
-      )}
+      <span className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-200">
+        {getAppBadgeText(title)}
+      </span>
     </div>
   )
 }
@@ -46,40 +49,21 @@ function IconPreview({ iconBase64, title }: { iconBase64: string; title: string 
 export default function AppFormModal({ initialData, onCancel, onSave }: AppFormModalProps): JSX.Element {
   const [title, setTitle] = useState('')
   const [appPath, setAppPath] = useState('')
-  const [iconBase64, setIconBase64] = useState('')
   const [launchArguments, setLaunchArguments] = useState('')
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false)
   const [isBrowsing, setIsBrowsing] = useState(false)
-  const [isLoadingIcon, setIsLoadingIcon] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
 
   useEffect(() => {
     setTitle(initialData?.title ?? '')
     setAppPath(initialData?.path ?? '')
-    setIconBase64(initialData?.iconBase64 ?? '')
     setLaunchArguments(initialData?.arguments ?? '')
     setIsAdvancedOpen(Boolean(initialData?.arguments))
     setErrorMessage('')
   }, [initialData])
 
   const isEditMode = Boolean(initialData)
-  const isDisabled = !title.trim() || !appPath.trim() || isBrowsing || isLoadingIcon
-
-  const loadIconFromPath = async (selectedPath: string): Promise<void> => {
-    if (!window.api?.getFileIcon) return
-
-    setIsLoadingIcon(true)
-    try {
-      const fileIcon = await window.api.getFileIcon(selectedPath)
-      setIconBase64(fileIcon || '')
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to extract application icon.'
-      setIconBase64('')
-      setErrorMessage(message)
-    } finally {
-      setIsLoadingIcon(false)
-    }
-  }
+  const isDisabled = !title.trim() || !appPath.trim() || isBrowsing
 
   const handleBrowse = async (): Promise<void> => {
     if (!window.api?.selectFile) {
@@ -95,7 +79,6 @@ export default function AppFormModal({ initialData, onCancel, onSave }: AppFormM
       if (!selectedPath) return
 
       setAppPath(selectedPath)
-      await loadIconFromPath(selectedPath)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to open file picker.'
       setErrorMessage(message)
@@ -126,7 +109,7 @@ export default function AppFormModal({ initialData, onCancel, onSave }: AppFormM
               />
             </div>
 
-            <IconPreview iconBase64={iconBase64} title={title} />
+            <IconPreview title={title} />
           </div>
 
           <div>
@@ -200,7 +183,7 @@ export default function AppFormModal({ initialData, onCancel, onSave }: AppFormM
                 id: initialData?.id,
                 title: title.trim(),
                 path: appPath.trim(),
-                iconBase64,
+                iconBase64: '',
                 arguments: launchArguments.trim()
               })
             }

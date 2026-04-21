@@ -146,6 +146,11 @@ function ItemIcon({ icon }: { icon: PopupIcon }): JSX.Element {
   )
 }
 
+function getAppBadgeText(title: string): string {
+  const trimmedTitle = title.trim()
+  return trimmedTitle.slice(0, 2).toUpperCase() || 'AP'
+}
+
 export default function ModulePopup({
   activePopup,
   popupRef,
@@ -196,12 +201,8 @@ export default function ModulePopup({
               onClick={() => onSelectItem(item)}
               className="flex w-full cursor-pointer items-center gap-3 rounded-xl p-3 text-left text-sm text-neutral-200 transition-colors duration-150 hover:bg-white/5"
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-neutral-300">
-                {item.iconDataUrl ? (
-                  <img src={item.iconDataUrl} alt={`${item.title} icon`} className="h-6 w-6 rounded object-cover" />
-                ) : (
-                  <ItemIcon icon={item.icon} />
-                )}
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-xs font-semibold uppercase tracking-[0.08em] text-neutral-200">
+                {activePopup === 'module2' ? getAppBadgeText(item.title) : <ItemIcon icon={item.icon} />}
               </span>
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate">{item.title}</span>
