@@ -832,8 +832,8 @@ export default function Settings(): JSX.Element {
   }, [activeTab])
 
   return (
-    <div className="h-screen w-screen bg-transparent p-3 font-sans text-neutral-200">
-      <div className="h-full overflow-hidden rounded-xl border border-neutral-800/80 bg-neutral-900/95 shadow-[0_24px_70px_rgba(0,0,0,0.55)]">
+    <div className="h-screen w-screen bg-transparent font-sans text-neutral-200">
+      <div className="h-full overflow-hidden rounded-xl border border-neutral-800/85 bg-neutral-900/95">
         <div className="relative h-10 w-full">
           <div className="absolute inset-0 border-b border-neutral-800/80 bg-neutral-900/40" style={dragRegionStyle}>
             <div className="flex h-full items-center px-4 text-xs uppercase tracking-[0.1em] text-neutral-500">
@@ -864,7 +864,7 @@ export default function Settings(): JSX.Element {
         </div>
 
         <div className="flex h-[calc(100%-2.5rem)]">
-          <aside className="w-64 border-r border-neutral-800 bg-neutral-950/70 p-4">
+          <aside className="w-64 border-r border-neutral-800 bg-neutral-950/85 p-4">
             <div className="px-2 pb-4 pt-2">
               <p className="text-xs uppercase tracking-[0.1em] text-neutral-500">Prometheus</p>
               <h1 className="mt-2 text-lg font-semibold text-neutral-100">Settings</h1>
