@@ -8,6 +8,8 @@ interface WorkflowListProps {
   workflowLogsOpenById: Record<string, boolean>
   onRunWorkflow: (item: PopupItem) => void
   onToggleLogs: (workflowId: string) => void
+  /** When false the CPU-intensive shimmer animation is suspended. */
+  isAppVisible?: boolean
 }
 
 function StatusSpinner(): JSX.Element {
@@ -84,7 +86,8 @@ export default function WorkflowList({
   workflowExecutionById,
   workflowLogsOpenById,
   onRunWorkflow,
-  onToggleLogs
+  onToggleLogs,
+  isAppVisible = true
 }: WorkflowListProps): JSX.Element {
   return (
     <div className="space-y-2">
@@ -107,7 +110,9 @@ export default function WorkflowList({
                   aria-hidden
                   className="pointer-events-none absolute inset-0 bg-gradient-to-r from-transparent via-amber-300/25 to-transparent"
                   initial={{ x: '-120%' }}
-                  animate={{ x: '120%' }}
+                  // Pause the infinite shimmer when the app is hidden to
+                  // eliminate background CPU/GPU work from the animation loop.
+                  animate={isAppVisible ? { x: '120%' } : false}
                   transition={{
                     duration: 1.1,
                     repeat: Infinity,

@@ -78,6 +78,8 @@ interface ModulePopupProps {
   onToggleWorkflowLogs?: (workflowId: string) => void
   anchorSide?: PopupAnchorSide
   themeGradient: string
+  /** Forwarded to WorkflowList to pause CPU-intensive animations when hidden. */
+  isAppVisible?: boolean
 }
 
 function PlusIcon(): JSX.Element {
@@ -170,7 +172,8 @@ export default function ModulePopup({
   workflowLogsOpenById = {},
   onToggleWorkflowLogs,
   anchorSide = 'right',
-  themeGradient
+  themeGradient,
+  isAppVisible = true
 }: ModulePopupProps): JSX.Element {
   const items =
     activePopup === 'module2'
@@ -222,6 +225,7 @@ export default function ModulePopup({
             workflowLogsOpenById={workflowLogsOpenById}
             onRunWorkflow={onSelectItem}
             onToggleLogs={(workflowId) => onToggleWorkflowLogs?.(workflowId)}
+            isAppVisible={isAppVisible}
           />
         ) : (
           items.map((item) => (

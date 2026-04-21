@@ -16,12 +16,12 @@ interface AppConfig {
   proxyUrl: string
 }
 
-const DEFAULT_THEME_GRADIENT = 'from-neutral-900/95 to-neutral-900/95'
+const DEFAULT_THEME_GRADIENT = 'from-neutral-900/95 to-[#1c0f03]'
 const AVAILABLE_THEME_GRADIENTS = [
   DEFAULT_THEME_GRADIENT,
-  'from-slate-900/95 to-blue-900/95',
-  'from-zinc-900/95 to-violet-900/95',
-  'from-neutral-900/95 to-emerald-900/95'
+  'from-slate-900 to-[#071726]',
+  'from-zinc-900 to-[#1a1026]',
+  'from-neutral-900 to-[#0a1f17]'
 ] as const
 
 const AVAILABLE_THEME_GRADIENT_SET = new Set<string>(AVAILABLE_THEME_GRADIENTS)
@@ -106,6 +106,10 @@ function SpinnerIcon(): JSX.Element {
 
 export default function App(): JSX.Element {
   const [visible, setVisible] = useState(false)
+  // Tracks whether the window is truly visible to the user (including after the
+  // exit animation has finished). When false, heavy components are fully
+  // unmounted from the React DOM so they release their memory.
+  const [isAppVisible, setIsAppVisible] = useState(false)
   const [query, setQuery] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [aiResponse, setAiResponse] = useState('')
@@ -123,6 +127,8 @@ export default function App(): JSX.Element {
   const moduleButtonsRef = useRef<HTMLDivElement>(null)
   const module4ButtonRef = useRef<HTMLButtonElement>(null)
   const successResetTimersRef = useRef<Record<string, number>>({})
+  // Ref for the hide-delay timer so it can be cancelled on rapid show/hide.
+  const hideDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     let isMounted = true
@@ -158,19 +164,46 @@ export default function App(): JSX.Element {
 
   useEffect(() => {
     if (window.api?.window.onToggleVisibility) {
-      window.api.window.onToggleVisibility((v) => {
-        setVisible(v)
-        if (!v) {
-          setTimeout(() => {
+      // IMPORTANT: capture the returned cleanup function to prevent an IPC
+      // listener leak — each call to onToggleVisibility registers a new
+      // ipcRenderer listener that must be removed when this effect tears down.
+      const unsubscribe = window.api.window.onToggleVisibility((v) => {
+        if (v) {
+          // Cancel any pending hide timer so rapid show/hide doesn't race.
+          if (hideDelayTimerRef.current !== null) {
+            clearTimeout(hideDelayTimerRef.current)
+            hideDelayTimerRef.current = null
+          }
+          setIsAppVisible(true)
+          setVisible(true)
+        } else {
+          setVisible(false)
+          // Wait for the exit animation (~250 ms) before resetting state and
+          // unmounting heavy components to free memory.
+          hideDelayTimerRef.current = setTimeout(() => {
+            hideDelayTimerRef.current = null
             setQuery('')
             setIsLoading(false)
             setAiResponse('')
             setActivePopup(null)
-          }, 250)
+            // isAppVisible is set to false via AnimatePresence onExitComplete,
+            // which fires once the spring exit animation fully completes.
+          }, 300)
         }
       })
+
+      return () => {
+        unsubscribe()
+        if (hideDelayTimerRef.current !== null) {
+          clearTimeout(hideDelayTimerRef.current)
+          hideDelayTimerRef.current = null
+        }
+      }
     } else {
+      // Dev/browser fallback — always visible.
       setVisible(true)
+      setIsAppVisible(true)
+      return undefined
     }
   }, [])
 
@@ -577,7 +610,13 @@ export default function App(): JSX.Element {
       style={{ background: 'transparent' }}
       onClick={handleOverlayClick}
     >
-      <AnimatePresence>
+      {/*
+        isAppVisible gates the entire component tree so React fully unmounts
+        all children — including ModulePopup, WorkflowList, and log panels —
+        once the exit animation has finished. This is the primary mechanism
+        for freeing heap memory during the passive/hidden state.
+      */}
+      <AnimatePresence onExitComplete={() => setIsAppVisible(false)}>
         {visible && (
           <motion.div
             key="command-bar"
@@ -588,11 +627,12 @@ export default function App(): JSX.Element {
             className="relative flex flex-col w-[750px] max-w-full"
           >
             <AnimatePresence>
-              {activePopup && (
+              {activePopup && isAppVisible && (
                 <ModulePopup
                   activePopup={activePopup}
                   popupRef={popupRef}
                   themeGradient={themeGradient}
+                  isAppVisible={isAppVisible}
                   module2Items={apps.map((item) => ({
                     id: item.id,
                     title: item.title,

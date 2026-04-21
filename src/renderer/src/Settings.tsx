@@ -23,31 +23,31 @@ interface AppConfig {
   proxyUrl: string
 }
 
-const DEFAULT_THEME_GRADIENT = 'from-neutral-900/95 to-neutral-900/95'
+const DEFAULT_THEME_GRADIENT = 'from-neutral-900/95 to-[#1c0f03]'
 const THEME_OPTIONS: ThemeOption[] = [
   {
     id: 'dark-default',
     label: 'Dark Neutral',
     description: 'Balanced dark gradient',
-    gradientClass: 'from-neutral-900/95 to-neutral-900/95'
+    gradientClass: 'from-neutral-900/95 to-[#1c0f03]'
   },
   {
     id: 'blue-depth',
     label: 'Blue Depth',
     description: 'Cool steel tone',
-    gradientClass: 'from-slate-900/95 to-blue-900/95'
+    gradientClass: 'from-slate-900 to-[#071726]'
   },
   {
     id: 'violet-focus',
     label: 'Violet Focus',
     description: 'Focused creative mood',
-    gradientClass: 'from-zinc-900/95 to-violet-900/95'
+    gradientClass: 'from-zinc-900 to-[#1a1026]'
   },
   {
     id: 'emerald-night',
     label: 'Emerald Night',
     description: 'Dark green accent',
-    gradientClass: 'from-neutral-900/95 to-emerald-900/95'
+    gradientClass: 'from-neutral-900 to-[#0a1f17]'
   }
 ]
 

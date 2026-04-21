@@ -136,7 +136,6 @@ export default function AppFormModal({ initialData, onCancel, onSave }: AppFormM
                 {isBrowsing ? 'Browsing...' : 'Browse...'}
               </button>
             </div>
-            {isLoadingIcon ? <p className="mt-2 text-xs text-neutral-500">Extracting icon...</p> : null}
           </div>
 
           <button

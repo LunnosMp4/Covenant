@@ -14,14 +14,16 @@ interface PrometheusAPI {
     openSettings: () => void
     closeSettings: () => void
     minimizeSettings: () => void
-    onToggleVisibility: (callback: (visible: boolean) => void) => (() => void) | void
+    /** Subscribes to window show/hide events. Returns a cleanup function that removes the listener. */
+    onToggleVisibility: (callback: (visible: boolean) => void) => () => void
   }
   config: {
     getConfig: () => Promise<AppConfig>
     saveApiKey: (apiKey: string) => void
     saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string }) => void
     updateTheme: (gradientClass: string) => void
-    onThemeUpdated: (callback: (gradientClass: string) => void) => (() => void) | void
+    /** Subscribes to theme changes. Returns a cleanup function that removes the listener. */
+    onThemeUpdated: (callback: (gradientClass: string) => void) => () => void
   }
   chat: {
     askPrometheus: (prompt: string) => Promise<string>
@@ -41,8 +43,10 @@ interface PrometheusAPI {
   getFileIcon: (filePath: string) => Promise<string>
   launchApp: (path: string, launchArguments: string) => Promise<{ success: boolean; error?: string }>
   executeWorkflow: (workflow: Partial<Workflow>) => Promise<{ success: boolean; error?: string }>
-  onWorkflowStatusUpdate: (callback: (payload: WorkflowStatusUpdatePayload) => void) => (() => void) | void
-  onWorkflowLog: (callback: (payload: WorkflowLogPayload) => void) => (() => void) | void
+  /** Subscribes to workflow status events. Returns a cleanup function that removes the listener. */
+  onWorkflowStatusUpdate: (callback: (payload: WorkflowStatusUpdatePayload) => void) => () => void
+  /** Subscribes to workflow log events. Returns a cleanup function that removes the listener. */
+  onWorkflowLog: (callback: (payload: WorkflowLogPayload) => void) => () => void
 }
 
 declare global {
@@ -57,9 +61,9 @@ declare global {
       saveApiKey: (apiKey: string) => void
       saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string }) => void
       updateTheme: (gradientClass: string) => void
-      onThemeUpdated: (callback: (gradientClass: string) => void) => (() => void) | void
+      onThemeUpdated: (callback: (gradientClass: string) => void) => () => void
       askPrometheus: (prompt: string) => Promise<string>
-      onToggleVisibility: (callback: (visible: boolean) => void) => (() => void) | void
+      onToggleVisibility: (callback: (visible: boolean) => void) => () => void
     }
   }
 }

@@ -4,8 +4,10 @@ import {
   dialog,
   globalShortcut,
   ipcMain,
+  Menu,
   screen,
   shell,
+  Tray,
   type WebContents
 } from 'electron'
 import { spawn } from 'child_process'
@@ -19,8 +21,13 @@ import dotenv from 'dotenv'
 import OpenAI from 'openai'
 import { ProxyAgent } from 'undici'
 
+// Expose V8's garbage collector so we can force a collection on window hide.
+// Must be set before app.whenReady() — top-level module scope satisfies this.
+app.commandLine.appendSwitch('js-flags', '--expose_gc')
+
 let mainWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
+let tray: Tray | null = null
 let isVisible = false
 
 const isMac = process.platform === 'darwin'
@@ -70,7 +77,7 @@ interface AppStoreSchema {
 
 const DEFAULT_CONFIG: AppConfig = {
   apiKey: '',
-  themeGradient: 'from-neutral-900/95 to-neutral-900/95',
+  themeGradient: 'from-neutral-900/95 to-[#1c0f03]',
   proxyUrl: ''
 }
 
@@ -732,7 +739,9 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // Throttle timers/animations in the background to save CPU.
+      backgroundThrottling: true
     }
   })
 
@@ -744,7 +753,7 @@ function createWindow(): void {
   // Keep the full window transparent. Renderer-level styling handles the frosted bar.
   if (isWindows) {
     try {
-      mainWindow.setBackgroundMaterial('acrylic')
+      mainWindow.setBackgroundMaterial('none')
     } catch {
       // Older Electron/Windows versions can ignore this safely.
     }
@@ -840,12 +849,38 @@ function hideWindow(): void {
   mainWindow.webContents.send('toggle-visibility', false)
   isVisible = false
 
-  // Give the exit animation time to play before hiding
+  // Give the exit animation time to play before hiding, then enter sleep mode.
   setTimeout(() => {
     if (!isVisible && mainWindow) {
       mainWindow.hide()
+      scheduleSleepModeCleanup(mainWindow)
     }
   }, 250)
+}
+
+/**
+ * "Sleep mode" — run after the window is hidden.
+ * Releases the renderer's navigation history and disk/memory cache, then
+ * triggers a V8 GC cycle (when available) to return unused heap to the OS.
+ */
+function scheduleSleepModeCleanup(win: BrowserWindow): void {
+  if (win.isDestroyed()) return
+
+  win.webContents.navigationHistory.clear()
+
+  void win.webContents.session.clearCache().catch(() => {
+    // Non-fatal — ignore cache-clear failures.
+  })
+
+  // global.gc is available when --expose_gc is passed via js-flags.
+  try {
+    if (typeof (global as Record<string, unknown>).gc === 'function') {
+      ;(global as Record<string, unknown>).gc as () => void
+      ;((global as Record<string, unknown>).gc as () => void)()
+    }
+  } catch {
+    // Ignore if GC is unavailable in this build.
+  }
 }
 
 function toggleWindow(): void {
@@ -856,27 +891,117 @@ function toggleWindow(): void {
   }
 }
 
+function createTray(): void {
+  try {
+    // Try to find and load tray icon
+    let trayIconPath: string | null = null
+    
+    // Primary path: compiled assets
+    const compiledPngPath = join(__dirname, 'assets', 'tray-icon.png')
+    if (existsSync(compiledPngPath)) {
+      trayIconPath = compiledPngPath
+    }
+    
+    // Fallback: source assets (development)
+    if (!trayIconPath) {
+      const srcPngPath = join(__dirname, '..', '..', 'src', 'main', 'assets', 'tray-icon.png')
+      if (existsSync(srcPngPath)) {
+        trayIconPath = srcPngPath
+      }
+    }
+
+    if (!trayIconPath) {
+      console.warn('Tray icon not found at:', compiledPngPath)
+      return
+    }
+
+    tray = new Tray(trayIconPath)
+    
+    // Set tooltip
+    tray.setToolTip('Prometheus - Alt+Space')
+
+    // Create context menu
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: 'Open Prometheus',
+        click: () => {
+          showWindow()
+        }
+      },
+      {
+        label: 'Settings',
+        click: () => {
+          createSettingsWindow()
+        }
+      },
+      { type: 'separator' },
+      {
+        label: 'Quit Prometheus',
+        click: () => {
+          app.quit()
+        }
+      }
+    ])
+
+    // Set context menu for right-click
+    tray.setContextMenu(contextMenu)
+
+    // Left-click toggles visibility
+    tray.on('click', () => {
+      toggleWindow()
+    })
+  } catch (error) {
+    console.error('Failed to create tray:', error)
+  }
+}
+
 app.whenReady().then(() => {
+  // Implement single instance lock
+  const gotTheLock = app.requestSingleInstanceLock()
+
+  if (!gotTheLock) {
+    // Another instance is already running, quit this one
+    app.quit()
+    return
+  }
+
+  // Handle second instance attempt
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      showWindow()
+    }
+  })
+
   readConfig()
   createWindow()
+  createTray()
 
   globalShortcut.register('Alt+Space', toggleWindow)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow()
+      createTray()
     }
   })
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  // Don't quit the app when windows are closed - keep it running in tray
+  // Only quit when user explicitly clicks "Quit" in tray menu
+  if (process.platform === 'darwin') {
     app.quit()
   }
 })
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+  
+  // Cleanup tray
+  if (tray) {
+    tray.destroy()
+    tray = null
+  }
 })
 
 // IPC: renderer can request hide (after close animation)
