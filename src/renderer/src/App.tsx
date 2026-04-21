@@ -6,6 +6,9 @@ declare global {
   interface Window {
     electronAPI?: {
       hideWindow: () => void
+      openSettings: () => void
+      closeSettings: () => void
+      minimizeSettings: () => void
       askPrometheus: (prompt: string) => Promise<string>
       onToggleVisibility: (callback: (visible: boolean) => void) => void
     }
@@ -258,7 +261,14 @@ export default function App(): JSX.Element {
                 <ModulePopup
                   activePopup={activePopup}
                   popupRef={popupRef}
-                  onAddNew={() => console.log('Preference Window Triggered')}
+                  onAddNew={() => {
+                    setActivePopup(null)
+                    if (window.electronAPI?.openSettings) {
+                      window.electronAPI.openSettings()
+                    } else {
+                      console.log('Settings window is only available in the Electron app.')
+                    }
+                  }}
                   onSelectItem={handlePopupItemSelect}
                   anchorSide={activePopup === 'module4' ? 'left' : 'right'}
                 />

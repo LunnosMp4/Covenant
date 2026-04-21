@@ -12,6 +12,7 @@ import dotenv from 'dotenv'
 import OpenAI from 'openai'
 
 let mainWindow: BrowserWindow | null = null
+let settingsWindow: BrowserWindow | null = null
 let isVisible = false
 
 const isMac = process.platform === 'darwin'
@@ -20,6 +21,8 @@ const isWindows = process.platform === 'win32'
 const WINDOW_WIDTH = 800
 const WINDOW_HEIGHT = 420
 const WINDOW_BOTTOM_MARGIN = 48
+const SETTINGS_WINDOW_WIDTH = 1024
+const SETTINGS_WINDOW_HEIGHT = 576
 
 dotenv.config({ path: join(process.cwd(), '.env') })
 
@@ -32,6 +35,23 @@ function getWindowPosition(): { x: number; y: number } {
     x: Math.round(workAreaX + (workAreaWidth - WINDOW_WIDTH) / 2),
     y: Math.round(workAreaY + workAreaHeight - WINDOW_HEIGHT - WINDOW_BOTTOM_MARGIN)
   }
+}
+
+function loadRendererWindow(targetWindow: BrowserWindow, route?: 'settings'): void {
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    const rendererUrl = process.env['ELECTRON_RENDERER_URL']
+    const targetUrl = route === 'settings' ? `${rendererUrl}#/settings` : rendererUrl
+    targetWindow.loadURL(targetUrl)
+    return
+  }
+
+  const rendererEntryFile = join(__dirname, '../renderer/index.html')
+  if (route === 'settings') {
+    targetWindow.loadFile(rendererEntryFile, { hash: 'settings' })
+    return
+  }
+
+  targetWindow.loadFile(rendererEntryFile)
 }
 
 function createWindow(): void {
@@ -100,11 +120,52 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+  loadRendererWindow(mainWindow)
+}
+
+function createSettingsWindow(): void {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.show()
+    settingsWindow.focus()
+    return
   }
+
+  settingsWindow = new BrowserWindow({
+    width: SETTINGS_WINDOW_WIDTH,
+    height: SETTINGS_WINDOW_HEIGHT,
+    minWidth: 800,
+    minHeight: 450,
+    title: 'Prometheus Settings',
+    show: false,
+    frame: false,
+    transparent: true,
+    autoHideMenuBar: true,
+    backgroundColor: 'rgba(0, 0, 0, 0)',
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false,
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  })
+
+  settingsWindow.setAspectRatio(16 / 9)
+
+  settingsWindow.on('ready-to-show', () => {
+    settingsWindow?.show()
+    settingsWindow?.focus()
+  })
+
+  settingsWindow.on('closed', () => {
+    settingsWindow = null
+  })
+
+  settingsWindow.webContents.setWindowOpenHandler((details) => {
+    shell.openExternal(details.url)
+    return { action: 'deny' }
+  })
+
+  loadRendererWindow(settingsWindow, 'settings')
 }
 
 function showWindow(): void {
@@ -167,6 +228,22 @@ ipcMain.on('hide-window', () => {
   isVisible = false
   if (mainWindow) {
     mainWindow.hide()
+  }
+})
+
+ipcMain.on('open-settings', () => {
+  createSettingsWindow()
+})
+
+ipcMain.on('close-settings', () => {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.close()
+  }
+})
+
+ipcMain.on('minimize-settings', () => {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.minimize()
   }
 })
 

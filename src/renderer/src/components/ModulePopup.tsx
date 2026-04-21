@@ -187,7 +187,7 @@ export default function ModulePopup({
         className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-neutral-700 bg-neutral-800/40 p-3 text-sm text-neutral-500 transition-colors duration-150 hover:border-neutral-500 hover:text-neutral-300"
       >
         <PlusIcon />
-        <span>Add new action</span>
+        <span>Add new...</span>
       </button>
     </motion.div>
   )
