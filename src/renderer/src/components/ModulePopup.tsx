@@ -12,6 +12,9 @@ export interface PopupItem {
   icon: PopupIcon
   subtitle?: string
   promptText?: string
+  iconDataUrl?: string
+  appPath?: string
+  launchArguments?: string
 }
 
 const MODULE_LABELS: Record<ActivePopup, string> = {
@@ -64,6 +67,7 @@ interface ModulePopupProps {
   popupRef: RefObject<HTMLDivElement>
   onAddNew: () => void
   onSelectItem: (item: PopupItem) => void
+  module2Items?: PopupItem[]
   module4Items?: PopupItem[]
   anchorSide?: PopupAnchorSide
   themeGradient: string
@@ -147,16 +151,28 @@ export default function ModulePopup({
   popupRef,
   onAddNew,
   onSelectItem,
+  module2Items,
   module4Items,
   anchorSide = 'right',
   themeGradient
 }: ModulePopupProps): JSX.Element {
   const items =
-    activePopup === 'module4'
+    activePopup === 'module2'
+      ? module2Items && module2Items.length > 0
+        ? module2Items
+        : []
+      : activePopup === 'module4'
       ? module4Items && module4Items.length > 0
         ? module4Items
         : []
       : MODULE_ITEMS[activePopup]
+
+  const emptyMessage =
+    activePopup === 'module2'
+      ? 'No applications saved yet.'
+      : activePopup === 'module4'
+        ? 'No preprompts saved yet.'
+        : 'No items available.'
   const anchorClass = anchorSide === 'left' ? 'left-0' : 'right-0'
 
   return (
@@ -181,7 +197,11 @@ export default function ModulePopup({
               className="flex w-full cursor-pointer items-center gap-3 rounded-xl p-3 text-left text-sm text-neutral-200 transition-colors duration-150 hover:bg-white/5"
             >
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-neutral-300">
-                <ItemIcon icon={item.icon} />
+                {item.iconDataUrl ? (
+                  <img src={item.iconDataUrl} alt={`${item.title} icon`} className="h-6 w-6 rounded object-cover" />
+                ) : (
+                  <ItemIcon icon={item.icon} />
+                )}
               </span>
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate">{item.title}</span>
@@ -191,7 +211,7 @@ export default function ModulePopup({
           ))
         ) : (
           <div className="rounded-xl border border-neutral-800 bg-neutral-900/70 px-3 py-5 text-center text-xs text-neutral-500">
-            No preprompts saved yet.
+            {emptyMessage}
           </div>
         )}
       </div>

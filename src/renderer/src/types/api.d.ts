@@ -1,4 +1,5 @@
 import type { Preprompt } from './preprompt'
+import type { LauncherApp } from './launcher-app'
 
 interface AppConfig {
   apiKey: string
@@ -28,7 +29,13 @@ interface PrometheusAPI {
     getPreprompts: () => Promise<Preprompt[]>
     savePreprompt: (preprompt: Partial<Preprompt>) => Promise<Preprompt[]>
     deletePreprompt: (prepromptId: string) => Promise<Preprompt[]>
+    getApps: () => Promise<LauncherApp[]>
+    saveApp: (launcherApp: Partial<LauncherApp>) => Promise<LauncherApp[]>
+    deleteApp: (appId: string) => Promise<LauncherApp[]>
   }
+  selectFile: () => Promise<string>
+  getFileIcon: (filePath: string) => Promise<string>
+  launchApp: (path: string, launchArguments: string) => Promise<{ success: boolean; error?: string }>
 }
 
 declare global {

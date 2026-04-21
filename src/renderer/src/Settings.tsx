@@ -1,19 +1,14 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { AnimatePresence } from 'framer-motion'
+import AppFormModal from './components/AppFormModal'
 import ConfirmDeleteModal from './components/ConfirmDeleteModal'
 import PrepromptFormModal from './components/PrepromptFormModal'
+import type { LauncherApp } from './types/launcher-app'
 import type { Preprompt } from './types/preprompt'
 
 type SettingsTab = 'general' | 'module2' | 'module3' | 'module4'
 
 type WorkflowActionType = 'Script' | 'Prompt'
-
-interface MockApp {
-  id: string
-  iconLabel: string
-  name: string
-  path: string
-}
 
 interface MockWorkflow {
   id: string
@@ -64,27 +59,6 @@ const THEME_OPTIONS: ThemeOption[] = [
 ]
 
 const THEME_GRADIENT_SET = new Set<string>(THEME_OPTIONS.map((option) => option.gradientClass))
-
-const MOCK_APPS: MockApp[] = [
-  {
-    id: 'app-1',
-    iconLabel: 'N',
-    name: 'Notion',
-    path: 'C:/Users/T0329915/AppData/Local/Programs/Notion/Notion.exe'
-  },
-  {
-    id: 'app-2',
-    iconLabel: 'F',
-    name: 'Firefox',
-    path: 'C:/Program Files/Mozilla Firefox/firefox.exe'
-  },
-  {
-    id: 'app-3',
-    iconLabel: 'T',
-    name: 'Terminal',
-    path: 'C:/Users/T0329915/AppData/Local/Microsoft/WindowsApps/wt.exe'
-  }
-]
 
 const MOCK_WORKFLOWS: MockWorkflow[] = [
   {
@@ -322,7 +296,23 @@ function GeneralTab({
   )
 }
 
-function AppLauncherTab(): JSX.Element {
+interface AppLauncherTabProps {
+  apps: LauncherApp[]
+  isLoading: boolean
+  feedbackMessage: string
+  onAdd: () => void
+  onEdit: (launcherApp: LauncherApp) => void
+  onDelete: (launcherApp: LauncherApp) => void
+}
+
+function AppLauncherTab({
+  apps,
+  isLoading,
+  feedbackMessage,
+  onAdd,
+  onEdit,
+  onDelete
+}: AppLauncherTabProps): JSX.Element {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -332,6 +322,7 @@ function AppLauncherTab(): JSX.Element {
         </div>
         <button
           type="button"
+          onClick={onAdd}
           className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-white"
         >
           Add Application
@@ -346,25 +337,40 @@ function AppLauncherTab(): JSX.Element {
           <span className="text-right">Actions</span>
         </div>
 
-        {MOCK_APPS.map((appItem) => (
+        {isLoading ? (
+          <div className="px-4 py-6 text-sm text-neutral-400">Loading applications...</div>
+        ) : null}
+
+        {!isLoading && apps.length === 0 ? (
+          <div className="px-4 py-6 text-sm text-neutral-500">No applications saved yet. Add your first launcher shortcut.</div>
+        ) : null}
+
+        {!isLoading &&
+          apps.map((appItem) => (
           <div
             key={appItem.id}
             className="grid grid-cols-[80px_1fr_2fr_160px] items-center border-b border-neutral-800 px-4 py-3 text-sm last:border-b-0"
           >
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-700 bg-neutral-950 text-sm font-semibold text-neutral-200">
-              {appItem.iconLabel}
+            <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg border border-neutral-700 bg-neutral-950 text-sm font-semibold text-neutral-200">
+              {appItem.iconBase64 ? (
+                <img src={appItem.iconBase64} alt={`${appItem.title} icon`} className="h-full w-full object-cover" />
+              ) : (
+                appItem.title.slice(0, 1).toUpperCase()
+              )}
             </span>
-            <span className="text-neutral-100">{appItem.name}</span>
+            <span className="text-neutral-100">{appItem.title}</span>
             <span className="truncate text-neutral-400">{appItem.path}</span>
             <span className="flex justify-end gap-2">
               <button
                 type="button"
+                onClick={() => onEdit(appItem)}
                 className="rounded-lg border border-transparent px-2.5 py-1.5 text-xs text-neutral-300 transition-colors hover:border-neutral-700 hover:bg-neutral-800"
               >
                 Edit
               </button>
               <button
                 type="button"
+                onClick={() => onDelete(appItem)}
                 className="rounded-lg border border-transparent px-2.5 py-1.5 text-xs text-neutral-500 transition-colors hover:border-neutral-700 hover:bg-neutral-800 hover:text-neutral-300"
               >
                 Delete
@@ -373,6 +379,8 @@ function AppLauncherTab(): JSX.Element {
           </div>
         ))}
       </div>
+
+      {feedbackMessage ? <p className="text-xs text-emerald-300">{feedbackMessage}</p> : null}
     </div>
   )
 }
@@ -513,6 +521,12 @@ export default function Settings(): JSX.Element {
   const [selectedTheme, setSelectedTheme] = useState(DEFAULT_THEME_GRADIENT)
   const [isSavingApiKey, setIsSavingApiKey] = useState(false)
   const [saveFeedbackMessage, setSaveFeedbackMessage] = useState('')
+  const [apps, setApps] = useState<LauncherApp[]>([])
+  const [isAppsLoading, setIsAppsLoading] = useState(false)
+  const [appsFeedbackMessage, setAppsFeedbackMessage] = useState('')
+  const [isAppFormOpen, setIsAppFormOpen] = useState(false)
+  const [editingApp, setEditingApp] = useState<LauncherApp | undefined>(undefined)
+  const [deletingApp, setDeletingApp] = useState<LauncherApp | undefined>(undefined)
   const [preprompts, setPreprompts] = useState<Preprompt[]>([])
   const [isPrepromptsLoading, setIsPrepromptsLoading] = useState(false)
   const [isPrepromptFormOpen, setIsPrepromptFormOpen] = useState(false)
@@ -544,6 +558,33 @@ export default function Settings(): JSX.Element {
     }
 
     void loadConfig()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadApps = async (): Promise<void> => {
+      if (!window.api?.store.getApps) return
+
+      try {
+        setIsAppsLoading(true)
+        const savedApps = await window.api.store.getApps()
+        if (!isMounted) return
+        setApps(savedApps)
+      } catch {
+        if (!isMounted) return
+        setApps([])
+      } finally {
+        if (!isMounted) return
+        setIsAppsLoading(false)
+      }
+    }
+
+    void loadApps()
 
     return () => {
       isMounted = false
@@ -605,6 +646,61 @@ export default function Settings(): JSX.Element {
     const safeTheme = normalizeThemeGradient(gradientClass)
     setSelectedTheme(safeTheme)
     window.api?.config.updateTheme?.(safeTheme)
+  }
+
+  const handleOpenAddApp = (): void => {
+    setEditingApp(undefined)
+    setAppsFeedbackMessage('')
+    setIsAppFormOpen(true)
+  }
+
+  const handleOpenEditApp = (launcherApp: LauncherApp): void => {
+    setEditingApp(launcherApp)
+    setAppsFeedbackMessage('')
+    setIsAppFormOpen(true)
+  }
+
+  const handleCloseAppForm = (): void => {
+    setIsAppFormOpen(false)
+    setEditingApp(undefined)
+  }
+
+  const handleSaveApp = async (payload: {
+    id?: string
+    title: string
+    path: string
+    iconBase64: string
+    arguments: string
+  }): Promise<void> => {
+    if (!window.api?.store.saveApp) return
+
+    try {
+      const updatedApps = await window.api.store.saveApp(payload)
+      setApps(updatedApps)
+      setIsAppFormOpen(false)
+      setEditingApp(undefined)
+      setAppsFeedbackMessage('Application saved.')
+      window.setTimeout(() => setAppsFeedbackMessage(''), 1600)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to save application.'
+      setAppsFeedbackMessage(message)
+    }
+  }
+
+  const handleConfirmDeleteApp = async (): Promise<void> => {
+    const targetApp = deletingApp
+    if (!targetApp || !window.api?.store.deleteApp) return
+
+    try {
+      const updatedApps = await window.api.store.deleteApp(targetApp.id)
+      setApps(updatedApps)
+      setDeletingApp(undefined)
+      setAppsFeedbackMessage('Application removed.')
+      window.setTimeout(() => setAppsFeedbackMessage(''), 1600)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to delete application.'
+      setAppsFeedbackMessage(message)
+    }
   }
 
   const handleOpenAddPreprompt = (): void => {
@@ -737,7 +833,16 @@ export default function Settings(): JSX.Element {
                 onSelectTheme={handleThemeSelect}
               />
             )}
-            {activeTab === 'module2' && <AppLauncherTab />}
+            {activeTab === 'module2' && (
+              <AppLauncherTab
+                apps={apps}
+                isLoading={isAppsLoading}
+                feedbackMessage={appsFeedbackMessage}
+                onAdd={handleOpenAddApp}
+                onEdit={handleOpenEditApp}
+                onDelete={(launcherApp) => setDeletingApp(launcherApp)}
+              />
+            )}
             {activeTab === 'module3' && <WorkflowsTab />}
             {activeTab === 'module4' && (
               <PrepromptsTab
@@ -751,6 +856,31 @@ export default function Settings(): JSX.Element {
           </main>
         </div>
       </div>
+
+      <AnimatePresence>
+        {isAppFormOpen ? (
+          <AppFormModal
+            initialData={editingApp}
+            onCancel={handleCloseAppForm}
+            onSave={(payload) => {
+              void handleSaveApp(payload)
+            }}
+          />
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {deletingApp ? (
+          <ConfirmDeleteModal
+            title="Delete Application"
+            message={`Are you sure you want to delete \"${deletingApp.title}\" from the launcher list?`}
+            onCancel={() => setDeletingApp(undefined)}
+            onConfirm={() => {
+              void handleConfirmDeleteApp()
+            }}
+          />
+        ) : null}
+      </AnimatePresence>
 
       <AnimatePresence>
         {isPrepromptFormOpen ? (

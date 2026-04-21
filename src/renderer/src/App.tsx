@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import ModulePopup, { type ActivePopup, type PopupItem } from './components/ModulePopup'
+import type { LauncherApp } from './types/launcher-app'
 import type { Preprompt } from './types/preprompt'
 
 interface AppConfig {
@@ -93,6 +94,7 @@ export default function App(): JSX.Element {
   const [isLoading, setIsLoading] = useState(false)
   const [aiResponse, setAiResponse] = useState('')
   const [themeGradient, setThemeGradient] = useState<string>(DEFAULT_THEME_GRADIENT)
+  const [apps, setApps] = useState<LauncherApp[]>([])
   const [preprompts, setPreprompts] = useState<Preprompt[]>([])
   const [activePopup, setActivePopup] = useState<ActivePopup | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -181,10 +183,30 @@ export default function App(): JSX.Element {
     }
   }, [])
 
+  const loadApps = useCallback(async (): Promise<void> => {
+    if (!window.api?.store.getApps) {
+      setApps([])
+      return
+    }
+
+    try {
+      const savedApps = await window.api.store.getApps()
+      setApps(savedApps)
+    } catch {
+      setApps([])
+    }
+  }, [])
+
   useEffect(() => {
-    if (activePopup !== 'module4') return
-    void loadPreprompts()
-  }, [activePopup, loadPreprompts])
+    if (activePopup === 'module4') {
+      void loadPreprompts()
+      return
+    }
+
+    if (activePopup === 'module2') {
+      void loadApps()
+    }
+  }, [activePopup, loadApps, loadPreprompts])
 
   const togglePopup = useCallback((popup: ActivePopup) => {
     setActivePopup((current) => (current === popup ? null : popup))
@@ -261,6 +283,22 @@ export default function App(): JSX.Element {
         })
 
         setTimeout(() => inputRef.current?.focus(), 40)
+      } else if (activePopup === 'module2' && item.appPath) {
+        if (!window.api?.launchApp) {
+          setAiResponse('App launching is only available in the Electron app.')
+        } else {
+          void window.api
+            .launchApp(item.appPath, item.launchArguments ?? '')
+            .then((result) => {
+              if (!result.success) {
+                setAiResponse(`Error: ${result.error ?? 'Unable to launch application.'}`)
+              }
+            })
+            .catch((error) => {
+              const message = error instanceof Error ? error.message : 'Unable to launch application.'
+              setAiResponse(`Error: ${message}`)
+            })
+        }
       } else {
         console.log(`${item.title} selected`)
       }
@@ -322,6 +360,15 @@ export default function App(): JSX.Element {
                   activePopup={activePopup}
                   popupRef={popupRef}
                   themeGradient={themeGradient}
+                  module2Items={apps.map((item) => ({
+                    id: item.id,
+                    title: item.title,
+                    subtitle: item.path,
+                    icon: 'grid',
+                    iconDataUrl: item.iconBase64,
+                    appPath: item.path,
+                    launchArguments: item.arguments
+                  }))}
                   module4Items={preprompts.map((item) => ({
                     id: item.id,
                     title: item.title,

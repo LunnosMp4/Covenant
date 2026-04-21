@@ -12,6 +12,14 @@ interface Preprompt {
   content: string
 }
 
+interface LauncherApp {
+  id: string
+  title: string
+  path: string
+  iconBase64: string
+  arguments: string
+}
+
 const api = {
   window: {
     hideWindow: () => ipcRenderer.send('hide-window'),
@@ -56,8 +64,19 @@ const api = {
     savePreprompt: (preprompt: Partial<Preprompt>) =>
       ipcRenderer.invoke('save-preprompt', preprompt) as Promise<Preprompt[]>,
     deletePreprompt: (prepromptId: string) =>
-      ipcRenderer.invoke('delete-preprompt', prepromptId) as Promise<Preprompt[]>
-  }
+      ipcRenderer.invoke('delete-preprompt', prepromptId) as Promise<Preprompt[]>,
+    getApps: () => ipcRenderer.invoke('get-apps') as Promise<LauncherApp[]>,
+    saveApp: (launcherApp: Partial<LauncherApp>) =>
+      ipcRenderer.invoke('save-app', launcherApp) as Promise<LauncherApp[]>,
+    deleteApp: (appId: string) => ipcRenderer.invoke('delete-app', appId) as Promise<LauncherApp[]>
+  },
+  selectFile: () => ipcRenderer.invoke('select-file') as Promise<string>,
+  getFileIcon: (filePath: string) => ipcRenderer.invoke('get-file-icon', filePath) as Promise<string>,
+  launchApp: (path: string, launchArguments: string) =>
+    ipcRenderer.invoke('launch-app', {
+      path,
+      arguments: launchArguments
+    }) as Promise<{ success: boolean; error?: string }>
 }
 
 contextBridge.exposeInMainWorld('api', api)

@@ -1,11 +1,13 @@
 import {
   app,
   BrowserWindow,
+  dialog,
   globalShortcut,
   ipcMain,
   screen,
   shell
 } from 'electron'
+import { spawn } from 'child_process'
 import { randomUUID } from 'crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
@@ -40,8 +42,17 @@ interface Preprompt {
   content: string
 }
 
+interface LauncherApp {
+  id: string
+  title: string
+  path: string
+  iconBase64: string
+  arguments: string
+}
+
 interface AppStoreSchema {
   preprompts: Preprompt[]
+  apps: LauncherApp[]
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -57,7 +68,8 @@ const StoreClass =
 const appStore = new StoreClass<AppStoreSchema>({
   name: 'preprompts',
   defaults: {
-    preprompts: []
+    preprompts: [],
+    apps: []
   },
   schema: {
     preprompts: {
@@ -72,6 +84,22 @@ const appStore = new StoreClass<AppStoreSchema>({
           content: { type: 'string' }
         },
         required: ['id', 'title', 'content']
+      }
+    },
+    apps: {
+      type: 'array',
+      default: [],
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          id: { type: 'string' },
+          title: { type: 'string' },
+          path: { type: 'string' },
+          iconBase64: { type: 'string' },
+          arguments: { type: 'string' }
+        },
+        required: ['id', 'title', 'path', 'iconBase64', 'arguments']
       }
     }
   }
@@ -121,6 +149,127 @@ function deletePreprompt(id: string): Preprompt[] {
   const nextPreprompts = getPreprompts().filter((item) => item.id !== normalizedId)
   appStore.set('preprompts', nextPreprompts)
   return nextPreprompts
+}
+
+function getApps(): LauncherApp[] {
+  return appStore.get('apps', [])
+}
+
+function saveApp(payload: Partial<LauncherApp>): LauncherApp[] {
+  const normalizedTitle = typeof payload.title === 'string' ? payload.title.trim() : ''
+  const normalizedPath = typeof payload.path === 'string' ? payload.path.trim() : ''
+  const normalizedIconBase64 = typeof payload.iconBase64 === 'string' ? payload.iconBase64 : ''
+  const normalizedArguments = typeof payload.arguments === 'string' ? payload.arguments.trim() : ''
+
+  if (!normalizedTitle || !normalizedPath) {
+    throw new Error('Application title and path are required.')
+  }
+
+  const apps = getApps()
+  const existingId = typeof payload.id === 'string' ? payload.id.trim() : ''
+
+  if (existingId && apps.some((item) => item.id === existingId)) {
+    const updated = apps.map((item) =>
+      item.id === existingId
+        ? {
+            ...item,
+            title: normalizedTitle,
+            path: normalizedPath,
+            iconBase64: normalizedIconBase64,
+            arguments: normalizedArguments
+          }
+        : item
+    )
+
+    appStore.set('apps', updated)
+    return updated
+  }
+
+  const created: LauncherApp = {
+    id: existingId || randomUUID(),
+    title: normalizedTitle,
+    path: normalizedPath,
+    iconBase64: normalizedIconBase64,
+    arguments: normalizedArguments
+  }
+
+  const nextApps = [...apps, created]
+  appStore.set('apps', nextApps)
+  return nextApps
+}
+
+function deleteApp(id: string): LauncherApp[] {
+  const normalizedId = typeof id === 'string' ? id.trim() : ''
+  if (!normalizedId) {
+    return getApps()
+  }
+
+  const nextApps = getApps().filter((item) => item.id !== normalizedId)
+  appStore.set('apps', nextApps)
+  return nextApps
+}
+
+function parseLaunchArguments(rawArguments: string): string[] {
+  if (!rawArguments.trim()) {
+    return []
+  }
+
+  const args: string[] = []
+  const tokenPattern = /"([^"]*)"|'([^']*)'|([^\s]+)/g
+  let match: RegExpExecArray | null = tokenPattern.exec(rawArguments)
+
+  while (match !== null) {
+    args.push(match[1] ?? match[2] ?? match[3])
+    match = tokenPattern.exec(rawArguments)
+  }
+
+  return args
+}
+
+function spawnDetached(command: string, args: string[], options?: { windowsHide?: boolean }): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const childProcess = spawn(command, args, {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: options?.windowsHide ?? true
+    })
+
+    childProcess.once('spawn', () => {
+      childProcess.unref()
+      resolve()
+    })
+
+    childProcess.once('error', (error) => {
+      reject(error)
+    })
+  })
+}
+
+async function launchSavedApp(payload: { path?: string; arguments?: string }): Promise<void> {
+  const normalizedPath = typeof payload.path === 'string' ? payload.path.trim() : ''
+  const normalizedArguments = typeof payload.arguments === 'string' ? payload.arguments : ''
+
+  if (!normalizedPath) {
+    throw new Error('Application path is required.')
+  }
+
+  if (!existsSync(normalizedPath)) {
+    throw new Error('The saved application path no longer exists.')
+  }
+
+  const parsedArguments = parseLaunchArguments(normalizedArguments)
+
+  if (isMac && normalizedPath.toLowerCase().endsWith('.app')) {
+    const openArguments = ['-a', normalizedPath]
+    if (parsedArguments.length > 0) {
+      openArguments.push('--args', ...parsedArguments)
+    }
+
+    await spawnDetached('open', openArguments, { windowsHide: false })
+    return
+  }
+
+  await spawnDetached(normalizedPath, parsedArguments)
 }
 
 dotenv.config({ path: join(process.cwd(), '.env') })
@@ -437,6 +586,69 @@ ipcMain.handle('save-preprompt', (_event, payload: Partial<Preprompt>) => {
 
 ipcMain.handle('delete-preprompt', (_event, prepromptId: string) => {
   return deletePreprompt(prepromptId)
+})
+
+ipcMain.handle('get-apps', () => {
+  return getApps()
+})
+
+ipcMain.handle('save-app', (_event, payload: Partial<LauncherApp>) => {
+  return saveApp(payload)
+})
+
+ipcMain.handle('delete-app', (_event, appId: string) => {
+  return deleteApp(appId)
+})
+
+ipcMain.handle('select-file', async () => {
+  const fileFilters = isWindows
+    ? [{ name: 'Applications', extensions: ['exe'] }]
+    : isMac
+      ? [{ name: 'Applications', extensions: ['app'] }]
+      : [{ name: 'Applications', extensions: ['*'] }]
+
+  const result = await dialog.showOpenDialog({
+    title: 'Select an application',
+    properties: ['openFile'],
+    filters: fileFilters,
+    ...(isMac ? { treatPackageAsDirectory: false } : {})
+  })
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return ''
+  }
+
+  return result.filePaths[0]
+})
+
+ipcMain.handle('get-file-icon', async (_event, filePath: string) => {
+  const normalizedPath = typeof filePath === 'string' ? filePath.trim() : ''
+  if (!normalizedPath) {
+    throw new Error('File path is required.')
+  }
+
+  if (!existsSync(normalizedPath)) {
+    throw new Error('The selected file no longer exists.')
+  }
+
+  const icon = await app.getFileIcon(normalizedPath, { size: 'normal' })
+  return icon.isEmpty() ? '' : icon.toDataURL()
+})
+
+ipcMain.on('launch-app', (_event, payload: { path?: string; arguments?: string }) => {
+  void launchSavedApp(payload).catch((error) => {
+    console.error('Failed to launch app:', error)
+  })
+})
+
+ipcMain.handle('launch-app', async (_event, payload: { path?: string; arguments?: string }) => {
+  try {
+    await launchSavedApp(payload)
+    return { success: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to launch application.'
+    return { success: false, error: message }
+  }
 })
 
 ipcMain.on('save-api-key', (_event, key: string) => {
