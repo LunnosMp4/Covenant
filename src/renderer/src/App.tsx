@@ -251,7 +251,16 @@ export default function App(): JSX.Element {
   const handlePopupItemSelect = useCallback(
     (item: PopupItem) => {
       if (activePopup === 'module4' && item.promptText) {
-        console.log(item.promptText)
+        setQuery((previous) => {
+          const trimmedPrevious = previous.trim()
+          if (!trimmedPrevious) {
+            return item.promptText as string
+          }
+
+          return `${trimmedPrevious}\n\n${item.promptText}`
+        })
+
+        setTimeout(() => inputRef.current?.focus(), 40)
       } else {
         console.log(`${item.title} selected`)
       }
