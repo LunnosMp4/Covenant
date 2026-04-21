@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import type { RefObject } from 'react'
-import type { Workflow } from '../types/workflow'
+import type { Workflow, WorkflowExecutionState } from '../types/workflow'
+import WorkflowList from './WorkflowList'
 
 export type ActivePopup = 'module2' | 'module3' | 'module4'
 export type PopupAnchorSide = 'left' | 'right'
@@ -72,6 +73,9 @@ interface ModulePopupProps {
   module2Items?: PopupItem[]
   module3Items?: PopupItem[]
   module4Items?: PopupItem[]
+  workflowExecutionById?: Record<string, WorkflowExecutionState>
+  workflowLogsOpenById?: Record<string, boolean>
+  onToggleWorkflowLogs?: (workflowId: string) => void
   anchorSide?: PopupAnchorSide
   themeGradient: string
 }
@@ -162,6 +166,9 @@ export default function ModulePopup({
   module2Items,
   module3Items,
   module4Items,
+  workflowExecutionById = {},
+  workflowLogsOpenById = {},
+  onToggleWorkflowLogs,
   anchorSide = 'right',
   themeGradient
 }: ModulePopupProps): JSX.Element {
@@ -189,6 +196,7 @@ export default function ModulePopup({
         ? 'No preprompts saved yet.'
         : 'No items available.'
   const anchorClass = anchorSide === 'left' ? 'left-0' : 'right-0'
+  const popupWidthClass = activePopup === 'module3' ? 'w-[460px] max-w-[92vw]' : 'w-[320px]'
 
   return (
     <motion.div
@@ -197,13 +205,25 @@ export default function ModulePopup({
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95, y: 10 }}
       transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-      className={`absolute bottom-full ${anchorClass} z-30 mb-3 w-[320px] rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} p-3 shadow-xl shadow-black/40 backdrop-blur-xl`}
+      className={`absolute bottom-full ${anchorClass} z-30 mb-3 ${popupWidthClass} rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} p-3 shadow-xl shadow-black/40 backdrop-blur-xl`}
       style={{ WebkitBackdropFilter: 'blur(30px)', backdropFilter: 'blur(30px)' }}
     >
       <p className="px-2 pb-2 text-xs uppercase tracking-[0.12em] text-neutral-500">{MODULE_LABELS[activePopup]}</p>
 
       <div className="space-y-1">
-        {items.length > 0 ? (
+        {items.length === 0 ? (
+          <div className="rounded-xl border border-neutral-800 bg-neutral-900/70 px-3 py-5 text-center text-xs text-neutral-500">
+            {emptyMessage}
+          </div>
+        ) : activePopup === 'module3' ? (
+          <WorkflowList
+            items={items}
+            workflowExecutionById={workflowExecutionById}
+            workflowLogsOpenById={workflowLogsOpenById}
+            onRunWorkflow={onSelectItem}
+            onToggleLogs={(workflowId) => onToggleWorkflowLogs?.(workflowId)}
+          />
+        ) : (
           items.map((item) => (
             <button
               key={item.id}
@@ -220,10 +240,6 @@ export default function ModulePopup({
               </span>
             </button>
           ))
-        ) : (
-          <div className="rounded-xl border border-neutral-800 bg-neutral-900/70 px-3 py-5 text-center text-xs text-neutral-500">
-            {emptyMessage}
-          </div>
         )}
       </div>
 

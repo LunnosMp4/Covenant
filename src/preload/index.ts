@@ -30,6 +30,17 @@ interface Workflow {
   content: string
 }
 
+interface WorkflowStatusUpdatePayload {
+  id: string
+  status: 'running' | 'success' | 'error'
+}
+
+interface WorkflowLogPayload {
+  id: string
+  type: 'info' | 'error'
+  text: string
+}
+
 const api = {
   window: {
     hideWindow: () => ipcRenderer.send('hide-window'),
@@ -93,12 +104,29 @@ const api = {
       arguments: launchArguments
     }) as Promise<{ success: boolean; error?: string }>,
   executeWorkflow: (workflow: Partial<Workflow>) =>
-    ipcRenderer.invoke('execute-workflow', workflow) as Promise<{
-      success: boolean
-      stdout: string
-      stderr: string
-      error?: string
-    }>
+    ipcRenderer.invoke('execute-workflow', workflow) as Promise<{ success: boolean; error?: string }>,
+  onWorkflowStatusUpdate: (callback: (payload: WorkflowStatusUpdatePayload) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: WorkflowStatusUpdatePayload) => {
+      callback(payload)
+    }
+
+    ipcRenderer.on('workflow-status-update', listener)
+
+    return () => {
+      ipcRenderer.removeListener('workflow-status-update', listener)
+    }
+  },
+  onWorkflowLog: (callback: (payload: WorkflowLogPayload) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: WorkflowLogPayload) => {
+      callback(payload)
+    }
+
+    ipcRenderer.on('workflow-log', listener)
+
+    return () => {
+      ipcRenderer.removeListener('workflow-log', listener)
+    }
+  }
 }
 
 contextBridge.exposeInMainWorld('api', api)

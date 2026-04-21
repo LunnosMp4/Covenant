@@ -826,9 +826,9 @@ export default function Settings(): JSX.Element {
 
   const pageTitle = useMemo(() => {
     if (activeTab === 'general') return 'General'
-    if (activeTab === 'module2') return 'App Launcher (Mod 2)'
-    if (activeTab === 'module3') return 'Workflows (Mod 3)'
-    return 'Preprompts (Mod 4)'
+    if (activeTab === 'module2') return 'App Launcher'
+    if (activeTab === 'module3') return 'Workflows'
+    return 'Preprompts'
   }, [activeTab])
 
   return (
@@ -873,9 +873,9 @@ export default function Settings(): JSX.Element {
             <nav className="space-y-1">
               {[
                 { id: 'general' as const, label: 'General' },
-                { id: 'module2' as const, label: 'App Launcher (Mod 2)' },
-                { id: 'module3' as const, label: 'Workflows (Mod 3)' },
-                { id: 'module4' as const, label: 'Preprompts (Mod 4)' }
+                { id: 'module2' as const, label: 'App Launcher' },
+                { id: 'module3' as const, label: 'Workflows' },
+                { id: 'module4' as const, label: 'Preprompts' }
               ].map((item) => {
                 const isActive = activeTab === item.id
 

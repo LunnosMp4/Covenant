@@ -5,7 +5,8 @@ import {
   globalShortcut,
   ipcMain,
   screen,
-  shell
+  shell,
+  type WebContents
 } from 'electron'
 import { spawn } from 'child_process'
 import { randomUUID } from 'crypto'
@@ -81,6 +82,8 @@ const WORKFLOW_LANGUAGE_SET = new Set<WorkflowLanguage>([
   'shell',
   'custom'
 ])
+
+const runningWorkflowIds = new Set<string>()
 
 const StoreClass =
   (ElectronStore as typeof ElectronStore & { default?: typeof ElectronStore }).default ??
@@ -388,64 +391,56 @@ function resolveWorkflowRuntime(workflow: Workflow): {
   }
 }
 
-function runWorkflowProcess(command: string, args: string[]): Promise<{
-  code: number
-  stdout: string
-  stderr: string
-}> {
-  return new Promise((resolve, reject) => {
-    const childProcess = spawn(command, args, {
-      windowsHide: true,
-      shell: false
-    })
-
-    let stdout = ''
-    let stderr = ''
-
-    childProcess.stdout?.on('data', (data) => {
-      stdout += data.toString()
-    })
-
-    childProcess.stderr?.on('data', (data) => {
-      stderr += data.toString()
-    })
-
-    childProcess.once('error', (error) => {
-      reject(error)
-    })
-
-    childProcess.once('close', (code) => {
-      resolve({
-        code: code ?? -1,
-        stdout: stdout.trim(),
-        stderr: stderr.trim()
-      })
-    })
-  })
+function emitWorkflowStatus(
+  sender: WebContents,
+  payload: { id: string; status: 'running' | 'success' | 'error' }
+): void {
+  if (sender.isDestroyed()) return
+  sender.send('workflow-status-update', payload)
 }
 
-async function executeWorkflowScript(payload: Partial<Workflow>): Promise<{
-  success: boolean
-  stdout: string
-  stderr: string
-  error?: string
-}> {
+function emitWorkflowLog(
+  sender: WebContents,
+  payload: { id: string; type: 'info' | 'error'; text: string }
+): void {
+  if (sender.isDestroyed()) return
+  sender.send('workflow-log', payload)
+}
+
+async function executeWorkflowScript(
+  sender: WebContents,
+  payload: Partial<Workflow>
+): Promise<{ success: boolean; error?: string }> {
   const normalizedLanguage = normalizeWorkflowLanguage(payload.language)
   const normalizedContent = typeof payload.content === 'string' ? payload.content : ''
   const normalizedTitle = typeof payload.title === 'string' ? payload.title.trim() : 'Workflow'
   const normalizedCustomCommand =
     typeof payload.customCommand === 'string' ? payload.customCommand.trim() : ''
+  const normalizedId = typeof payload.id === 'string' && payload.id.trim() ? payload.id.trim() : randomUUID()
 
   if (!normalizedContent.trim()) {
     throw new Error('Workflow content is required.')
   }
 
   const normalizedWorkflow: Workflow = {
-    id: typeof payload.id === 'string' ? payload.id : randomUUID(),
+    id: normalizedId,
     title: normalizedTitle || 'Workflow',
     language: normalizedLanguage,
     customCommand: normalizedCustomCommand,
     content: normalizedContent
+  }
+
+  if (runningWorkflowIds.has(normalizedWorkflow.id)) {
+    const message = 'Workflow is already running.'
+    emitWorkflowLog(sender, {
+      id: normalizedWorkflow.id,
+      type: 'error',
+      text: message
+    })
+    return {
+      success: false,
+      error: message
+    }
   }
 
   const runtime = resolveWorkflowRuntime(normalizedWorkflow)
@@ -455,28 +450,111 @@ async function executeWorkflowScript(payload: Partial<Workflow>): Promise<{
   )
 
   await fsPromises.writeFile(tempFilePath, normalizedWorkflow.content, { encoding: 'utf-8' })
+  const executionArgs = [...runtime.baseArgs, tempFilePath]
+
+  let childProcess
 
   try {
-    const result = await runWorkflowProcess(runtime.command, [...runtime.baseArgs, tempFilePath])
-    if (result.code === 0) {
-      return {
-        success: true,
-        stdout: result.stdout,
-        stderr: result.stderr
-      }
-    }
-
-    return {
-      success: false,
-      stdout: result.stdout,
-      stderr: result.stderr,
-      error: result.stderr || `Workflow exited with code ${result.code}.`
-    }
-  } finally {
+    childProcess = spawn(runtime.command, executionArgs, {
+      windowsHide: true,
+      shell: false
+    })
+  } catch (error) {
     await fsPromises.unlink(tempFilePath).catch(() => {
       // Ignore cleanup errors in temp directory.
     })
+    throw error
   }
+
+  runningWorkflowIds.add(normalizedWorkflow.id)
+  emitWorkflowStatus(sender, {
+    id: normalizedWorkflow.id,
+    status: 'running'
+  })
+
+  emitWorkflowLog(sender, {
+    id: normalizedWorkflow.id,
+    type: 'info',
+    text: `$ ${runtime.command} ${executionArgs.join(' ')}`
+  })
+
+  const cleanupTempFile = (): void => {
+    void fsPromises.unlink(tempFilePath).catch(() => {
+      // Ignore cleanup errors in temp directory.
+    })
+  }
+
+  childProcess.stdout?.on('data', (data) => {
+    const text = data.toString()
+    if (!text) return
+
+    emitWorkflowLog(sender, {
+      id: normalizedWorkflow.id,
+      type: 'info',
+      text
+    })
+  })
+
+  childProcess.stderr?.on('data', (data) => {
+    const text = data.toString()
+    if (!text) return
+
+    emitWorkflowLog(sender, {
+      id: normalizedWorkflow.id,
+      type: 'error',
+      text
+    })
+  })
+
+  childProcess.once('error', (error) => {
+    const message = error instanceof Error ? error.message : 'Unable to execute workflow.'
+    runningWorkflowIds.delete(normalizedWorkflow.id)
+
+    emitWorkflowLog(sender, {
+      id: normalizedWorkflow.id,
+      type: 'error',
+      text: message
+    })
+
+    emitWorkflowStatus(sender, {
+      id: normalizedWorkflow.id,
+      status: 'error'
+    })
+
+    cleanupTempFile()
+  })
+
+  childProcess.once('close', (code) => {
+    runningWorkflowIds.delete(normalizedWorkflow.id)
+
+    if (code === 0) {
+      emitWorkflowStatus(sender, {
+        id: normalizedWorkflow.id,
+        status: 'success'
+      })
+
+      emitWorkflowLog(sender, {
+        id: normalizedWorkflow.id,
+        type: 'info',
+        text: 'Workflow completed successfully.'
+      })
+    } else {
+      emitWorkflowLog(sender, {
+        id: normalizedWorkflow.id,
+        type: 'error',
+        text: `Workflow exited with code ${code ?? -1}.`
+      })
+
+      emitWorkflowStatus(sender, {
+        id: normalizedWorkflow.id,
+        status: 'error'
+      })
+    }
+
+    cleanupTempFile()
+  })
+
+  return { success: true }
 }
 
 function spawnDetached(command: string, args: string[], options?: { windowsHide?: boolean }): Promise<void> {
@@ -865,15 +943,28 @@ ipcMain.handle('delete-workflow', (_event, workflowId: string) => {
   return deleteWorkflow(workflowId)
 })
 
-ipcMain.handle('execute-workflow', async (_event, workflowPayload: Partial<Workflow>) => {
+ipcMain.handle('execute-workflow', async (event, workflowPayload: Partial<Workflow>) => {
   try {
-    return await executeWorkflowScript(workflowPayload)
+    return await executeWorkflowScript(event.sender, workflowPayload)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to execute workflow.'
+    const workflowId = typeof workflowPayload.id === 'string' ? workflowPayload.id.trim() : ''
+
+    if (workflowId) {
+      emitWorkflowLog(event.sender, {
+        id: workflowId,
+        type: 'error',
+        text: message
+      })
+
+      emitWorkflowStatus(event.sender, {
+        id: workflowId,
+        status: 'error'
+      })
+    }
+
     return {
       success: false,
-      stdout: '',
-      stderr: '',
       error: message
     }
   }

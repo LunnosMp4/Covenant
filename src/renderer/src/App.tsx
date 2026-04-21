@@ -3,7 +3,12 @@ import { motion, AnimatePresence } from 'framer-motion'
 import ModulePopup, { type ActivePopup, type PopupItem } from './components/ModulePopup'
 import type { LauncherApp } from './types/launcher-app'
 import type { Preprompt } from './types/preprompt'
-import type { Workflow } from './types/workflow'
+import type {
+  Workflow,
+  WorkflowExecutionState,
+  WorkflowLogPayload,
+  WorkflowStatusUpdatePayload
+} from './types/workflow'
 
 interface AppConfig {
   apiKey: string
@@ -20,10 +25,20 @@ const AVAILABLE_THEME_GRADIENTS = [
 ] as const
 
 const AVAILABLE_THEME_GRADIENT_SET = new Set<string>(AVAILABLE_THEME_GRADIENTS)
+const MAX_WORKFLOW_LOG_LINES = 200
 
 function normalizeThemeGradient(themeGradient: string | undefined): string {
   if (!themeGradient) return DEFAULT_THEME_GRADIENT
   return AVAILABLE_THEME_GRADIENT_SET.has(themeGradient) ? themeGradient : DEFAULT_THEME_GRADIENT
+}
+
+function splitWorkflowLogLines(text: string): string[] {
+  return text
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter((line) => line.length > 0)
 }
 
 function SendIcon(): JSX.Element {
@@ -98,11 +113,16 @@ export default function App(): JSX.Element {
   const [apps, setApps] = useState<LauncherApp[]>([])
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [preprompts, setPreprompts] = useState<Preprompt[]>([])
+  const [workflowExecutionById, setWorkflowExecutionById] = useState<
+    Record<string, WorkflowExecutionState>
+  >({})
+  const [workflowLogsOpenById, setWorkflowLogsOpenById] = useState<Record<string, boolean>>({})
   const [activePopup, setActivePopup] = useState<ActivePopup | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const popupRef = useRef<HTMLDivElement>(null)
   const moduleButtonsRef = useRef<HTMLDivElement>(null)
   const module4ButtonRef = useRef<HTMLButtonElement>(null)
+  const successResetTimersRef = useRef<Record<string, number>>({})
 
   useEffect(() => {
     let isMounted = true
@@ -267,6 +287,118 @@ export default function App(): JSX.Element {
     }
   }, [activePopup])
 
+  useEffect(() => {
+    const clearSuccessTimer = (workflowId: string): void => {
+      const timeoutId = successResetTimersRef.current[workflowId]
+      if (!timeoutId) return
+
+      window.clearTimeout(timeoutId)
+      delete successResetTimersRef.current[workflowId]
+    }
+
+    const statusUnsubscribe = window.api?.onWorkflowStatusUpdate?.(
+      (payload: WorkflowStatusUpdatePayload) => {
+        const workflowId = payload.id?.trim()
+        if (!workflowId) return
+
+        clearSuccessTimer(workflowId)
+
+        setWorkflowExecutionById((previous) => {
+          const existingState = previous[workflowId] ?? {
+            status: 'idle',
+            logs: []
+          }
+
+          return {
+            ...previous,
+            [workflowId]: {
+              status: payload.status,
+              logs: payload.status === 'running' ? [] : existingState.logs
+            }
+          }
+        })
+
+        if (payload.status === 'success') {
+          successResetTimersRef.current[workflowId] = window.setTimeout(() => {
+            setWorkflowExecutionById((previous) => {
+              const existingState = previous[workflowId]
+              if (!existingState || existingState.status !== 'success') {
+                return previous
+              }
+
+              return {
+                ...previous,
+                [workflowId]: {
+                  ...existingState,
+                  status: 'idle'
+                }
+              }
+            })
+
+            setWorkflowLogsOpenById((previous) => {
+              if (!previous[workflowId]) return previous
+
+              return {
+                ...previous,
+                [workflowId]: false
+              }
+            })
+
+            delete successResetTimersRef.current[workflowId]
+          }, 3000)
+        }
+      }
+    )
+
+    const logUnsubscribe = window.api?.onWorkflowLog?.((payload: WorkflowLogPayload) => {
+      const workflowId = payload.id?.trim()
+      if (!workflowId) return
+
+      const nextLines = splitWorkflowLogLines(payload.text).map(
+        (line) => `[${payload.type.toUpperCase()}] ${line}`
+      )
+
+      if (nextLines.length === 0) return
+
+      setWorkflowExecutionById((previous) => {
+        const existingState = previous[workflowId] ?? {
+          status: 'idle',
+          logs: []
+        }
+
+        return {
+          ...previous,
+          [workflowId]: {
+            ...existingState,
+            logs: [...existingState.logs, ...nextLines].slice(-MAX_WORKFLOW_LOG_LINES)
+          }
+        }
+      })
+    })
+
+    return () => {
+      if (typeof statusUnsubscribe === 'function') {
+        statusUnsubscribe()
+      }
+
+      if (typeof logUnsubscribe === 'function') {
+        logUnsubscribe()
+      }
+
+      Object.values(successResetTimersRef.current).forEach((timeoutId) => {
+        window.clearTimeout(timeoutId)
+      })
+      successResetTimersRef.current = {}
+    }
+  }, [])
+
+  const handleToggleWorkflowLogs = useCallback((workflowId: string): void => {
+    setWorkflowLogsOpenById((previous) => ({
+      ...previous,
+      [workflowId]: !previous[workflowId]
+    }))
+  }, [])
+
   const handleSubmit = useCallback(async () => {
     const prompt = query.trim()
     if (!prompt || isLoading) return
@@ -324,36 +456,87 @@ export default function App(): JSX.Element {
         if (!window.api?.executeWorkflow) {
           setAiResponse('Workflow execution is only available in the Electron app.')
         } else {
+          const workflowId = item.workflowData.id
+          const activeSuccessTimeout = successResetTimersRef.current[workflowId]
+
+          if (activeSuccessTimeout) {
+            window.clearTimeout(activeSuccessTimeout)
+            delete successResetTimersRef.current[workflowId]
+          }
+
+          setWorkflowExecutionById((previous) => ({
+            ...previous,
+            [workflowId]: {
+              status: 'running',
+              logs: []
+            }
+          }))
+
+          setWorkflowLogsOpenById((previous) => ({
+            ...previous,
+            [workflowId]: false
+          }))
+
           void window.api
             .executeWorkflow(item.workflowData)
             .then((result) => {
               if (!result.success) {
-                setAiResponse(`Error: ${result.error ?? 'Unable to execute workflow.'}`)
-                return
-              }
+                const message = result.error ?? 'Unable to execute workflow.'
 
-              if (result.stdout) {
-                setAiResponse(result.stdout)
-                return
-              }
+                setWorkflowExecutionById((previous) => {
+                  const existingState = previous[workflowId] ?? {
+                    status: 'idle',
+                    logs: []
+                  }
 
-              if (result.stderr) {
-                setAiResponse(result.stderr)
-                return
-              }
+                  return {
+                    ...previous,
+                    [workflowId]: {
+                      status: 'error',
+                      logs: [...existingState.logs, `[ERROR] ${message}`].slice(-MAX_WORKFLOW_LOG_LINES)
+                    }
+                  }
+                })
 
-              setAiResponse('Workflow executed successfully.')
+                setWorkflowLogsOpenById((previous) => ({
+                  ...previous,
+                  [workflowId]: true
+                }))
+              }
             })
             .catch((error) => {
               const message = error instanceof Error ? error.message : 'Unable to execute workflow.'
-              setAiResponse(`Error: ${message}`)
+
+              setWorkflowExecutionById((previous) => {
+                const existingState = previous[workflowId] ?? {
+                  status: 'idle',
+                  logs: []
+                }
+
+                return {
+                  ...previous,
+                  [workflowId]: {
+                    status: 'error',
+                    logs: [...existingState.logs, `[ERROR] ${message}`].slice(-MAX_WORKFLOW_LOG_LINES)
+                  }
+                }
+              })
+
+              setWorkflowLogsOpenById((previous) => ({
+                ...previous,
+                [workflowId]: true
+              }))
             })
         }
       } else {
         console.log(`${item.title} selected`)
       }
 
-      setActivePopup(null)
+      if (activePopup !== 'module3') {
+        setActivePopup(null)
+      } else {
+        window.setTimeout(() => inputRef.current?.focus(), 40)
+      }
     },
     [activePopup]
   )
@@ -425,6 +608,9 @@ export default function App(): JSX.Element {
                     icon: 'bolt',
                     workflowData: item
                   }))}
+                  workflowExecutionById={workflowExecutionById}
+                  workflowLogsOpenById={workflowLogsOpenById}
+                  onToggleWorkflowLogs={handleToggleWorkflowLogs}
                   module4Items={preprompts.map((item) => ({
                     id: item.id,
                     title: item.title,

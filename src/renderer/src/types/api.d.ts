@@ -1,6 +1,6 @@
 import type { Preprompt } from './preprompt'
 import type { LauncherApp } from './launcher-app'
-import type { Workflow } from './workflow'
+import type { Workflow, WorkflowLogPayload, WorkflowStatusUpdatePayload } from './workflow'
 
 interface AppConfig {
   apiKey: string
@@ -40,12 +40,9 @@ interface PrometheusAPI {
   selectFile: () => Promise<string>
   getFileIcon: (filePath: string) => Promise<string>
   launchApp: (path: string, launchArguments: string) => Promise<{ success: boolean; error?: string }>
-  executeWorkflow: (workflow: Partial<Workflow>) => Promise<{
-    success: boolean
-    stdout: string
-    stderr: string
-    error?: string
-  }>
+  executeWorkflow: (workflow: Partial<Workflow>) => Promise<{ success: boolean; error?: string }>
+  onWorkflowStatusUpdate: (callback: (payload: WorkflowStatusUpdatePayload) => void) => (() => void) | void
+  onWorkflowLog: (callback: (payload: WorkflowLogPayload) => void) => (() => void) | void
 }
 
 declare global {
