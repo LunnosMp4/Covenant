@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import type { RefObject } from 'react'
+import type { Workflow } from '../types/workflow'
 
 export type ActivePopup = 'module2' | 'module3' | 'module4'
 export type PopupAnchorSide = 'left' | 'right'
@@ -15,6 +16,7 @@ export interface PopupItem {
   iconDataUrl?: string
   appPath?: string
   launchArguments?: string
+  workflowData?: Workflow
 }
 
 const MODULE_LABELS: Record<ActivePopup, string> = {
@@ -68,6 +70,7 @@ interface ModulePopupProps {
   onAddNew: () => void
   onSelectItem: (item: PopupItem) => void
   module2Items?: PopupItem[]
+  module3Items?: PopupItem[]
   module4Items?: PopupItem[]
   anchorSide?: PopupAnchorSide
   themeGradient: string
@@ -157,6 +160,7 @@ export default function ModulePopup({
   onAddNew,
   onSelectItem,
   module2Items,
+  module3Items,
   module4Items,
   anchorSide = 'right',
   themeGradient
@@ -165,6 +169,10 @@ export default function ModulePopup({
     activePopup === 'module2'
       ? module2Items && module2Items.length > 0
         ? module2Items
+        : []
+      : activePopup === 'module3'
+      ? module3Items && module3Items.length > 0
+        ? module3Items
         : []
       : activePopup === 'module4'
       ? module4Items && module4Items.length > 0
@@ -175,6 +183,8 @@ export default function ModulePopup({
   const emptyMessage =
     activePopup === 'module2'
       ? 'No applications saved yet.'
+      : activePopup === 'module3'
+        ? 'No workflows saved yet.'
       : activePopup === 'module4'
         ? 'No preprompts saved yet.'
         : 'No items available.'

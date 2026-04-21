@@ -20,6 +20,16 @@ interface LauncherApp {
   arguments: string
 }
 
+type WorkflowLanguage = 'powershell' | 'cmd' | 'python' | 'nodejs' | 'shell' | 'custom'
+
+interface Workflow {
+  id: string
+  title: string
+  language: WorkflowLanguage
+  customCommand?: string
+  content: string
+}
+
 const api = {
   window: {
     hideWindow: () => ipcRenderer.send('hide-window'),
@@ -68,7 +78,12 @@ const api = {
     getApps: () => ipcRenderer.invoke('get-apps') as Promise<LauncherApp[]>,
     saveApp: (launcherApp: Partial<LauncherApp>) =>
       ipcRenderer.invoke('save-app', launcherApp) as Promise<LauncherApp[]>,
-    deleteApp: (appId: string) => ipcRenderer.invoke('delete-app', appId) as Promise<LauncherApp[]>
+    deleteApp: (appId: string) => ipcRenderer.invoke('delete-app', appId) as Promise<LauncherApp[]>,
+    getWorkflows: () => ipcRenderer.invoke('get-workflows') as Promise<Workflow[]>,
+    saveWorkflow: (workflow: Partial<Workflow>) =>
+      ipcRenderer.invoke('save-workflow', workflow) as Promise<Workflow[]>,
+    deleteWorkflow: (workflowId: string) =>
+      ipcRenderer.invoke('delete-workflow', workflowId) as Promise<Workflow[]>
   },
   selectFile: () => ipcRenderer.invoke('select-file') as Promise<string>,
   getFileIcon: (filePath: string) => ipcRenderer.invoke('get-file-icon', filePath) as Promise<string>,
@@ -76,7 +91,14 @@ const api = {
     ipcRenderer.invoke('launch-app', {
       path,
       arguments: launchArguments
-    }) as Promise<{ success: boolean; error?: string }>
+    }) as Promise<{ success: boolean; error?: string }>,
+  executeWorkflow: (workflow: Partial<Workflow>) =>
+    ipcRenderer.invoke('execute-workflow', workflow) as Promise<{
+      success: boolean
+      stdout: string
+      stderr: string
+      error?: string
+    }>
 }
 
 contextBridge.exposeInMainWorld('api', api)

@@ -3,19 +3,12 @@ import { AnimatePresence } from 'framer-motion'
 import AppFormModal from './components/AppFormModal'
 import ConfirmDeleteModal from './components/ConfirmDeleteModal'
 import PrepromptFormModal from './components/PrepromptFormModal'
+import WorkflowFormModal from './components/WorkflowFormModal'
 import type { LauncherApp } from './types/launcher-app'
 import type { Preprompt } from './types/preprompt'
+import type { Workflow } from './types/workflow'
 
 type SettingsTab = 'general' | 'module2' | 'module3' | 'module4'
-
-type WorkflowActionType = 'Script' | 'Prompt'
-
-interface MockWorkflow {
-  id: string
-  title: string
-  actionType: WorkflowActionType
-  snippet: string
-}
 
 interface ThemeOption {
   id: string
@@ -59,27 +52,6 @@ const THEME_OPTIONS: ThemeOption[] = [
 ]
 
 const THEME_GRADIENT_SET = new Set<string>(THEME_OPTIONS.map((option) => option.gradientClass))
-
-const MOCK_WORKFLOWS: MockWorkflow[] = [
-  {
-    id: 'wf-1',
-    title: 'Deploy Preview Build',
-    actionType: 'Script',
-    snippet: 'npm run build && npm run deploy:preview'
-  },
-  {
-    id: 'wf-2',
-    title: 'Weekly Status Prompt',
-    actionType: 'Prompt',
-    snippet: 'Summarize this week by project, blockers, and next milestones in under 200 words.'
-  },
-  {
-    id: 'wf-3',
-    title: 'Clean Branches',
-    actionType: 'Script',
-    snippet: 'git fetch --prune && git branch --merged | grep -v "master"'
-  }
-]
 
 function normalizeThemeGradient(themeGradient: string | undefined): string {
   if (!themeGradient) return DEFAULT_THEME_GRADIENT
@@ -386,7 +358,23 @@ function AppLauncherTab({
   )
 }
 
-function WorkflowsTab(): JSX.Element {
+interface WorkflowsTabProps {
+  workflows: Workflow[]
+  isLoading: boolean
+  feedbackMessage: string
+  onAdd: () => void
+  onEdit: (workflow: Workflow) => void
+  onDelete: (workflow: Workflow) => void
+}
+
+function WorkflowsTab({
+  workflows,
+  isLoading,
+  feedbackMessage,
+  onAdd,
+  onEdit,
+  onDelete
+}: WorkflowsTabProps): JSX.Element {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -396,6 +384,7 @@ function WorkflowsTab(): JSX.Element {
         </div>
         <button
           type="button"
+          onClick={onAdd}
           className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-white"
         >
           Add Workflow
@@ -403,30 +392,38 @@ function WorkflowsTab(): JSX.Element {
       </div>
 
       <div className="space-y-3">
-        {MOCK_WORKFLOWS.map((item) => (
+        {isLoading ? (
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-900/80 px-4 py-6 text-sm text-neutral-400">
+            Loading workflows...
+          </div>
+        ) : null}
+
+        {!isLoading && workflows.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-neutral-700 bg-neutral-900/70 px-4 py-6 text-sm text-neutral-500">
+            No workflows saved yet. Add your first executable workflow.
+          </div>
+        ) : null}
+
+        {!isLoading && workflows.map((item) => (
           <article key={item.id} className="rounded-2xl border border-neutral-800 bg-neutral-900/80 p-4">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-sm font-semibold text-neutral-100">{item.title}</h3>
-                <span
-                  className={`mt-2 inline-flex rounded-md border px-2 py-1 text-xs ${
-                    item.actionType === 'Script'
-                      ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
-                      : 'border-sky-500/40 bg-sky-500/10 text-sky-300'
-                  }`}
-                >
-                  {item.actionType}
+                <span className="mt-2 inline-flex rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs uppercase tracking-[0.06em] text-amber-300">
+                  {item.language}
                 </span>
               </div>
               <div className="flex gap-2">
                 <button
                   type="button"
+                  onClick={() => onEdit(item)}
                   className="rounded-lg border border-transparent px-2.5 py-1.5 text-xs text-neutral-300 transition-colors hover:border-neutral-700 hover:bg-neutral-800"
                 >
                   Edit
                 </button>
                 <button
                   type="button"
+                  onClick={() => onDelete(item)}
                   className="rounded-lg border border-transparent px-2.5 py-1.5 text-xs text-neutral-500 transition-colors hover:border-neutral-700 hover:bg-neutral-800 hover:text-neutral-300"
                 >
                   Delete
@@ -434,11 +431,13 @@ function WorkflowsTab(): JSX.Element {
               </div>
             </div>
             <p className="mt-3 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-400">
-              {item.snippet}
+              {item.content}
             </p>
           </article>
         ))}
       </div>
+
+      {feedbackMessage ? <p className="text-xs text-emerald-300">{feedbackMessage}</p> : null}
     </div>
   )
 }
@@ -528,6 +527,12 @@ export default function Settings(): JSX.Element {
   const [isAppFormOpen, setIsAppFormOpen] = useState(false)
   const [editingApp, setEditingApp] = useState<LauncherApp | undefined>(undefined)
   const [deletingApp, setDeletingApp] = useState<LauncherApp | undefined>(undefined)
+  const [workflows, setWorkflows] = useState<Workflow[]>([])
+  const [isWorkflowsLoading, setIsWorkflowsLoading] = useState(false)
+  const [workflowsFeedbackMessage, setWorkflowsFeedbackMessage] = useState('')
+  const [isWorkflowFormOpen, setIsWorkflowFormOpen] = useState(false)
+  const [editingWorkflow, setEditingWorkflow] = useState<Workflow | undefined>(undefined)
+  const [deletingWorkflow, setDeletingWorkflow] = useState<Workflow | undefined>(undefined)
   const [preprompts, setPreprompts] = useState<Preprompt[]>([])
   const [isPrepromptsLoading, setIsPrepromptsLoading] = useState(false)
   const [isPrepromptFormOpen, setIsPrepromptFormOpen] = useState(false)
@@ -586,6 +591,33 @@ export default function Settings(): JSX.Element {
     }
 
     void loadApps()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadWorkflows = async (): Promise<void> => {
+      if (!window.api?.store.getWorkflows) return
+
+      try {
+        setIsWorkflowsLoading(true)
+        const savedWorkflows = await window.api.store.getWorkflows()
+        if (!isMounted) return
+        setWorkflows(savedWorkflows)
+      } catch {
+        if (!isMounted) return
+        setWorkflows([])
+      } finally {
+        if (!isMounted) return
+        setIsWorkflowsLoading(false)
+      }
+    }
+
+    void loadWorkflows()
 
     return () => {
       isMounted = false
@@ -701,6 +733,61 @@ export default function Settings(): JSX.Element {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to delete application.'
       setAppsFeedbackMessage(message)
+    }
+  }
+
+  const handleOpenAddWorkflow = (): void => {
+    setEditingWorkflow(undefined)
+    setWorkflowsFeedbackMessage('')
+    setIsWorkflowFormOpen(true)
+  }
+
+  const handleOpenEditWorkflow = (workflow: Workflow): void => {
+    setEditingWorkflow(workflow)
+    setWorkflowsFeedbackMessage('')
+    setIsWorkflowFormOpen(true)
+  }
+
+  const handleCloseWorkflowForm = (): void => {
+    setIsWorkflowFormOpen(false)
+    setEditingWorkflow(undefined)
+  }
+
+  const handleSaveWorkflow = async (payload: {
+    id?: string
+    title: string
+    language: Workflow['language']
+    customCommand?: string
+    content: string
+  }): Promise<void> => {
+    if (!window.api?.store.saveWorkflow) return
+
+    try {
+      const updatedWorkflows = await window.api.store.saveWorkflow(payload)
+      setWorkflows(updatedWorkflows)
+      setIsWorkflowFormOpen(false)
+      setEditingWorkflow(undefined)
+      setWorkflowsFeedbackMessage('Workflow saved.')
+      window.setTimeout(() => setWorkflowsFeedbackMessage(''), 1600)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to save workflow.'
+      setWorkflowsFeedbackMessage(message)
+    }
+  }
+
+  const handleConfirmDeleteWorkflow = async (): Promise<void> => {
+    const targetWorkflow = deletingWorkflow
+    if (!targetWorkflow || !window.api?.store.deleteWorkflow) return
+
+    try {
+      const updatedWorkflows = await window.api.store.deleteWorkflow(targetWorkflow.id)
+      setWorkflows(updatedWorkflows)
+      setDeletingWorkflow(undefined)
+      setWorkflowsFeedbackMessage('Workflow removed.')
+      window.setTimeout(() => setWorkflowsFeedbackMessage(''), 1600)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to delete workflow.'
+      setWorkflowsFeedbackMessage(message)
     }
   }
 
@@ -844,7 +931,16 @@ export default function Settings(): JSX.Element {
                 onDelete={(launcherApp) => setDeletingApp(launcherApp)}
               />
             )}
-            {activeTab === 'module3' && <WorkflowsTab />}
+            {activeTab === 'module3' && (
+              <WorkflowsTab
+                workflows={workflows}
+                isLoading={isWorkflowsLoading}
+                feedbackMessage={workflowsFeedbackMessage}
+                onAdd={handleOpenAddWorkflow}
+                onEdit={handleOpenEditWorkflow}
+                onDelete={(workflow) => setDeletingWorkflow(workflow)}
+              />
+            )}
             {activeTab === 'module4' && (
               <PrepromptsTab
                 preprompts={preprompts}
@@ -878,6 +974,31 @@ export default function Settings(): JSX.Element {
             onCancel={() => setDeletingApp(undefined)}
             onConfirm={() => {
               void handleConfirmDeleteApp()
+            }}
+          />
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isWorkflowFormOpen ? (
+          <WorkflowFormModal
+            initialData={editingWorkflow}
+            onCancel={handleCloseWorkflowForm}
+            onSave={(payload) => {
+              void handleSaveWorkflow(payload)
+            }}
+          />
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {deletingWorkflow ? (
+          <ConfirmDeleteModal
+            title="Delete Workflow"
+            message={`Are you sure you want to delete \"${deletingWorkflow.title}\"?`}
+            onCancel={() => setDeletingWorkflow(undefined)}
+            onConfirm={() => {
+              void handleConfirmDeleteWorkflow()
             }}
           />
         ) : null}

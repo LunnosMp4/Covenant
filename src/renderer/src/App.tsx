@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import ModulePopup, { type ActivePopup, type PopupItem } from './components/ModulePopup'
 import type { LauncherApp } from './types/launcher-app'
 import type { Preprompt } from './types/preprompt'
+import type { Workflow } from './types/workflow'
 
 interface AppConfig {
   apiKey: string
@@ -95,6 +96,7 @@ export default function App(): JSX.Element {
   const [aiResponse, setAiResponse] = useState('')
   const [themeGradient, setThemeGradient] = useState<string>(DEFAULT_THEME_GRADIENT)
   const [apps, setApps] = useState<LauncherApp[]>([])
+  const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [preprompts, setPreprompts] = useState<Preprompt[]>([])
   const [activePopup, setActivePopup] = useState<ActivePopup | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -197,6 +199,20 @@ export default function App(): JSX.Element {
     }
   }, [])
 
+  const loadWorkflows = useCallback(async (): Promise<void> => {
+    if (!window.api?.store.getWorkflows) {
+      setWorkflows([])
+      return
+    }
+
+    try {
+      const savedWorkflows = await window.api.store.getWorkflows()
+      setWorkflows(savedWorkflows)
+    } catch {
+      setWorkflows([])
+    }
+  }, [])
+
   useEffect(() => {
     if (activePopup === 'module4') {
       void loadPreprompts()
@@ -205,8 +221,13 @@ export default function App(): JSX.Element {
 
     if (activePopup === 'module2') {
       void loadApps()
+      return
     }
-  }, [activePopup, loadApps, loadPreprompts])
+
+    if (activePopup === 'module3') {
+      void loadWorkflows()
+    }
+  }, [activePopup, loadApps, loadPreprompts, loadWorkflows])
 
   const togglePopup = useCallback((popup: ActivePopup) => {
     setActivePopup((current) => (current === popup ? null : popup))
@@ -299,6 +320,35 @@ export default function App(): JSX.Element {
               setAiResponse(`Error: ${message}`)
             })
         }
+      } else if (activePopup === 'module3' && item.workflowData) {
+        if (!window.api?.executeWorkflow) {
+          setAiResponse('Workflow execution is only available in the Electron app.')
+        } else {
+          void window.api
+            .executeWorkflow(item.workflowData)
+            .then((result) => {
+              if (!result.success) {
+                setAiResponse(`Error: ${result.error ?? 'Unable to execute workflow.'}`)
+                return
+              }
+
+              if (result.stdout) {
+                setAiResponse(result.stdout)
+                return
+              }
+
+              if (result.stderr) {
+                setAiResponse(result.stderr)
+                return
+              }
+
+              setAiResponse('Workflow executed successfully.')
+            })
+            .catch((error) => {
+              const message = error instanceof Error ? error.message : 'Unable to execute workflow.'
+              setAiResponse(`Error: ${message}`)
+            })
+        }
       } else {
         console.log(`${item.title} selected`)
       }
@@ -367,6 +417,13 @@ export default function App(): JSX.Element {
                     icon: 'grid',
                     appPath: item.path,
                     launchArguments: item.arguments
+                  }))}
+                  module3Items={workflows.map((item) => ({
+                    id: item.id,
+                    title: item.title,
+                    subtitle: item.language,
+                    icon: 'bolt',
+                    workflowData: item
                   }))}
                   module4Items={preprompts.map((item) => ({
                     id: item.id,

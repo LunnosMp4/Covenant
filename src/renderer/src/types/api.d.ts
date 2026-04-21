@@ -1,5 +1,6 @@
 import type { Preprompt } from './preprompt'
 import type { LauncherApp } from './launcher-app'
+import type { Workflow } from './workflow'
 
 interface AppConfig {
   apiKey: string
@@ -32,10 +33,19 @@ interface PrometheusAPI {
     getApps: () => Promise<LauncherApp[]>
     saveApp: (launcherApp: Partial<LauncherApp>) => Promise<LauncherApp[]>
     deleteApp: (appId: string) => Promise<LauncherApp[]>
+    getWorkflows: () => Promise<Workflow[]>
+    saveWorkflow: (workflow: Partial<Workflow>) => Promise<Workflow[]>
+    deleteWorkflow: (workflowId: string) => Promise<Workflow[]>
   }
   selectFile: () => Promise<string>
   getFileIcon: (filePath: string) => Promise<string>
   launchApp: (path: string, launchArguments: string) => Promise<{ success: boolean; error?: string }>
+  executeWorkflow: (workflow: Partial<Workflow>) => Promise<{
+    success: boolean
+    stdout: string
+    stderr: string
+    error?: string
+  }>
 }
 
 declare global {

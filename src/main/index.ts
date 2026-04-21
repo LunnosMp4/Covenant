@@ -9,7 +9,8 @@ import {
 } from 'electron'
 import { spawn } from 'child_process'
 import { randomUUID } from 'crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, promises as fsPromises, readFileSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import ElectronStore from 'electron-store'
@@ -42,6 +43,16 @@ interface Preprompt {
   content: string
 }
 
+type WorkflowLanguage = 'powershell' | 'cmd' | 'python' | 'nodejs' | 'shell' | 'custom'
+
+interface Workflow {
+  id: string
+  title: string
+  language: WorkflowLanguage
+  customCommand?: string
+  content: string
+}
+
 interface LauncherApp {
   id: string
   title: string
@@ -53,6 +64,7 @@ interface LauncherApp {
 interface AppStoreSchema {
   preprompts: Preprompt[]
   apps: LauncherApp[]
+  workflows: Workflow[]
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -60,6 +72,15 @@ const DEFAULT_CONFIG: AppConfig = {
   themeGradient: 'from-neutral-900/95 to-neutral-900/95',
   proxyUrl: ''
 }
+
+const WORKFLOW_LANGUAGE_SET = new Set<WorkflowLanguage>([
+  'powershell',
+  'cmd',
+  'python',
+  'nodejs',
+  'shell',
+  'custom'
+])
 
 const StoreClass =
   (ElectronStore as typeof ElectronStore & { default?: typeof ElectronStore }).default ??
@@ -69,7 +90,8 @@ const appStore = new StoreClass<AppStoreSchema>({
   name: 'preprompts',
   defaults: {
     preprompts: [],
-    apps: []
+    apps: [],
+    workflows: []
   },
   schema: {
     preprompts: {
@@ -100,6 +122,25 @@ const appStore = new StoreClass<AppStoreSchema>({
           arguments: { type: 'string' }
         },
         required: ['id', 'title', 'path', 'iconBase64', 'arguments']
+      }
+    },
+    workflows: {
+      type: 'array',
+      default: [],
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          id: { type: 'string' },
+          title: { type: 'string' },
+          language: {
+            type: 'string',
+            enum: ['powershell', 'cmd', 'python', 'nodejs', 'shell', 'custom']
+          },
+          customCommand: { type: 'string' },
+          content: { type: 'string' }
+        },
+        required: ['id', 'title', 'language', 'content']
       }
     }
   }
@@ -208,6 +249,82 @@ function deleteApp(id: string): LauncherApp[] {
   return nextApps
 }
 
+function normalizeWorkflowLanguage(language: string | undefined): WorkflowLanguage {
+  const normalizedLanguage = typeof language === 'string' ? language.trim().toLowerCase() : ''
+  if (!WORKFLOW_LANGUAGE_SET.has(normalizedLanguage as WorkflowLanguage)) {
+    throw new Error('Workflow language is invalid.')
+  }
+
+  return normalizedLanguage as WorkflowLanguage
+}
+
+function getWorkflows(): Workflow[] {
+  return appStore.get('workflows', [])
+}
+
+function saveWorkflow(payload: Partial<Workflow>): Workflow[] {
+  const normalizedTitle = typeof payload.title === 'string' ? payload.title.trim() : ''
+  const normalizedContent = typeof payload.content === 'string' ? payload.content : ''
+  const normalizedCustomCommand =
+    typeof payload.customCommand === 'string' ? payload.customCommand.trim() : ''
+  const normalizedLanguage = normalizeWorkflowLanguage(payload.language)
+
+  if (!normalizedTitle) {
+    throw new Error('Workflow title is required.')
+  }
+
+  if (!normalizedContent.trim()) {
+    throw new Error('Workflow content is required.')
+  }
+
+  if (normalizedLanguage === 'custom' && !normalizedCustomCommand) {
+    throw new Error('Custom command is required for custom workflows.')
+  }
+
+  const workflows = getWorkflows()
+  const existingId = typeof payload.id === 'string' ? payload.id.trim() : ''
+
+  if (existingId && workflows.some((item) => item.id === existingId)) {
+    const updated = workflows.map((item) =>
+      item.id === existingId
+        ? {
+            ...item,
+            title: normalizedTitle,
+            language: normalizedLanguage,
+            customCommand: normalizedLanguage === 'custom' ? normalizedCustomCommand : '',
+            content: normalizedContent
+          }
+        : item
+    )
+
+    appStore.set('workflows', updated)
+    return updated
+  }
+
+  const created: Workflow = {
+    id: existingId || randomUUID(),
+    title: normalizedTitle,
+    language: normalizedLanguage,
+    customCommand: normalizedLanguage === 'custom' ? normalizedCustomCommand : '',
+    content: normalizedContent
+  }
+
+  const nextWorkflows = [...workflows, created]
+  appStore.set('workflows', nextWorkflows)
+  return nextWorkflows
+}
+
+function deleteWorkflow(id: string): Workflow[] {
+  const normalizedId = typeof id === 'string' ? id.trim() : ''
+  if (!normalizedId) {
+    return getWorkflows()
+  }
+
+  const nextWorkflows = getWorkflows().filter((item) => item.id !== normalizedId)
+  appStore.set('workflows', nextWorkflows)
+  return nextWorkflows
+}
+
 function parseLaunchArguments(rawArguments: string): string[] {
   if (!rawArguments.trim()) {
     return []
@@ -223,6 +340,143 @@ function parseLaunchArguments(rawArguments: string): string[] {
   }
 
   return args
+}
+
+function resolveWorkflowRuntime(workflow: Workflow): {
+  extension: string
+  command: string
+  baseArgs: string[]
+} {
+  if (workflow.language === 'python') {
+    return { extension: '.py', command: 'python', baseArgs: [] }
+  }
+
+  if (workflow.language === 'nodejs') {
+    return { extension: '.js', command: 'node', baseArgs: [] }
+  }
+
+  if (workflow.language === 'powershell') {
+    return {
+      extension: '.ps1',
+      command: isWindows ? 'powershell' : 'pwsh',
+      baseArgs: isWindows ? ['-ExecutionPolicy', 'Bypass', '-File'] : ['-File']
+    }
+  }
+
+  if (workflow.language === 'cmd') {
+    if (!isWindows) {
+      throw new Error('CMD workflows are supported only on Windows.')
+    }
+
+    return { extension: '.bat', command: 'cmd', baseArgs: ['/c'] }
+  }
+
+  if (workflow.language === 'shell') {
+    return { extension: '.sh', command: isWindows ? 'bash' : 'sh', baseArgs: [] }
+  }
+
+  const customTokens = parseLaunchArguments(workflow.customCommand?.trim() || '')
+  if (customTokens.length === 0) {
+    throw new Error('Custom run command is required for custom workflows.')
+  }
+
+  const [command, ...baseArgs] = customTokens
+  return {
+    extension: '.tmp',
+    command,
+    baseArgs
+  }
+}
+
+function runWorkflowProcess(command: string, args: string[]): Promise<{
+  code: number
+  stdout: string
+  stderr: string
+}> {
+  return new Promise((resolve, reject) => {
+    const childProcess = spawn(command, args, {
+      windowsHide: true,
+      shell: false
+    })
+
+    let stdout = ''
+    let stderr = ''
+
+    childProcess.stdout?.on('data', (data) => {
+      stdout += data.toString()
+    })
+
+    childProcess.stderr?.on('data', (data) => {
+      stderr += data.toString()
+    })
+
+    childProcess.once('error', (error) => {
+      reject(error)
+    })
+
+    childProcess.once('close', (code) => {
+      resolve({
+        code: code ?? -1,
+        stdout: stdout.trim(),
+        stderr: stderr.trim()
+      })
+    })
+  })
+}
+
+async function executeWorkflowScript(payload: Partial<Workflow>): Promise<{
+  success: boolean
+  stdout: string
+  stderr: string
+  error?: string
+}> {
+  const normalizedLanguage = normalizeWorkflowLanguage(payload.language)
+  const normalizedContent = typeof payload.content === 'string' ? payload.content : ''
+  const normalizedTitle = typeof payload.title === 'string' ? payload.title.trim() : 'Workflow'
+  const normalizedCustomCommand =
+    typeof payload.customCommand === 'string' ? payload.customCommand.trim() : ''
+
+  if (!normalizedContent.trim()) {
+    throw new Error('Workflow content is required.')
+  }
+
+  const normalizedWorkflow: Workflow = {
+    id: typeof payload.id === 'string' ? payload.id : randomUUID(),
+    title: normalizedTitle || 'Workflow',
+    language: normalizedLanguage,
+    customCommand: normalizedCustomCommand,
+    content: normalizedContent
+  }
+
+  const runtime = resolveWorkflowRuntime(normalizedWorkflow)
+  const tempFilePath = join(
+    tmpdir(),
+    `prometheus-workflow-${Date.now()}-${randomUUID()}${runtime.extension}`
+  )
+
+  await fsPromises.writeFile(tempFilePath, normalizedWorkflow.content, { encoding: 'utf-8' })
+
+  try {
+    const result = await runWorkflowProcess(runtime.command, [...runtime.baseArgs, tempFilePath])
+    if (result.code === 0) {
+      return {
+        success: true,
+        stdout: result.stdout,
+        stderr: result.stderr
+      }
+    }
+
+    return {
+      success: false,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      error: result.stderr || `Workflow exited with code ${result.code}.`
+    }
+  } finally {
+    await fsPromises.unlink(tempFilePath).catch(() => {
+      // Ignore cleanup errors in temp directory.
+    })
+  }
 }
 
 function spawnDetached(command: string, args: string[], options?: { windowsHide?: boolean }): Promise<void> {
@@ -597,6 +851,32 @@ ipcMain.handle('save-app', (_event, payload: Partial<LauncherApp>) => {
 
 ipcMain.handle('delete-app', (_event, appId: string) => {
   return deleteApp(appId)
+})
+
+ipcMain.handle('get-workflows', () => {
+  return getWorkflows()
+})
+
+ipcMain.handle('save-workflow', (_event, payload: Partial<Workflow>) => {
+  return saveWorkflow(payload)
+})
+
+ipcMain.handle('delete-workflow', (_event, workflowId: string) => {
+  return deleteWorkflow(workflowId)
+})
+
+ipcMain.handle('execute-workflow', async (_event, workflowPayload: Partial<Workflow>) => {
+  try {
+    return await executeWorkflowScript(workflowPayload)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to execute workflow.'
+    return {
+      success: false,
+      stdout: '',
+      stderr: '',
+      error: message
+    }
+  }
 })
 
 ipcMain.handle('select-file', async () => {
