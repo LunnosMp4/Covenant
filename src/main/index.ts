@@ -63,13 +63,13 @@ function createWindow(): void {
 
   // macOS vibrancy effect
   if (isMac) {
-    mainWindow.setVibrancy('ultra-dark')
+    mainWindow.setVibrancy('fullscreen-ui')
   }
 
   // Keep the full window transparent. Renderer-level styling handles the frosted bar.
   if (isWindows) {
     try {
-      mainWindow.setBackgroundMaterial('auto')
+      mainWindow.setBackgroundMaterial('acrylic')
     } catch {
       // Older Electron/Windows versions can ignore this safely.
     }

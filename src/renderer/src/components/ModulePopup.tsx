@@ -1,31 +1,61 @@
 import { motion } from 'framer-motion'
 import type { RefObject } from 'react'
 
-export type ActivePopup = 'module2' | 'module3'
+export type ActivePopup = 'module2' | 'module3' | 'module4'
+export type PopupAnchorSide = 'left' | 'right'
 
 type PopupIcon = 'grid' | 'folder' | 'doc' | 'bolt' | 'shield' | 'clock'
 
-interface PopupItem {
+export interface PopupItem {
   id: string
-  label: string
+  title: string
   icon: PopupIcon
+  subtitle?: string
+  promptText?: string
 }
 
 const MODULE_LABELS: Record<ActivePopup, string> = {
   module2: 'App Launcher',
-  module3: 'Workflows'
+  module3: 'Workflows',
+  module4: 'Prompt Library'
 }
 
 const MODULE_ITEMS: Record<ActivePopup, PopupItem[]> = {
   module2: [
-    { id: 'open-notion', label: 'Ouvrir Notion', icon: 'grid' },
-    { id: 'workflow-backup', label: 'Workflow Backup', icon: 'folder' },
-    { id: 'daily-briefing', label: 'Daily Briefing', icon: 'doc' }
+    { id: 'open-notion', title: 'Ouvrir Notion', icon: 'grid' },
+    { id: 'workflow-backup', title: 'Workflow Backup', icon: 'folder' },
+    { id: 'daily-briefing', title: 'Daily Briefing', icon: 'doc' }
   ],
   module3: [
-    { id: 'deploy-release', label: 'Deploy Release', icon: 'bolt' },
-    { id: 'security-audit', label: 'Security Audit', icon: 'shield' },
-    { id: 'review-tasks', label: 'Review Pending Tasks', icon: 'clock' }
+    { id: 'deploy-release', title: 'Deploy Release', icon: 'bolt' },
+    { id: 'security-audit', title: 'Security Audit', icon: 'shield' },
+    { id: 'review-tasks', title: 'Review Pending Tasks', icon: 'clock' }
+  ],
+  module4: [
+    {
+      id: 'follow-up-email',
+      title: 'Meeting Follow-up',
+      subtitle: 'Write a concise summary and action plan.',
+      icon: 'doc',
+      promptText:
+        'Create a clear meeting follow-up message using these details:\n- Key decisions:\n- Action items by owner:\n- Deadlines:\n- Risks or blockers:'
+    },
+    {
+      id: 'bug-report-template',
+      title: 'Bug Repro Template',
+      subtitle: 'Generate a complete bug ticket structure.',
+      icon: 'shield',
+      promptText:
+        'Turn these notes into a structured bug report with:\n1) Context\n2) Steps to reproduce\n3) Expected result\n4) Actual result\n5) Impact and severity\n6) Suggested next actions.'
+    },
+    {
+      id: 'code-review-summary',
+      title: 'Code Review Summary',
+      subtitle: 'Summarize findings with priorities.',
+      icon: 'clock',
+      promptText:
+        'Review the following changes and provide:\n- Critical issues\n- Medium-risk concerns\n- Quick wins\n- Final recommendation\nKeep the output concise and actionable.'
+    }
   ]
 }
 
@@ -33,6 +63,8 @@ interface ModulePopupProps {
   activePopup: ActivePopup
   popupRef: RefObject<HTMLDivElement>
   onAddNew: () => void
+  onSelectItem: (item: PopupItem) => void
+  anchorSide?: PopupAnchorSide
 }
 
 function PlusIcon(): JSX.Element {
@@ -108,8 +140,15 @@ function ItemIcon({ icon }: { icon: PopupIcon }): JSX.Element {
   )
 }
 
-export default function ModulePopup({ activePopup, popupRef, onAddNew }: ModulePopupProps): JSX.Element {
+export default function ModulePopup({
+  activePopup,
+  popupRef,
+  onAddNew,
+  onSelectItem,
+  anchorSide = 'right'
+}: ModulePopupProps): JSX.Element {
   const items = MODULE_ITEMS[activePopup]
+  const anchorClass = anchorSide === 'left' ? 'left-0' : 'right-0'
 
   return (
     <motion.div
@@ -118,8 +157,8 @@ export default function ModulePopup({ activePopup, popupRef, onAddNew }: ModuleP
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95, y: 10 }}
       transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-      className="absolute bottom-full right-0 z-30 mb-3 w-[320px] rounded-2xl border border-white/10 bg-neutral-900/80 p-3 shadow-xl shadow-black/40 backdrop-blur-xl"
-      style={{ WebkitBackdropFilter: 'blur(30px)', backdropFilter: 'blur(30px)' }}
+      className={`absolute bottom-full ${anchorClass} z-30 mb-3 w-[320px] rounded-2xl border border-white/10 bg-neutral-900/80 p-3 shadow-xl shadow-black/40 backdrop-blur-xl`}
+      style={{ WebkitBackdropFilter: 'blur(30px)', backdropFilter: 'blur(30px)', backgroundImage: 'linear-gradient(135deg, rgba(23, 23, 23, 0.75) 0%, rgba(110, 82, 54, 0.78) 100%)' }}
     >
       <p className="px-2 pb-2 text-xs uppercase tracking-[0.12em] text-neutral-500">{MODULE_LABELS[activePopup]}</p>
 
@@ -128,13 +167,16 @@ export default function ModulePopup({ activePopup, popupRef, onAddNew }: ModuleP
           <button
             key={item.id}
             type="button"
-            onClick={() => console.log(`${MODULE_LABELS[activePopup]}: ${item.label}`)}
+            onClick={() => onSelectItem(item)}
             className="flex w-full cursor-pointer items-center gap-3 rounded-xl p-3 text-left text-sm text-neutral-200 transition-colors duration-150 hover:bg-white/5"
           >
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-neutral-300">
               <ItemIcon icon={item.icon} />
             </span>
-            <span>{item.label}</span>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate">{item.title}</span>
+              {item.subtitle && <span className="mt-0.5 truncate text-xs text-neutral-500">{item.subtitle}</span>}
+            </span>
           </button>
         ))}
       </div>

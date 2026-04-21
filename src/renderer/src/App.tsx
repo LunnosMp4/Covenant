@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import ModulePopup, { type ActivePopup } from './components/ModulePopup'
+import ModulePopup, { type ActivePopup, type PopupItem } from './components/ModulePopup'
 
 declare global {
   interface Window {
@@ -84,6 +84,7 @@ export default function App(): JSX.Element {
   const inputRef = useRef<HTMLInputElement>(null)
   const popupRef = useRef<HTMLDivElement>(null)
   const moduleButtonsRef = useRef<HTMLDivElement>(null)
+  const module4ButtonRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     if (window.electronAPI) {
@@ -131,8 +132,9 @@ export default function App(): JSX.Element {
       const target = event.target as Node
       const clickedInsidePopup = popupRef.current?.contains(target)
       const clickedInsideModuleButtons = moduleButtonsRef.current?.contains(target)
+      const clickedInsideModule4Button = module4ButtonRef.current?.contains(target)
 
-      if (!clickedInsidePopup && !clickedInsideModuleButtons) {
+      if (!clickedInsidePopup && !clickedInsideModuleButtons && !clickedInsideModule4Button) {
         setActivePopup(null)
       }
     }
@@ -180,6 +182,30 @@ export default function App(): JSX.Element {
       inputRef.current?.focus()
     }
   }, [query, isLoading])
+
+  const handlePopupItemSelect = useCallback(
+    (item: PopupItem) => {
+      if (activePopup === 'module4' && item.promptText) {
+        const promptToInsert = item.promptText
+
+        setQuery((previous) => {
+          const base = previous.trim()
+          if (!base) {
+            return promptToInsert
+          }
+
+          return `${base}\n\n${promptToInsert}`
+        })
+
+        setTimeout(() => inputRef.current?.focus(), 40)
+      } else {
+        console.log(`${item.title} selected`)
+      }
+
+      setActivePopup(null)
+    },
+    [activePopup]
+  )
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -233,6 +259,8 @@ export default function App(): JSX.Element {
                   activePopup={activePopup}
                   popupRef={popupRef}
                   onAddNew={() => console.log('Preference Window Triggered')}
+                  onSelectItem={handlePopupItemSelect}
+                  anchorSide={activePopup === 'module4' ? 'left' : 'right'}
                 />
               )}
             </AnimatePresence>
@@ -247,14 +275,15 @@ export default function App(): JSX.Element {
               }}
             >
 
-              <button
+            <button
+              ref={module4ButtonRef}
               onClick={(e) => {
                 e.stopPropagation()
-                togglePopup('module3')
+                togglePopup('module4')
               }}
               className="flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all duration-150"
-              aria-label="Module 3"
-              aria-pressed={activePopup === 'module3'}
+              aria-label="Module 4"
+              aria-pressed={activePopup === 'module4'}
             >
               <BoltIcon />
             </button>
