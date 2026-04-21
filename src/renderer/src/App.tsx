@@ -2,6 +2,27 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import ModulePopup, { type ActivePopup, type PopupItem } from './components/ModulePopup'
 
+interface AppConfig {
+  apiKey: string
+  themeGradient: string
+  proxyUrl: string
+}
+
+const DEFAULT_THEME_GRADIENT = 'from-neutral-900/95 to-neutral-900/95'
+const AVAILABLE_THEME_GRADIENTS = [
+  DEFAULT_THEME_GRADIENT,
+  'from-slate-900/95 to-blue-900/95',
+  'from-zinc-900/95 to-violet-900/95',
+  'from-neutral-900/95 to-emerald-900/95'
+] as const
+
+const AVAILABLE_THEME_GRADIENT_SET = new Set<string>(AVAILABLE_THEME_GRADIENTS)
+
+function normalizeThemeGradient(themeGradient: string | undefined): string {
+  if (!themeGradient) return DEFAULT_THEME_GRADIENT
+  return AVAILABLE_THEME_GRADIENT_SET.has(themeGradient) ? themeGradient : DEFAULT_THEME_GRADIENT
+}
+
 declare global {
   interface Window {
     electronAPI?: {
@@ -9,6 +30,11 @@ declare global {
       openSettings: () => void
       closeSettings: () => void
       minimizeSettings: () => void
+      getConfig: () => Promise<AppConfig>
+      saveApiKey: (apiKey: string) => void
+      saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string }) => void
+      updateTheme: (gradientClass: string) => void
+      onThemeUpdated: (callback: (gradientClass: string) => void) => (() => void) | void
       askPrometheus: (prompt: string) => Promise<string>
       onToggleVisibility: (callback: (visible: boolean) => void) => void
     }
@@ -83,11 +109,44 @@ export default function App(): JSX.Element {
   const [query, setQuery] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [aiResponse, setAiResponse] = useState('')
+  const [themeGradient, setThemeGradient] = useState<string>(DEFAULT_THEME_GRADIENT)
   const [activePopup, setActivePopup] = useState<ActivePopup | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const popupRef = useRef<HTMLDivElement>(null)
   const moduleButtonsRef = useRef<HTMLDivElement>(null)
   const module4ButtonRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadInitialTheme = async (): Promise<void> => {
+      if (!window.electronAPI?.getConfig) return
+
+      try {
+        const config = await window.electronAPI.getConfig()
+        if (isMounted) {
+          setThemeGradient(normalizeThemeGradient(config.themeGradient))
+        }
+      } catch {
+        if (isMounted) {
+          setThemeGradient(DEFAULT_THEME_GRADIENT)
+        }
+      }
+    }
+
+    void loadInitialTheme()
+
+    const unsubscribeThemeListener = window.electronAPI?.onThemeUpdated?.((newGradientClass) => {
+      setThemeGradient(normalizeThemeGradient(newGradientClass))
+    })
+
+    return () => {
+      isMounted = false
+      if (typeof unsubscribeThemeListener === 'function') {
+        unsubscribeThemeListener()
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (window.electronAPI) {
@@ -261,6 +320,7 @@ export default function App(): JSX.Element {
                 <ModulePopup
                   activePopup={activePopup}
                   popupRef={popupRef}
+                  themeGradient={themeGradient}
                   onAddNew={() => {
                     setActivePopup(null)
                     if (window.electronAPI?.openSettings) {
@@ -276,12 +336,10 @@ export default function App(): JSX.Element {
             </AnimatePresence>
 
             <div
-              className="flex items-center w-full rounded-2xl overflow-hidden p-2 bg-neutral-900/70 backdrop-blur-2xl border border-white/10"
+              className={`flex items-center w-full rounded-2xl overflow-hidden p-2 bg-gradient-to-br ${themeGradient} border border-white/10`}
               style={{
                 WebkitBackdropFilter: 'blur(40px)',
-                backdropFilter: 'blur(40px)',
-                backgroundImage:
-                  'linear-gradient(135deg, rgba(23, 23, 23, 0.92) 0%, rgba(66, 48, 30, 0.94) 100%)',
+                backdropFilter: 'blur(40px)'
               }}
             >
 

@@ -65,6 +65,7 @@ interface ModulePopupProps {
   onAddNew: () => void
   onSelectItem: (item: PopupItem) => void
   anchorSide?: PopupAnchorSide
+  themeGradient: string
 }
 
 function PlusIcon(): JSX.Element {
@@ -145,7 +146,8 @@ export default function ModulePopup({
   popupRef,
   onAddNew,
   onSelectItem,
-  anchorSide = 'right'
+  anchorSide = 'right',
+  themeGradient
 }: ModulePopupProps): JSX.Element {
   const items = MODULE_ITEMS[activePopup]
   const anchorClass = anchorSide === 'left' ? 'left-0' : 'right-0'
@@ -157,8 +159,8 @@ export default function ModulePopup({
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95, y: 10 }}
       transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-      className={`absolute bottom-full ${anchorClass} z-30 mb-3 w-[320px] rounded-2xl border border-white/10 bg-neutral-900/80 p-3 shadow-xl shadow-black/40 backdrop-blur-xl`}
-      style={{ WebkitBackdropFilter: 'blur(30px)', backdropFilter: 'blur(30px)', backgroundImage: 'linear-gradient(135deg, rgba(23, 23, 23, 0.75) 0%, rgba(110, 82, 54, 0.78) 100%)' }}
+      className={`absolute bottom-full ${anchorClass} z-30 mb-3 w-[320px] rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} p-3 shadow-xl shadow-black/40 backdrop-blur-xl`}
+      style={{ WebkitBackdropFilter: 'blur(30px)', backdropFilter: 'blur(30px)' }}
     >
       <p className="px-2 pb-2 text-xs uppercase tracking-[0.12em] text-neutral-500">{MODULE_LABELS[activePopup]}</p>
 

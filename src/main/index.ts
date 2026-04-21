@@ -6,10 +6,12 @@ import {
   screen,
   shell
 } from 'electron'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import dotenv from 'dotenv'
 import OpenAI from 'openai'
+import { ProxyAgent } from 'undici'
 
 let mainWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
@@ -24,7 +26,37 @@ const WINDOW_BOTTOM_MARGIN = 48
 const SETTINGS_WINDOW_WIDTH = 1024
 const SETTINGS_WINDOW_HEIGHT = 576
 
+interface AppConfig {
+  apiKey: string
+  themeGradient: string
+  proxyUrl: string
+}
+
+const DEFAULT_CONFIG: AppConfig = {
+  apiKey: '',
+  themeGradient: 'from-neutral-900/95 to-neutral-900/95',
+  proxyUrl: ''
+}
+
 dotenv.config({ path: join(process.cwd(), '.env') })
+
+function resolveOpenAIProxyUrl(configProxyUrl?: string): string | undefined {
+  const proxyCandidates = [
+    configProxyUrl,
+    process.env.OPENAI_PROXY_URL,
+    process.env.HTTPS_PROXY,
+    process.env.HTTP_PROXY
+  ]
+
+  for (const candidate of proxyCandidates) {
+    const trimmedCandidate = candidate?.trim()
+    if (trimmedCandidate) {
+      return trimmedCandidate
+    }
+  }
+
+  return undefined
+}
 
 function getWindowPosition(): { x: number; y: number } {
   const primaryDisplay = screen.getPrimaryDisplay()
@@ -35,6 +67,64 @@ function getWindowPosition(): { x: number; y: number } {
     x: Math.round(workAreaX + (workAreaWidth - WINDOW_WIDTH) / 2),
     y: Math.round(workAreaY + workAreaHeight - WINDOW_HEIGHT - WINDOW_BOTTOM_MARGIN)
   }
+}
+
+function getConfigPath(): string {
+  return join(app.getPath('userData'), 'config.json')
+}
+
+function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined): AppConfig {
+  return {
+    apiKey: typeof rawConfig?.apiKey === 'string' ? rawConfig.apiKey : DEFAULT_CONFIG.apiKey,
+    themeGradient:
+      typeof rawConfig?.themeGradient === 'string' && rawConfig.themeGradient.trim()
+        ? rawConfig.themeGradient
+        : DEFAULT_CONFIG.themeGradient,
+    proxyUrl:
+      typeof rawConfig?.proxyUrl === 'string' && rawConfig.proxyUrl.trim()
+        ? rawConfig.proxyUrl.trim()
+        : DEFAULT_CONFIG.proxyUrl
+  }
+}
+
+function writeConfig(config: AppConfig): void {
+  const configPath = getConfigPath()
+  const userDataDirectory = app.getPath('userData')
+
+  if (!existsSync(userDataDirectory)) {
+    mkdirSync(userDataDirectory, { recursive: true })
+  }
+
+  writeFileSync(configPath, JSON.stringify(config, null, 2), { encoding: 'utf-8' })
+}
+
+function readConfig(): AppConfig {
+  const configPath = getConfigPath()
+
+  try {
+    if (!existsSync(configPath)) {
+      writeConfig(DEFAULT_CONFIG)
+      return DEFAULT_CONFIG
+    }
+
+    const rawFile = readFileSync(configPath, 'utf-8')
+    const parsed = JSON.parse(rawFile) as Partial<AppConfig>
+    const normalized = normalizeConfig(parsed)
+
+    // Keep file schema aligned when new defaults are introduced.
+    writeConfig(normalized)
+    return normalized
+  } catch {
+    writeConfig(DEFAULT_CONFIG)
+    return DEFAULT_CONFIG
+  }
+}
+
+function updateConfig(configPatch: Partial<AppConfig>): AppConfig {
+  const current = readConfig()
+  const merged = normalizeConfig({ ...current, ...configPatch })
+  writeConfig(merged)
+  return merged
 }
 
 function loadRendererWindow(targetWindow: BrowserWindow, route?: 'settings'): void {
@@ -202,6 +292,7 @@ function toggleWindow(): void {
 }
 
 app.whenReady().then(() => {
+  readConfig()
   createWindow()
 
   globalShortcut.register('Alt+Space', toggleWindow)
@@ -247,18 +338,57 @@ ipcMain.on('minimize-settings', () => {
   }
 })
 
+ipcMain.handle('get-config', () => {
+  return readConfig()
+})
+
+ipcMain.on('save-api-key', (_event, key: string) => {
+  const apiKey = typeof key === 'string' ? key.trim() : ''
+  updateConfig({ apiKey })
+})
+
+ipcMain.on('save-openai-settings', (_event, payload: { apiKey?: string; proxyUrl?: string }) => {
+  const apiKey = typeof payload?.apiKey === 'string' ? payload.apiKey.trim() : ''
+  const proxyUrl = typeof payload?.proxyUrl === 'string' ? payload.proxyUrl.trim() : ''
+  updateConfig({ apiKey, proxyUrl })
+})
+
+ipcMain.on('update-theme', (_event, gradientClass: string) => {
+  const nextTheme =
+    typeof gradientClass === 'string' && gradientClass.trim()
+      ? gradientClass.trim()
+      : DEFAULT_CONFIG.themeGradient
+
+  updateConfig({ themeGradient: nextTheme })
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('theme-updated', nextTheme)
+  }
+})
+
 ipcMain.handle('prometheus:chat', async (_event, userPrompt: string) => {
   const prompt = userPrompt?.trim()
   if (!prompt) {
     throw new Error('Prompt cannot be empty.')
   }
 
-  const apiKey = process.env.OPENAI_API_KEY
+  const storedConfig = readConfig()
+  const apiKey = storedConfig.apiKey || process.env.OPENAI_API_KEY
   if (!apiKey) {
-    throw new Error('OPENAI_API_KEY is missing. Add it to the .env file at project root.')
+    throw new Error('OpenAI API key is missing. Add it in Settings > General or set OPENAI_API_KEY.')
   }
 
-  const client = new OpenAI({ apiKey })
+  const proxyUrl = resolveOpenAIProxyUrl(storedConfig.proxyUrl)
+  const openAIProxyAgent = proxyUrl ? new ProxyAgent(proxyUrl) : undefined
+
+  const client = new OpenAI({
+    apiKey,
+    fetchOptions: openAIProxyAgent
+      ? {
+          dispatcher: openAIProxyAgent
+        }
+      : undefined
+  })
   const completion = await client.chat.completions.create({
     model: 'gpt-4o-mini',
     messages: [

@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 
 type SettingsTab = 'general' | 'module2' | 'module3' | 'module4'
 
@@ -23,6 +23,49 @@ interface MockPreprompt {
   title: string
   content: string
 }
+
+interface ThemeOption {
+  id: string
+  label: string
+  description: string
+  gradientClass: string
+}
+
+interface AppConfig {
+  apiKey: string
+  themeGradient: string
+  proxyUrl: string
+}
+
+const DEFAULT_THEME_GRADIENT = 'from-neutral-900/95 to-neutral-900/95'
+const THEME_OPTIONS: ThemeOption[] = [
+  {
+    id: 'dark-default',
+    label: 'Dark Neutral',
+    description: 'Balanced dark gradient',
+    gradientClass: 'from-neutral-900/95 to-neutral-900/95'
+  },
+  {
+    id: 'blue-depth',
+    label: 'Blue Depth',
+    description: 'Cool steel tone',
+    gradientClass: 'from-slate-900/95 to-blue-900/95'
+  },
+  {
+    id: 'violet-focus',
+    label: 'Violet Focus',
+    description: 'Focused creative mood',
+    gradientClass: 'from-zinc-900/95 to-violet-900/95'
+  },
+  {
+    id: 'emerald-night',
+    label: 'Emerald Night',
+    description: 'Dark green accent',
+    gradientClass: 'from-neutral-900/95 to-emerald-900/95'
+  }
+]
+
+const THEME_GRADIENT_SET = new Set<string>(THEME_OPTIONS.map((option) => option.gradientClass))
 
 const MOCK_APPS: MockApp[] = [
   {
@@ -86,6 +129,11 @@ const MOCK_PREPROMPTS: MockPreprompt[] = [
       'Rewrite technical notes into concise, user-friendly documentation with clear headings and examples.'
   }
 ]
+
+function normalizeThemeGradient(themeGradient: string | undefined): string {
+  if (!themeGradient) return DEFAULT_THEME_GRADIENT
+  return THEME_GRADIENT_SET.has(themeGradient) ? themeGradient : DEFAULT_THEME_GRADIENT
+}
 
 function SidebarGlyph({ tab }: { tab: SettingsTab }): JSX.Element {
   if (tab === 'general') {
@@ -162,90 +210,135 @@ function SectionCard({
   )
 }
 
-function GeneralTab(): JSX.Element {
-  const [apiKey, setApiKey] = useState('')
-  const [mainBarAccent, setMainBarAccent] = useState('#7a5530')
-  const [popupAccent, setPopupAccent] = useState('#4e3d2a')
+interface GeneralTabProps {
+  apiKey: string
+  onApiKeyChange: (value: string) => void
+  proxyUrl: string
+  onProxyUrlChange: (value: string) => void
+  isAdvancedOpen: boolean
+  onToggleAdvanced: () => void
+  onSaveOpenAISettings: () => void
+  isSavingApiKey: boolean
+  saveFeedbackMessage: string
+  selectedTheme: string
+  onSelectTheme: (gradientClass: string) => void
+}
 
+function GeneralTab({
+  apiKey,
+  onApiKeyChange,
+  proxyUrl,
+  onProxyUrlChange,
+  isAdvancedOpen,
+  onToggleAdvanced,
+  onSaveOpenAISettings,
+  isSavingApiKey,
+  saveFeedbackMessage,
+  selectedTheme,
+  onSelectTheme
+}: GeneralTabProps): JSX.Element {
   return (
     <div className="space-y-6">
       <SectionCard
         title="OpenAI API Key"
-        description="Use your API key for prompt-based modules. Data persistence will be wired in a later phase."
+        description="Stored in your local OS user data directory. This key is used by Prometheus chat requests."
       >
         <div>
           <label htmlFor="openai-key" className="mb-2 block text-sm font-medium text-neutral-300">
             API Key
           </label>
-          <input
-            id="openai-key"
-            type="password"
-            value={apiKey}
-            onChange={(event) => setApiKey(event.target.value)}
-            placeholder="sk-..."
-            className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-neutral-500 focus:outline-none"
-            autoComplete="off"
-          />
-          <p className="mt-2 text-xs text-neutral-500">
-            This key will be stored locally on your machine once persistence is enabled.
-          </p>
+
+          <div className="flex items-center gap-3">
+            <input
+              id="openai-key"
+              type="password"
+              value={apiKey}
+              onChange={(event) => onApiKeyChange(event.target.value)}
+              placeholder="sk-..."
+              className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-neutral-500 focus:outline-none"
+              autoComplete="off"
+            />
+
+            <button
+              type="button"
+              onClick={onSaveOpenAISettings}
+              disabled={isSavingApiKey}
+              className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isSavingApiKey ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={onToggleAdvanced}
+            className="mt-3 inline-flex items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-neutral-100"
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              className={isAdvancedOpen ? 'rotate-90 transition-transform' : 'transition-transform'}
+              aria-hidden
+            >
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+            <span>Advanced settings</span>
+          </button>
+
+          {isAdvancedOpen ? (
+            <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950/70 p-3">
+              <label htmlFor="openai-proxy-url" className="mb-2 block text-xs font-medium uppercase tracking-[0.08em] text-neutral-400">
+                Proxy URL
+              </label>
+              <input
+                id="openai-proxy-url"
+                type="text"
+                value={proxyUrl}
+                onChange={(event) => onProxyUrlChange(event.target.value)}
+                placeholder="http://proxy.company.local:8080"
+                className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 placeholder:text-neutral-500 focus:border-neutral-500 focus:outline-none"
+                autoComplete="off"
+              />
+              <p className="mt-2 text-xs text-neutral-500">
+                Use this when your company routes outbound traffic through a proxy. Leave empty for direct access.
+              </p>
+            </div>
+          ) : null}
+
+          <p className="mt-2 text-xs text-neutral-500">Saved locally in the native user data folder as part of config.json.</p>
+          {saveFeedbackMessage ? <p className="mt-2 text-xs text-emerald-300">{saveFeedbackMessage}</p> : null}
         </div>
       </SectionCard>
 
       <SectionCard
         title="Appearance"
-        description="Mock controls for editing the gradient accents on the command bar and module popups."
+        description="Pick a gradient preset for the floating command bar. Changes apply instantly across windows."
       >
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div className="rounded-xl border border-neutral-800 bg-neutral-950/70 p-4">
-            <p className="text-sm font-medium text-neutral-200">Main Bar Accent</p>
-            <div
-              className="mt-3 h-10 w-full rounded-lg border border-neutral-700"
-              style={{
-                backgroundImage: `linear-gradient(135deg, rgba(23, 23, 23, 0.9) 0%, ${mainBarAccent} 100%)`
-              }}
-            />
-            <div className="mt-3 flex items-center gap-3">
-              <input
-                type="color"
-                value={mainBarAccent}
-                onChange={(event) => setMainBarAccent(event.target.value)}
-                className="h-9 w-12 cursor-pointer rounded border border-neutral-700 bg-transparent"
-                aria-label="Main bar gradient accent"
-              />
-              <input
-                type="text"
-                value={mainBarAccent}
-                onChange={(event) => setMainBarAccent(event.target.value)}
-                className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 focus:border-neutral-500 focus:outline-none"
-              />
-            </div>
-          </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {THEME_OPTIONS.map((themeOption) => {
+            const isActive = selectedTheme === themeOption.gradientClass
 
-          <div className="rounded-xl border border-neutral-800 bg-neutral-950/70 p-4">
-            <p className="text-sm font-medium text-neutral-200">Popup Accent</p>
-            <div
-              className="mt-3 h-10 w-full rounded-lg border border-neutral-700"
-              style={{
-                backgroundImage: `linear-gradient(135deg, rgba(23, 23, 23, 0.9) 0%, ${popupAccent} 100%)`
-              }}
-            />
-            <div className="mt-3 flex items-center gap-3">
-              <input
-                type="color"
-                value={popupAccent}
-                onChange={(event) => setPopupAccent(event.target.value)}
-                className="h-9 w-12 cursor-pointer rounded border border-neutral-700 bg-transparent"
-                aria-label="Popup gradient accent"
-              />
-              <input
-                type="text"
-                value={popupAccent}
-                onChange={(event) => setPopupAccent(event.target.value)}
-                className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 focus:border-neutral-500 focus:outline-none"
-              />
-            </div>
-          </div>
+            return (
+              <button
+                key={themeOption.id}
+                type="button"
+                onClick={() => onSelectTheme(themeOption.gradientClass)}
+                className={`rounded-xl border p-3 text-left transition-colors ${
+                  isActive
+                    ? 'border-neutral-500 bg-neutral-800/80'
+                    : 'border-neutral-800 bg-neutral-900/70 hover:border-neutral-600 hover:bg-neutral-800/60'
+                }`}
+              >
+                <div className={`h-10 rounded-lg bg-gradient-to-r ${themeOption.gradientClass}`} />
+                <p className="mt-3 text-sm font-medium text-neutral-100">{themeOption.label}</p>
+                <p className="mt-1 text-xs text-neutral-400">{themeOption.description}</p>
+              </button>
+            )
+          })}
         </div>
       </SectionCard>
     </div>
@@ -413,8 +506,43 @@ function PrepromptsTab(): JSX.Element {
 
 export default function Settings(): JSX.Element {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general')
+  const [apiKey, setApiKey] = useState('')
+  const [proxyUrl, setProxyUrl] = useState('')
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false)
+  const [selectedTheme, setSelectedTheme] = useState(DEFAULT_THEME_GRADIENT)
+  const [isSavingApiKey, setIsSavingApiKey] = useState(false)
+  const [saveFeedbackMessage, setSaveFeedbackMessage] = useState('')
+
   const dragRegionStyle = { WebkitAppRegion: 'drag' } as CSSProperties
   const noDragRegionStyle = { WebkitAppRegion: 'no-drag' } as CSSProperties
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadConfig = async (): Promise<void> => {
+      if (!window.electronAPI?.getConfig) return
+
+      try {
+        const config = (await window.electronAPI.getConfig()) as AppConfig
+        if (!isMounted) return
+
+        setApiKey(typeof config.apiKey === 'string' ? config.apiKey : '')
+        setProxyUrl(typeof config.proxyUrl === 'string' ? config.proxyUrl : '')
+        setSelectedTheme(normalizeThemeGradient(config.themeGradient))
+      } catch {
+        if (!isMounted) return
+        setApiKey('')
+        setProxyUrl('')
+        setSelectedTheme(DEFAULT_THEME_GRADIENT)
+      }
+    }
+
+    void loadConfig()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   const handleMinimizeWindow = (): void => {
     window.electronAPI?.minimizeSettings?.()
@@ -422,6 +550,28 @@ export default function Settings(): JSX.Element {
 
   const handleCloseWindow = (): void => {
     window.electronAPI?.closeSettings?.()
+  }
+
+  const handleSaveOpenAISettings = (): void => {
+    try {
+      setIsSavingApiKey(true)
+      if (window.electronAPI?.saveOpenAISettings) {
+        window.electronAPI.saveOpenAISettings({ apiKey, proxyUrl })
+      } else {
+        window.electronAPI?.saveApiKey?.(apiKey)
+      }
+
+      setSaveFeedbackMessage('OpenAI settings saved locally.')
+      window.setTimeout(() => setSaveFeedbackMessage(''), 1800)
+    } finally {
+      setIsSavingApiKey(false)
+    }
+  }
+
+  const handleThemeSelect = (gradientClass: string): void => {
+    const safeTheme = normalizeThemeGradient(gradientClass)
+    setSelectedTheme(safeTheme)
+    window.electronAPI?.updateTheme?.(safeTheme)
   }
 
   const pageTitle = useMemo(() => {
@@ -433,17 +583,16 @@ export default function Settings(): JSX.Element {
 
   return (
     <div className="h-screen w-screen bg-transparent p-3 font-sans text-neutral-200">
-      <div className="relative h-full overflow-hidden rounded-xl border border-neutral-800/80 bg-neutral-900/95 shadow-[0_24px_70px_rgba(0,0,0,0.55)]">
-        <div
-          className="absolute top-0 h-10 w-full flex justify-between items-center px-4 bg-transparent border-b border-neutral-800/80"
-          style={dragRegionStyle}
-        >
-          <div className="flex items-center gap-2 text-xs uppercase tracking-[0.1em] text-neutral-500">
-            <span className="h-2 w-2 rounded-full bg-amber-400/80" />
-            <span>Prometheus Settings</span>
+      <div className="h-full overflow-hidden rounded-xl border border-neutral-800/80 bg-neutral-900/95 shadow-[0_24px_70px_rgba(0,0,0,0.55)]">
+        <div className="relative h-10 w-full">
+          <div className="absolute inset-0 border-b border-neutral-800/80 bg-neutral-900/40" style={dragRegionStyle}>
+            <div className="flex h-full items-center px-4 text-xs uppercase tracking-[0.1em] text-neutral-500">
+              <span className="h-2 w-2 rounded-full bg-amber-400/80" />
+              <span className="ml-2">Prometheus Settings</span>
+            </div>
           </div>
 
-          <div className="flex items-center gap-1" style={noDragRegionStyle}>
+          <div className="absolute inset-y-0 right-0 z-20 flex items-center gap-1 pr-3" style={noDragRegionStyle}>
             <button
               type="button"
               aria-label="Minimize settings window"
@@ -464,7 +613,7 @@ export default function Settings(): JSX.Element {
           </div>
         </div>
 
-        <div className="flex h-full pt-10">
+        <div className="flex h-[calc(100%-2.5rem)]">
           <aside className="w-64 border-r border-neutral-800 bg-neutral-950/70 p-4">
             <div className="px-2 pb-4 pt-2">
               <p className="text-xs uppercase tracking-[0.1em] text-neutral-500">Prometheus</p>
@@ -507,7 +656,21 @@ export default function Settings(): JSX.Element {
               <h2 className="mt-2 text-2xl font-semibold text-neutral-100">{pageTitle}</h2>
             </header>
 
-            {activeTab === 'general' && <GeneralTab />}
+            {activeTab === 'general' && (
+              <GeneralTab
+                apiKey={apiKey}
+                onApiKeyChange={setApiKey}
+                proxyUrl={proxyUrl}
+                onProxyUrlChange={setProxyUrl}
+                isAdvancedOpen={isAdvancedOpen}
+                onToggleAdvanced={() => setIsAdvancedOpen((current) => !current)}
+                onSaveOpenAISettings={handleSaveOpenAISettings}
+                isSavingApiKey={isSavingApiKey}
+                saveFeedbackMessage={saveFeedbackMessage}
+                selectedTheme={selectedTheme}
+                onSelectTheme={handleThemeSelect}
+              />
+            )}
             {activeTab === 'module2' && <AppLauncherTab />}
             {activeTab === 'module3' && <WorkflowsTab />}
             {activeTab === 'module4' && <PrepromptsTab />}

@@ -45,6 +45,14 @@ Add this variable:
 OPENAI_API_KEY=your_openai_api_key_here
 ```
 
+If you are behind a corporate proxy, you can optionally add:
+
+```bash
+OPENAI_PROXY_URL=http://10.31.255.65:8080
+```
+
+Prometheus checks proxy variables in this order: `OPENAI_PROXY_URL`, `HTTPS_PROXY`, then `HTTP_PROXY`.
+
 > This project uses `OPENAI_API_KEY` (not `VITE_OPENAI_API_KEY`) because OpenAI calls run in the Electron **main process** via IPC, so the key is not exposed to the renderer bundle.
 
 ### Development
