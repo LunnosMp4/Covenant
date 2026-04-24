@@ -6,6 +6,7 @@ interface AppConfig {
   apiKey: string
   themeGradient: string
   proxyUrl: string
+  launchOnStartup: boolean
 }
 
 interface PrometheusAPI {
@@ -22,6 +23,7 @@ interface PrometheusAPI {
     saveApiKey: (apiKey: string) => void
     saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string }) => void
     updateTheme: (gradientClass: string) => void
+    updateStartupSetting: (launchOnStartup: boolean) => void
     /** Subscribes to theme changes. Returns a cleanup function that removes the listener. */
     onThemeUpdated: (callback: (gradientClass: string) => void) => () => void
   }
@@ -61,6 +63,7 @@ declare global {
       saveApiKey: (apiKey: string) => void
       saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string }) => void
       updateTheme: (gradientClass: string) => void
+      updateStartupSetting: (launchOnStartup: boolean) => void
       onThemeUpdated: (callback: (gradientClass: string) => void) => () => void
       askPrometheus: (prompt: string) => Promise<string>
       onToggleVisibility: (callback: (visible: boolean) => void) => () => void

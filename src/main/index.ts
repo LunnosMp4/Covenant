@@ -43,6 +43,7 @@ interface AppConfig {
   apiKey: string
   themeGradient: string
   proxyUrl: string
+  launchOnStartup: boolean
 }
 
 interface Preprompt {
@@ -78,7 +79,8 @@ interface AppStoreSchema {
 const DEFAULT_CONFIG: AppConfig = {
   apiKey: '',
   themeGradient: 'from-neutral-900/95 to-[#1c0f03]',
-  proxyUrl: ''
+  proxyUrl: '',
+  launchOnStartup: true
 }
 
 const WORKFLOW_LANGUAGE_SET = new Set<WorkflowLanguage>([
@@ -655,7 +657,8 @@ function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined): AppC
     proxyUrl:
       typeof rawConfig?.proxyUrl === 'string' && rawConfig.proxyUrl.trim()
         ? rawConfig.proxyUrl.trim()
-        : DEFAULT_CONFIG.proxyUrl
+        : DEFAULT_CONFIG.proxyUrl,
+    launchOnStartup: typeof rawConfig?.launchOnStartup === 'boolean' ? rawConfig.launchOnStartup : DEFAULT_CONFIG.launchOnStartup
   }
 }
 
@@ -972,7 +975,20 @@ app.whenReady().then(() => {
     }
   })
 
-  readConfig()
+  const config = readConfig()
+  
+  // Apply login item settings from config
+  if (isWindows || process.platform === 'darwin') {
+    try {
+      app.setLoginItemSettings({
+        openAtLogin: config.launchOnStartup,
+        openAsHidden: true
+      })
+    } catch (error) {
+      console.error('Failed to set login item settings on app ready:', error)
+    }
+  }
+  
   createWindow()
   createTray()
 
@@ -1167,6 +1183,23 @@ ipcMain.on('update-theme', (_event, gradientClass: string) => {
 
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('theme-updated', nextTheme)
+  }
+})
+
+ipcMain.on('update-startup-setting', (_event, launchOnStartup: boolean) => {
+  const isEnabled = typeof launchOnStartup === 'boolean' ? launchOnStartup : DEFAULT_CONFIG.launchOnStartup
+  updateConfig({ launchOnStartup: isEnabled })
+  
+  // Update Electron's launch on startup setting
+  if (isWindows || process.platform === 'darwin') {
+    try {
+      app.setLoginItemSettings({
+        openAtLogin: isEnabled,
+        openAsHidden: true
+      })
+    } catch (error) {
+      console.error('Failed to update login item settings:', error)
+    }
   }
 })
 

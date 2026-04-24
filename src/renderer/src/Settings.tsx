@@ -21,6 +21,7 @@ interface AppConfig {
   apiKey: string
   themeGradient: string
   proxyUrl: string
+  launchOnStartup: boolean
 }
 
 const DEFAULT_THEME_GRADIENT = 'from-neutral-900/95 to-[#1c0f03]'
@@ -115,6 +116,46 @@ function CloseIcon(): JSX.Element {
   )
 }
 
+function MinimalistToggle({
+  checked,
+  onChange,
+  label,
+  description
+}: {
+  checked: boolean
+  onChange: (checked: boolean) => void
+  label: string
+  description?: string
+}): JSX.Element {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div className="flex-1">
+        <label className="text-sm font-medium text-neutral-100">{label}</label>
+        {description ? (
+          <p className="mt-1 text-xs text-neutral-400">{description}</p>
+        ) : null}
+      </div>
+      <button
+        type="button"
+        onClick={() => onChange(!checked)}
+        className={`relative inline-flex h-7 w-12 flex-shrink-0 rounded-full border border-neutral-700 transition-all ${
+          checked
+            ? 'border-neutral-600 bg-neutral-700 shadow-lg shadow-neutral-600/20'
+            : 'border-neutral-700 bg-neutral-800'
+        }`}
+        role="switch"
+        aria-checked={checked}
+      >
+        <span
+          className={`inline-block h-6 w-6 transform rounded-full bg-neutral-100 transition-transform ${
+            checked ? 'translate-x-5' : 'translate-x-0.5'
+          } shadow-sm`}
+        />
+      </button>
+    </div>
+  )
+}
+
 function SectionCard({
   title,
   description,
@@ -150,6 +191,8 @@ interface GeneralTabProps {
   saveFeedbackMessage: string
   selectedTheme: string
   onSelectTheme: (gradientClass: string) => void
+  launchOnStartup: boolean
+  onLaunchOnStartupChange: (value: boolean) => void
 }
 
 function GeneralTab({
@@ -163,7 +206,9 @@ function GeneralTab({
   isSavingApiKey,
   saveFeedbackMessage,
   selectedTheme,
-  onSelectTheme
+  onSelectTheme,
+  launchOnStartup,
+  onLaunchOnStartupChange
 }: GeneralTabProps): JSX.Element {
   return (
     <div className="space-y-6">
@@ -268,6 +313,18 @@ function GeneralTab({
             )
           })}
         </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Startup"
+        description="Automatically launch Prometheus when you start your computer."
+      >
+        <MinimalistToggle
+          checked={launchOnStartup}
+          onChange={onLaunchOnStartupChange}
+          label="Launch on startup"
+          description="Prometheus will open automatically when your system starts."
+        />
       </SectionCard>
     </div>
   )
@@ -519,6 +576,7 @@ export default function Settings(): JSX.Element {
   const [proxyUrl, setProxyUrl] = useState('')
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false)
   const [selectedTheme, setSelectedTheme] = useState(DEFAULT_THEME_GRADIENT)
+  const [launchOnStartup, setLaunchOnStartup] = useState(true)
   const [isSavingApiKey, setIsSavingApiKey] = useState(false)
   const [saveFeedbackMessage, setSaveFeedbackMessage] = useState('')
   const [apps, setApps] = useState<LauncherApp[]>([])
@@ -555,11 +613,13 @@ export default function Settings(): JSX.Element {
         setApiKey(typeof config.apiKey === 'string' ? config.apiKey : '')
         setProxyUrl(typeof config.proxyUrl === 'string' ? config.proxyUrl : '')
         setSelectedTheme(normalizeThemeGradient(config.themeGradient))
+        setLaunchOnStartup(typeof config.launchOnStartup === 'boolean' ? config.launchOnStartup : true)
       } catch {
         if (!isMounted) return
         setApiKey('')
         setProxyUrl('')
         setSelectedTheme(DEFAULT_THEME_GRADIENT)
+        setLaunchOnStartup(true)
       }
     }
 
@@ -679,6 +739,11 @@ export default function Settings(): JSX.Element {
     const safeTheme = normalizeThemeGradient(gradientClass)
     setSelectedTheme(safeTheme)
     window.api?.config.updateTheme?.(safeTheme)
+  }
+
+  const handleLaunchOnStartupChange = (value: boolean): void => {
+    setLaunchOnStartup(value)
+    window.api?.config.updateStartupSetting?.(value)
   }
 
   const handleOpenAddApp = (): void => {
@@ -919,6 +984,8 @@ export default function Settings(): JSX.Element {
                 saveFeedbackMessage={saveFeedbackMessage}
                 selectedTheme={selectedTheme}
                 onSelectTheme={handleThemeSelect}
+                launchOnStartup={launchOnStartup}
+                onLaunchOnStartupChange={handleLaunchOnStartupChange}
               />
             )}
             {activeTab === 'module2' && (

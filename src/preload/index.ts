@@ -4,6 +4,7 @@ interface AppConfig {
   apiKey: string
   themeGradient: string
   proxyUrl: string
+  launchOnStartup: boolean
 }
 
 interface Preprompt {
@@ -65,6 +66,7 @@ const api = {
     saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string }) =>
       ipcRenderer.send('save-openai-settings', settings),
     updateTheme: (gradientClass: string) => ipcRenderer.send('update-theme', gradientClass),
+    updateStartupSetting: (launchOnStartup: boolean) => ipcRenderer.send('update-startup-setting', launchOnStartup),
     onThemeUpdated: (callback: (gradientClass: string) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, gradientClass: string) => {
         callback(gradientClass)
@@ -141,6 +143,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveApiKey: api.config.saveApiKey,
   saveOpenAISettings: api.config.saveOpenAISettings,
   updateTheme: api.config.updateTheme,
+  updateStartupSetting: api.config.updateStartupSetting,
   onThemeUpdated: api.config.onThemeUpdated,
   askPrometheus: api.chat.askPrometheus,
   onToggleVisibility: api.window.onToggleVisibility
