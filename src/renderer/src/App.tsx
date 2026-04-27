@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import ModulePopup, { type ActivePopup, type PopupItem } from './components/ModulePopup'
+import TerminalView from './components/TerminalView'
+import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from './constants/terminalFonts'
 import type { LauncherApp } from './types/launcher-app'
 import type { Preprompt } from './types/preprompt'
 import type {
@@ -14,7 +16,10 @@ interface AppConfig {
   apiKey: string
   themeGradient: string
   proxyUrl: string
+  terminalFont: string
 }
+
+type AppMode = 'ai' | 'terminal'
 
 const DEFAULT_THEME_GRADIENT = 'from-neutral-900/95 to-[#1c0f03]'
 const AVAILABLE_THEME_GRADIENTS = [
@@ -113,7 +118,10 @@ export default function App(): JSX.Element {
   const [query, setQuery] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [aiResponse, setAiResponse] = useState('')
+  const [mode, setMode] = useState<AppMode>('ai')
+  const [hasInitializedTerminal, setHasInitializedTerminal] = useState(false)
   const [themeGradient, setThemeGradient] = useState<string>(DEFAULT_THEME_GRADIENT)
+  const [terminalFont, setTerminalFont] = useState<string>(DEFAULT_TERMINAL_FONT)
   const [apps, setApps] = useState<LauncherApp[]>([])
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [preprompts, setPreprompts] = useState<Preprompt[]>([])
@@ -140,10 +148,12 @@ export default function App(): JSX.Element {
         const config = (await window.api.config.getConfig()) as AppConfig
         if (isMounted) {
           setThemeGradient(normalizeThemeGradient(config.themeGradient))
+          setTerminalFont(normalizeTerminalFont(config.terminalFont))
         }
       } catch {
         if (isMounted) {
           setThemeGradient(DEFAULT_THEME_GRADIENT)
+          setTerminalFont(DEFAULT_TERMINAL_FONT)
         }
       }
     }
@@ -154,10 +164,17 @@ export default function App(): JSX.Element {
       setThemeGradient(normalizeThemeGradient(newGradientClass))
     })
 
+    const unsubscribeTerminalFontListener = window.api?.config.onTerminalFontUpdated?.((newTerminalFont) => {
+      setTerminalFont(normalizeTerminalFont(newTerminalFont))
+    })
+
     return () => {
       isMounted = false
       if (typeof unsubscribeThemeListener === 'function') {
         unsubscribeThemeListener()
+      }
+      if (typeof unsubscribeTerminalFontListener === 'function') {
+        unsubscribeTerminalFontListener()
       }
     }
   }, [])
@@ -185,6 +202,7 @@ export default function App(): JSX.Element {
             setQuery('')
             setIsLoading(false)
             setAiResponse('')
+            setMode('ai')
             setActivePopup(null)
             // isAppVisible is set to false via AnimatePresence onExitComplete,
             // which fires once the spring exit animation fully completes.
@@ -208,13 +226,40 @@ export default function App(): JSX.Element {
   }, [])
 
   useEffect(() => {
-    if (visible) {
-      setTimeout(() => inputRef.current?.focus(), 80)
+    if (!visible || mode !== 'ai') {
+      return
     }
-  }, [visible])
+
+    const focusTimer = setTimeout(() => {
+      inputRef.current?.focus()
+    }, 80)
+
+    return () => {
+      clearTimeout(focusTimer)
+    }
+  }, [visible, mode])
+
+  const toggleMode = useCallback(() => {
+    setMode((currentMode) => {
+      const nextMode: AppMode = currentMode === 'ai' ? 'terminal' : 'ai'
+      if (nextMode === 'terminal') {
+        setHasInitializedTerminal(true)
+      }
+
+      return nextMode
+    })
+
+    setActivePopup(null)
+  }, [])
+
+  const switchToAiMode = useCallback(() => {
+    setMode('ai')
+    setActivePopup(null)
+  }, [])
 
   const handleClose = useCallback(() => {
     setActivePopup(null)
+    setMode('ai')
     setVisible(false)
     setTimeout(() => {
       setQuery('')
@@ -282,9 +327,16 @@ export default function App(): JSX.Element {
     }
   }, [activePopup, loadApps, loadPreprompts, loadWorkflows])
 
-  const togglePopup = useCallback((popup: ActivePopup) => {
-    setActivePopup((current) => (current === popup ? null : popup))
-  }, [])
+  const togglePopup = useCallback(
+    (popup: ActivePopup) => {
+      if (mode !== 'ai') {
+        return
+      }
+
+      setActivePopup((current) => (current === popup ? null : popup))
+    },
+    [mode]
+  )
 
   useEffect(() => {
     if (!activePopup) return
@@ -452,9 +504,11 @@ export default function App(): JSX.Element {
       setAiResponse(`Error: ${message}`)
     } finally {
       setIsLoading(false)
-      inputRef.current?.focus()
+      if (mode === 'ai') {
+        inputRef.current?.focus()
+      }
     }
-  }, [query, isLoading])
+  }, [query, isLoading, mode])
 
   const handlePopupItemSelect = useCallback(
     (item: PopupItem) => {
@@ -568,10 +622,12 @@ export default function App(): JSX.Element {
       if (activePopup !== 'module3') {
         setActivePopup(null)
       } else {
-        window.setTimeout(() => inputRef.current?.focus(), 40)
+        if (mode === 'ai') {
+          window.setTimeout(() => inputRef.current?.focus(), 40)
+        }
       }
     },
-    [activePopup]
+    [activePopup, mode]
   )
 
   const handleKeyDown = useCallback(
@@ -604,11 +660,29 @@ export default function App(): JSX.Element {
     [activePopup, handleClose]
   )
 
+  const handleRootKeyDownCapture = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.key === 'Tab' && !event.altKey && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault()
+        event.stopPropagation()
+        toggleMode()
+        return
+      }
+
+      if (event.key === 'Escape' && mode === 'terminal' && !activePopup) {
+        event.preventDefault()
+        switchToAiMode()
+      }
+    },
+    [activePopup, mode, switchToAiMode, toggleMode]
+  )
+
   return (
     <div
       className="w-screen h-screen flex items-end justify-center pb-5 select-none"
       style={{ background: 'transparent' }}
       onClick={handleOverlayClick}
+      onKeyDownCapture={handleRootKeyDownCapture}
     >
       {/*
         isAppVisible gates the entire component tree so React fully unmounts
@@ -627,7 +701,7 @@ export default function App(): JSX.Element {
             className="relative flex flex-col w-[750px] max-w-full"
           >
             <AnimatePresence>
-              {activePopup && isAppVisible && (
+              {mode === 'ai' && activePopup && isAppVisible && (
                 <ModulePopup
                   activePopup={activePopup}
                   popupRef={popupRef}
@@ -673,7 +747,9 @@ export default function App(): JSX.Element {
             </AnimatePresence>
 
             <div
-              className={`flex items-center w-full rounded-2xl overflow-hidden p-2 bg-gradient-to-br ${themeGradient} border border-white/10`}
+              className={`flex items-center w-full rounded-2xl overflow-hidden p-2 bg-gradient-to-br ${themeGradient} border border-white/10 transition-opacity duration-100 ${
+                mode === 'terminal' ? 'opacity-0 pointer-events-none' : 'opacity-100'
+              }`}
               style={{
                 WebkitBackdropFilter: 'blur(40px)',
                 backdropFilter: 'blur(40px)'
@@ -742,8 +818,46 @@ export default function App(): JSX.Element {
               </div>
             </div>
 
+            <div
+              className={`absolute inset-x-0 bottom-0 z-20 h-[260px] transition-opacity duration-100 ${
+                mode === 'terminal' ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+              }`}
+            >
+              <div
+                className={`flex h-full w-full flex-col overflow-hidden rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10`}
+                style={{
+                  WebkitBackdropFilter: 'blur(40px)',
+                  backdropFilter: 'blur(40px)'
+                }}
+              >
+                <div className="mb-2 flex items-center justify-between px-2 text-[11px] uppercase tracking-[0.14em] text-neutral-300">
+                  <span>Terminal Mode</span>
+                  <button
+                    type="button"
+                    onClick={switchToAiMode}
+                    className="rounded-md border border-white/10 px-2 py-1 text-[10px] font-medium normal-case tracking-normal text-neutral-200 hover:bg-white/10"
+                  >
+                    Tab to return to AI
+                  </button>
+                </div>
+
+                <div className="min-h-0 flex-1">
+                  {hasInitializedTerminal ? (
+                    <TerminalView
+                      active={mode === 'terminal' && isAppVisible}
+                      fontFamily={terminalFont}
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center rounded-xl border border-white/10 bg-black/35 text-sm text-neutral-300">
+                      Press Tab to start terminal mode.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
             <AnimatePresence>
-              {aiResponse && (
+              {mode === 'ai' && aiResponse && (
                 <motion.div
                   key="ai-response"
                   initial={{ opacity: 0, y: -6, height: 0 }}

@@ -7,6 +7,18 @@ interface AppConfig {
   themeGradient: string
   proxyUrl: string
   launchOnStartup: boolean
+  terminalFont: string
+}
+
+interface TerminalStartResult {
+  pid: number
+  shell: string
+  created: boolean
+}
+
+interface TerminalExitPayload {
+  exitCode: number
+  signal?: number
 }
 
 interface PrometheusAPI {
@@ -24,11 +36,22 @@ interface PrometheusAPI {
     saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string }) => void
     updateTheme: (gradientClass: string) => void
     updateStartupSetting: (launchOnStartup: boolean) => void
+    updateTerminalFont: (terminalFont: string) => void
     /** Subscribes to theme changes. Returns a cleanup function that removes the listener. */
     onThemeUpdated: (callback: (gradientClass: string) => void) => () => void
+    /** Subscribes to terminal font changes. Returns a cleanup function that removes the listener. */
+    onTerminalFontUpdated: (callback: (terminalFont: string) => void) => () => void
   }
   chat: {
     askPrometheus: (prompt: string) => Promise<string>
+  }
+  terminal: {
+    startTerminal: (size?: { cols?: number; rows?: number }) => Promise<TerminalStartResult>
+    sendInput: (data: string) => Promise<{ success: boolean }>
+    resize: (cols: number, rows: number) => Promise<{ success: boolean }>
+    killTerminal: () => Promise<{ success: boolean }>
+    onData: (callback: (chunk: string) => void) => () => void
+    onExit: (callback: (payload: TerminalExitPayload) => void) => () => void
   }
   store: {
     getPreprompts: () => Promise<Preprompt[]>
@@ -64,7 +87,9 @@ declare global {
       saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string }) => void
       updateTheme: (gradientClass: string) => void
       updateStartupSetting: (launchOnStartup: boolean) => void
+      updateTerminalFont: (terminalFont: string) => void
       onThemeUpdated: (callback: (gradientClass: string) => void) => () => void
+      onTerminalFontUpdated: (callback: (terminalFont: string) => void) => () => void
       askPrometheus: (prompt: string) => Promise<string>
       onToggleVisibility: (callback: (visible: boolean) => void) => () => void
     }

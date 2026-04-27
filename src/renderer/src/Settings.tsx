@@ -4,11 +4,16 @@ import AppFormModal from './components/AppFormModal'
 import ConfirmDeleteModal from './components/ConfirmDeleteModal'
 import PrepromptFormModal from './components/PrepromptFormModal'
 import WorkflowFormModal from './components/WorkflowFormModal'
+import {
+  DEFAULT_TERMINAL_FONT,
+  TERMINAL_FONT_OPTIONS,
+  normalizeTerminalFont
+} from './constants/terminalFonts'
 import type { LauncherApp } from './types/launcher-app'
 import type { Preprompt } from './types/preprompt'
 import type { Workflow } from './types/workflow'
 
-type SettingsTab = 'general' | 'module2' | 'module3' | 'module4'
+type SettingsTab = 'general' | 'terminal' | 'module2' | 'module3' | 'module4'
 
 interface ThemeOption {
   id: string
@@ -22,6 +27,7 @@ interface AppConfig {
   themeGradient: string
   proxyUrl: string
   launchOnStartup: boolean
+  terminalFont: string
 }
 
 const DEFAULT_THEME_GRADIENT = 'from-neutral-900/95 to-[#1c0f03]'
@@ -76,6 +82,16 @@ function SidebarGlyph({ tab }: { tab: SettingsTab }): JSX.Element {
         <rect x="14" y="3" width="7" height="7" rx="1.6" />
         <rect x="3" y="14" width="7" height="7" rx="1.6" />
         <rect x="14" y="14" width="7" height="7" rx="1.6" />
+      </svg>
+    )
+  }
+
+  if (tab === 'terminal') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+        <rect x="3" y="4" width="18" height="14" rx="2" />
+        <path d="m7 9 3 2-3 2" />
+        <path d="M12.5 13h4.5" />
       </svg>
     )
   }
@@ -330,6 +346,50 @@ function GeneralTab({
   )
 }
 
+interface TerminalTabProps {
+  terminalFont: string
+  onTerminalFontSelect: (fontFamily: string) => void
+}
+
+function TerminalTab({ terminalFont, onTerminalFontSelect }: TerminalTabProps): JSX.Element {
+  return (
+    <div className="space-y-6">
+      <SectionCard
+        title="Terminal Font"
+        description="Choose how your shell text is rendered in Terminal Mode. This updates instantly and is saved locally."
+      >
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {TERMINAL_FONT_OPTIONS.map((fontOption) => {
+            const isActive = terminalFont === fontOption.fontFamily
+
+            return (
+              <button
+                key={fontOption.id}
+                type="button"
+                onClick={() => onTerminalFontSelect(fontOption.fontFamily)}
+                className={`rounded-xl border p-3 text-left transition-colors ${
+                  isActive
+                    ? 'border-neutral-500 bg-neutral-800/80'
+                    : 'border-neutral-800 bg-neutral-900/70 hover:border-neutral-600 hover:bg-neutral-800/60'
+                }`}
+              >
+                <p className="text-sm font-medium text-neutral-100">{fontOption.label}</p>
+                <p className="mt-1 text-xs text-neutral-400">{fontOption.description}</p>
+                <p
+                  className="mt-3 rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-2 text-[12px] text-neutral-200"
+                  style={{ fontFamily: fontOption.fontFamily }}
+                >
+                  PS C:\Projects\Prometheus&gt; git status
+                </p>
+              </button>
+            )
+          })}
+        </div>
+      </SectionCard>
+    </div>
+  )
+}
+
 interface AppLauncherTabProps {
   apps: LauncherApp[]
   isLoading: boolean
@@ -577,6 +637,7 @@ export default function Settings(): JSX.Element {
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false)
   const [selectedTheme, setSelectedTheme] = useState(DEFAULT_THEME_GRADIENT)
   const [launchOnStartup, setLaunchOnStartup] = useState(true)
+  const [terminalFont, setTerminalFont] = useState(DEFAULT_TERMINAL_FONT)
   const [isSavingApiKey, setIsSavingApiKey] = useState(false)
   const [saveFeedbackMessage, setSaveFeedbackMessage] = useState('')
   const [apps, setApps] = useState<LauncherApp[]>([])
@@ -614,12 +675,14 @@ export default function Settings(): JSX.Element {
         setProxyUrl(typeof config.proxyUrl === 'string' ? config.proxyUrl : '')
         setSelectedTheme(normalizeThemeGradient(config.themeGradient))
         setLaunchOnStartup(typeof config.launchOnStartup === 'boolean' ? config.launchOnStartup : true)
+        setTerminalFont(normalizeTerminalFont(config.terminalFont))
       } catch {
         if (!isMounted) return
         setApiKey('')
         setProxyUrl('')
         setSelectedTheme(DEFAULT_THEME_GRADIENT)
         setLaunchOnStartup(true)
+        setTerminalFont(DEFAULT_TERMINAL_FONT)
       }
     }
 
@@ -744,6 +807,12 @@ export default function Settings(): JSX.Element {
   const handleLaunchOnStartupChange = (value: boolean): void => {
     setLaunchOnStartup(value)
     window.api?.config.updateStartupSetting?.(value)
+  }
+
+  const handleTerminalFontSelect = (fontFamily: string): void => {
+    const safeTerminalFont = normalizeTerminalFont(fontFamily)
+    setTerminalFont(safeTerminalFont)
+    window.api?.config.updateTerminalFont?.(safeTerminalFont)
   }
 
   const handleOpenAddApp = (): void => {
@@ -891,6 +960,7 @@ export default function Settings(): JSX.Element {
 
   const pageTitle = useMemo(() => {
     if (activeTab === 'general') return 'General'
+    if (activeTab === 'terminal') return 'Terminal'
     if (activeTab === 'module2') return 'App Launcher'
     if (activeTab === 'module3') return 'Workflows'
     return 'Preprompts'
@@ -938,6 +1008,7 @@ export default function Settings(): JSX.Element {
             <nav className="space-y-1">
               {[
                 { id: 'general' as const, label: 'General' },
+                { id: 'terminal' as const, label: 'Terminal' },
                 { id: 'module2' as const, label: 'App Launcher' },
                 { id: 'module3' as const, label: 'Workflows' },
                 { id: 'module4' as const, label: 'Preprompts' }
@@ -986,6 +1057,12 @@ export default function Settings(): JSX.Element {
                 onSelectTheme={handleThemeSelect}
                 launchOnStartup={launchOnStartup}
                 onLaunchOnStartupChange={handleLaunchOnStartupChange}
+              />
+            )}
+            {activeTab === 'terminal' && (
+              <TerminalTab
+                terminalFont={terminalFont}
+                onTerminalFontSelect={handleTerminalFontSelect}
               />
             )}
             {activeTab === 'module2' && (

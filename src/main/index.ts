@@ -20,6 +20,7 @@ import ElectronStore from 'electron-store'
 import dotenv from 'dotenv'
 import OpenAI from 'openai'
 import { ProxyAgent } from 'undici'
+import { terminalManager, type TerminalExitPayload } from './terminalManager'
 
 // Expose V8's garbage collector so we can force a collection on window hide.
 // Must be set before app.whenReady() — top-level module scope satisfies this.
@@ -44,6 +45,7 @@ interface AppConfig {
   themeGradient: string
   proxyUrl: string
   launchOnStartup: boolean
+  terminalFont: string
 }
 
 interface Preprompt {
@@ -80,8 +82,19 @@ const DEFAULT_CONFIG: AppConfig = {
   apiKey: '',
   themeGradient: 'from-neutral-900/95 to-[#1c0f03]',
   proxyUrl: '',
-  launchOnStartup: true
+  launchOnStartup: true,
+  terminalFont: 'Cascadia Mono, Consolas, "Courier New", monospace'
 }
+
+const TERMINAL_FONT_OPTIONS = [
+  DEFAULT_CONFIG.terminalFont,
+  'JetBrains Mono, Cascadia Mono, Consolas, "Courier New", monospace',
+  'Fira Code, Cascadia Mono, Consolas, "Courier New", monospace',
+  'Source Code Pro, Cascadia Mono, Consolas, "Courier New", monospace',
+  'IBM Plex Mono, Cascadia Mono, Consolas, "Courier New", monospace'
+] as const
+
+const TERMINAL_FONT_SET = new Set<string>(TERMINAL_FONT_OPTIONS)
 
 const WORKFLOW_LANGUAGE_SET = new Set<WorkflowLanguage>([
   'powershell',
@@ -93,6 +106,82 @@ const WORKFLOW_LANGUAGE_SET = new Set<WorkflowLanguage>([
 ])
 
 const runningWorkflowIds = new Set<string>()
+const terminalSubscribers = new Set<WebContents>()
+
+const MAX_TERMINAL_INPUT_CHUNK = 8192
+const DEFAULT_TERMINAL_COLS = 120
+const DEFAULT_TERMINAL_ROWS = 30
+const MIN_TERMINAL_COLS = 20
+const MAX_TERMINAL_COLS = 400
+const MIN_TERMINAL_ROWS = 5
+const MAX_TERMINAL_ROWS = 200
+
+function sanitizeTerminalDimension(
+  rawValue: unknown,
+  fallback: number,
+  min: number,
+  max: number
+): number {
+  if (typeof rawValue !== 'number' || !Number.isFinite(rawValue)) {
+    return fallback
+  }
+
+  const integerValue = Math.floor(rawValue)
+  return Math.min(max, Math.max(min, integerValue))
+}
+
+function sanitizeTerminalInput(rawInput: unknown): string {
+  if (typeof rawInput !== 'string' || !rawInput) {
+    return ''
+  }
+
+  if (rawInput.length <= MAX_TERMINAL_INPUT_CHUNK) {
+    return rawInput
+  }
+
+  return rawInput.slice(0, MAX_TERMINAL_INPUT_CHUNK)
+}
+
+function attachTerminalSubscriber(sender: WebContents): void {
+  if (sender.isDestroyed() || terminalSubscribers.has(sender)) {
+    return
+  }
+
+  terminalSubscribers.add(sender)
+
+  sender.once('destroyed', () => {
+    terminalSubscribers.delete(sender)
+  })
+}
+
+function assertMainWindowSender(sender: WebContents): void {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) {
+    throw new Error('Main window is unavailable.')
+  }
+
+  if (sender.id !== mainWindow.webContents.id) {
+    throw new Error('Terminal access is restricted to the main command window.')
+  }
+}
+
+function emitTerminalEvent(channel: 'terminal:data' | 'terminal:exit', payload: unknown): void {
+  terminalSubscribers.forEach((subscriber) => {
+    if (subscriber.isDestroyed()) {
+      terminalSubscribers.delete(subscriber)
+      return
+    }
+
+    subscriber.send(channel, payload)
+  })
+}
+
+terminalManager.onData((chunk) => {
+  emitTerminalEvent('terminal:data', chunk)
+})
+
+terminalManager.onExit((payload: TerminalExitPayload) => {
+  emitTerminalEvent('terminal:exit', payload)
+})
 
 const StoreClass =
   (ElectronStore as typeof ElectronStore & { default?: typeof ElectronStore }).default ??
@@ -647,6 +736,15 @@ function getConfigPath(): string {
   return join(app.getPath('userData'), 'config.json')
 }
 
+function normalizeTerminalFont(rawFont: unknown): string {
+  if (typeof rawFont !== 'string') {
+    return DEFAULT_CONFIG.terminalFont
+  }
+
+  const normalizedFont = rawFont.trim()
+  return TERMINAL_FONT_SET.has(normalizedFont) ? normalizedFont : DEFAULT_CONFIG.terminalFont
+}
+
 function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined): AppConfig {
   return {
     apiKey: typeof rawConfig?.apiKey === 'string' ? rawConfig.apiKey : DEFAULT_CONFIG.apiKey,
@@ -658,7 +756,11 @@ function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined): AppC
       typeof rawConfig?.proxyUrl === 'string' && rawConfig.proxyUrl.trim()
         ? rawConfig.proxyUrl.trim()
         : DEFAULT_CONFIG.proxyUrl,
-    launchOnStartup: typeof rawConfig?.launchOnStartup === 'boolean' ? rawConfig.launchOnStartup : DEFAULT_CONFIG.launchOnStartup
+    launchOnStartup:
+      typeof rawConfig?.launchOnStartup === 'boolean'
+        ? rawConfig.launchOnStartup
+        : DEFAULT_CONFIG.launchOnStartup,
+    terminalFont: normalizeTerminalFont(rawConfig?.terminalFont)
   }
 }
 
@@ -1012,6 +1114,8 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+
+  terminalManager.dispose()
   
   // Cleanup tray
   if (tray) {
@@ -1111,6 +1215,66 @@ ipcMain.handle('execute-workflow', async (event, workflowPayload: Partial<Workfl
   }
 })
 
+ipcMain.handle('terminal:start', (event, payload?: { cols?: unknown; rows?: unknown }) => {
+  assertMainWindowSender(event.sender)
+
+  const cols = sanitizeTerminalDimension(
+    payload?.cols,
+    DEFAULT_TERMINAL_COLS,
+    MIN_TERMINAL_COLS,
+    MAX_TERMINAL_COLS
+  )
+  const rows = sanitizeTerminalDimension(
+    payload?.rows,
+    DEFAULT_TERMINAL_ROWS,
+    MIN_TERMINAL_ROWS,
+    MAX_TERMINAL_ROWS
+  )
+
+  attachTerminalSubscriber(event.sender)
+
+  return terminalManager.start(cols, rows)
+})
+
+ipcMain.handle('terminal:input', (event, rawInput: unknown) => {
+  assertMainWindowSender(event.sender)
+
+  const input = sanitizeTerminalInput(rawInput)
+  if (!input) {
+    return { success: false }
+  }
+
+  terminalManager.write(input)
+  return { success: true }
+})
+
+ipcMain.handle('terminal:resize', (event, payload?: { cols?: unknown; rows?: unknown }) => {
+  assertMainWindowSender(event.sender)
+
+  const cols = sanitizeTerminalDimension(
+    payload?.cols,
+    DEFAULT_TERMINAL_COLS,
+    MIN_TERMINAL_COLS,
+    MAX_TERMINAL_COLS
+  )
+  const rows = sanitizeTerminalDimension(
+    payload?.rows,
+    DEFAULT_TERMINAL_ROWS,
+    MIN_TERMINAL_ROWS,
+    MAX_TERMINAL_ROWS
+  )
+
+  terminalManager.resize(cols, rows)
+  return { success: true }
+})
+
+ipcMain.handle('terminal:kill', (event) => {
+  assertMainWindowSender(event.sender)
+
+  terminalManager.kill()
+  return { success: true }
+})
+
 ipcMain.handle('select-file', async () => {
   const fileFilters = isWindows
     ? [{ name: 'Applications', extensions: ['exe'] }]
@@ -1183,6 +1347,19 @@ ipcMain.on('update-theme', (_event, gradientClass: string) => {
 
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('theme-updated', nextTheme)
+  }
+})
+
+ipcMain.on('update-terminal-font', (_event, terminalFont: string) => {
+  const nextTerminalFont = normalizeTerminalFont(terminalFont)
+  updateConfig({ terminalFont: nextTerminalFont })
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('terminal-font-updated', nextTerminalFont)
+  }
+
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.webContents.send('terminal-font-updated', nextTerminalFont)
   }
 })
 

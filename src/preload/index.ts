@@ -5,6 +5,7 @@ interface AppConfig {
   themeGradient: string
   proxyUrl: string
   launchOnStartup: boolean
+  terminalFont: string
 }
 
 interface Preprompt {
@@ -42,6 +43,17 @@ interface WorkflowLogPayload {
   text: string
 }
 
+interface TerminalStartResult {
+  pid: number
+  shell: string
+  created: boolean
+}
+
+interface TerminalExitPayload {
+  exitCode: number
+  signal?: number
+}
+
 const api = {
   window: {
     hideWindow: () => ipcRenderer.send('hide-window'),
@@ -67,6 +79,7 @@ const api = {
       ipcRenderer.send('save-openai-settings', settings),
     updateTheme: (gradientClass: string) => ipcRenderer.send('update-theme', gradientClass),
     updateStartupSetting: (launchOnStartup: boolean) => ipcRenderer.send('update-startup-setting', launchOnStartup),
+    updateTerminalFont: (terminalFont: string) => ipcRenderer.send('update-terminal-font', terminalFont),
     onThemeUpdated: (callback: (gradientClass: string) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, gradientClass: string) => {
         callback(gradientClass)
@@ -77,10 +90,52 @@ const api = {
       return () => {
         ipcRenderer.removeListener('theme-updated', listener)
       }
+    },
+    onTerminalFontUpdated: (callback: (terminalFont: string) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, terminalFont: string) => {
+        callback(terminalFont)
+      }
+
+      ipcRenderer.on('terminal-font-updated', listener)
+
+      return () => {
+        ipcRenderer.removeListener('terminal-font-updated', listener)
+      }
     }
   },
   chat: {
     askPrometheus: (prompt: string) => ipcRenderer.invoke('prometheus:chat', prompt) as Promise<string>
+  },
+  terminal: {
+    startTerminal: (size?: { cols?: number; rows?: number }) =>
+      ipcRenderer.invoke('terminal:start', size) as Promise<TerminalStartResult>,
+    sendInput: (data: string) =>
+      ipcRenderer.invoke('terminal:input', data) as Promise<{ success: boolean }>,
+    resize: (cols: number, rows: number) =>
+      ipcRenderer.invoke('terminal:resize', { cols, rows }) as Promise<{ success: boolean }>,
+    killTerminal: () => ipcRenderer.invoke('terminal:kill') as Promise<{ success: boolean }>,
+    onData: (callback: (chunk: string) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, chunk: string) => {
+        callback(chunk)
+      }
+
+      ipcRenderer.on('terminal:data', listener)
+
+      return () => {
+        ipcRenderer.removeListener('terminal:data', listener)
+      }
+    },
+    onExit: (callback: (payload: TerminalExitPayload) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: TerminalExitPayload) => {
+        callback(payload)
+      }
+
+      ipcRenderer.on('terminal:exit', listener)
+
+      return () => {
+        ipcRenderer.removeListener('terminal:exit', listener)
+      }
+    }
   },
   store: {
     getPreprompts: () => ipcRenderer.invoke('get-preprompts') as Promise<Preprompt[]>,
@@ -144,7 +199,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveOpenAISettings: api.config.saveOpenAISettings,
   updateTheme: api.config.updateTheme,
   updateStartupSetting: api.config.updateStartupSetting,
+  updateTerminalFont: api.config.updateTerminalFont,
   onThemeUpdated: api.config.onThemeUpdated,
+  onTerminalFontUpdated: api.config.onTerminalFontUpdated,
   askPrometheus: api.chat.askPrometheus,
   onToggleVisibility: api.window.onToggleVisibility
 })
