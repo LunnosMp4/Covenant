@@ -746,7 +746,7 @@ export default function App(): JSX.Element {
               )}
             </AnimatePresence>
 
-            <div
+            <motion.div
               className={`flex items-center w-full rounded-2xl overflow-hidden p-2 bg-gradient-to-br ${themeGradient} border border-white/10 transition-opacity duration-100 ${
                 mode === 'terminal' ? 'opacity-0 pointer-events-none' : 'opacity-100'
               }`}
@@ -816,45 +816,47 @@ export default function App(): JSX.Element {
                   <CodeIcon />
                 </button>
               </div>
-            </div>
+            </motion.div>
 
-            <div
-              className={`absolute inset-x-0 bottom-0 z-20 h-[260px] transition-opacity duration-100 ${
-                mode === 'terminal' ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-              }`}
-            >
-              <div
-                className={`flex h-full w-full flex-col overflow-hidden rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10`}
-                style={{
-                  WebkitBackdropFilter: 'blur(40px)',
-                  backdropFilter: 'blur(40px)'
-                }}
-              >
-                <div className="mb-2 flex items-center justify-between px-2 text-[11px] uppercase tracking-[0.14em] text-neutral-300">
-                  <span>Terminal Mode</span>
-                  <button
-                    type="button"
-                    onClick={switchToAiMode}
-                    className="rounded-md border border-white/10 px-2 py-1 text-[10px] font-medium normal-case tracking-normal text-neutral-200 hover:bg-white/10"
+            <AnimatePresence>
+              {mode === 'terminal' && (
+                <motion.div
+                  key="terminal-container"
+                  className="absolute inset-x-0 bottom-0 z-20 h-[360px] pointer-events-auto"
+                  initial={{ y: '100%', opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: '100%', opacity: 0 }}
+                  transition={{
+                    type: 'spring',
+                    damping: 20,
+                    stiffness: 200,
+                    mass: 1,
+                    duration: 0.2
+                  }}
+                >
+                  <div
+                    className={`flex h-full w-full flex-col overflow-hidden rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10`}
+                    style={{
+                      WebkitBackdropFilter: 'blur(40px)',
+                      backdropFilter: 'blur(40px)'
+                    }}
                   >
-                    Tab to return to AI
-                  </button>
-                </div>
-
-                <div className="min-h-0 flex-1">
-                  {hasInitializedTerminal ? (
-                    <TerminalView
-                      active={mode === 'terminal' && isAppVisible}
-                      fontFamily={terminalFont}
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center rounded-xl border border-white/10 bg-black/35 text-sm text-neutral-300">
-                      Press Tab to start terminal mode.
+                    <div className="min-h-0 flex-1">
+                      {hasInitializedTerminal ? (
+                        <TerminalView
+                          active={mode === 'terminal' && isAppVisible}
+                          fontFamily={terminalFont}
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center rounded-xl border border-white/10 bg-black/35 text-sm text-neutral-300">
+                          Press Tab to start terminal mode.
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              </div>
-            </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             <AnimatePresence>
               {mode === 'ai' && aiResponse && (

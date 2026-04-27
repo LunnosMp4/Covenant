@@ -42,7 +42,7 @@ function TerminalView({ active, fontFamily }: TerminalViewProps): JSX.Element {
       allowProposedApi: false,
       convertEol: true,
       cursorBlink: true,
-      scrollback: 5000,
+      scrollback: 10000,
       fontSize: 13,
       lineHeight: 1.2,
       fontFamily,

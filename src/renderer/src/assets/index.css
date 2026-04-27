@@ -38,3 +38,35 @@ body[data-window='settings'] *::-webkit-scrollbar {
   width: 0;
   height: 0;
 }
+
+/* Custom scrollbar styling for xterm */
+.xterm-viewport::-webkit-scrollbar {
+  width: 8px;
+}
+
+.xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  min-height: 40px;
+  transition: background-color 0.2s ease;
+}
+
+.xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Firefox scrollbar styling */
+.xterm-viewport {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+/* Terminal text wrapping to prevent horizontal scrollbar */
+.xterm-row {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
