@@ -700,9 +700,10 @@ export default function App(): JSX.Element {
             transition={{ type: 'spring', damping: 15, stiffness: 120, mass: 0.8 }}
             className="relative flex flex-col w-[750px] max-w-full"
           >
-            <AnimatePresence>
+            <AnimatePresence mode="wait">
               {mode === 'ai' && activePopup && isAppVisible && (
                 <ModulePopup
+                  key={activePopup}
                   activePopup={activePopup}
                   popupRef={popupRef}
                   themeGradient={themeGradient}
