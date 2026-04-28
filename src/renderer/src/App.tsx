@@ -842,17 +842,24 @@ export default function App(): JSX.Element {
       {(hasInitializedTerminal || mode === 'terminal') && (
         <motion.div
           key="terminal-container"
-          className="absolute inset-x-0 bottom-0 z-20 h-[360px] pointer-events-auto flex justify-center"
+          className="absolute inset-x-0 bottom-5 z-20 h-[360px] pointer-events-auto flex justify-center"
           initial={false}
-          animate={mode === 'terminal' ? { y: 0, opacity: 1 } : { y: '100%', opacity: 0 }}
+          animate={
+            mode === 'terminal'
+              ? { scaleY: 1, y: 0, opacity: 1 }
+              : { scaleY: 0.12, y: 0, opacity: 0 }
+          }
           transition={{
             type: 'spring',
-            damping: 20,
-            stiffness: 200,
+            damping: 22,
+            stiffness: 280,
             mass: 1,
             duration: 0.2
           }}
-          style={{ pointerEvents: mode === 'terminal' && visible ? 'auto' : 'none' }}
+          style={{
+            pointerEvents: mode === 'terminal' && visible ? 'auto' : 'none',
+            transformOrigin: 'bottom center'
+          }}
           aria-hidden={mode !== 'terminal' || !visible}
         >
           <div
