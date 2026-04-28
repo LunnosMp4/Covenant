@@ -722,7 +722,8 @@ function resolveOpenAIProxyUrl(configProxyUrl?: string): string | undefined {
 }
 
 function getWindowPosition(): { x: number; y: number } {
-  const primaryDisplay = screen.getPrimaryDisplay()
+  const cursorPoint = screen.getCursorScreenPoint()
+  const primaryDisplay = screen.getDisplayNearestPoint(cursorPoint)
   const { x: workAreaX, y: workAreaY, width: workAreaWidth, height: workAreaHeight } =
     primaryDisplay.workArea
 
