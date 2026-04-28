@@ -6,7 +6,6 @@ import PrepromptFormModal from './components/PrepromptFormModal'
 import WorkflowFormModal from './components/WorkflowFormModal'
 import {
   DEFAULT_TERMINAL_FONT,
-  TERMINAL_FONT_OPTIONS,
   normalizeTerminalFont
 } from './constants/terminalFonts'
 import type { LauncherApp } from './types/launcher-app'
@@ -352,43 +351,81 @@ interface TerminalTabProps {
 }
 
 function TerminalTab({ terminalFont, onTerminalFontSelect }: TerminalTabProps): JSX.Element {
+  const [availableFonts, setAvailableFonts] = useState<string[]>([])
+  const [isLoadingFonts, setIsLoadingFonts] = useState(true)
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadFonts = async (): Promise<void> => {
+      if (!window.api?.config.getTerminalFonts) return
+
+      try {
+        setIsLoadingFonts(true)
+        const fonts = await window.api.config.getTerminalFonts()
+        if (!isMounted) return
+        setAvailableFonts(fonts)
+      } catch {
+        if (!isMounted) return
+        setAvailableFonts([])
+      } finally {
+        if (!isMounted) return
+        setIsLoadingFonts(false)
+      }
+    }
+
+    void loadFonts()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
   return (
     <div className="space-y-6">
       <SectionCard
         title="Terminal Font"
         description="Choose how your shell text is rendered in Terminal Mode. This updates instantly and is saved locally."
       >
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {TERMINAL_FONT_OPTIONS.map((fontOption) => {
-            const isActive = terminalFont === fontOption.fontFamily
+        <div className="space-y-4">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-neutral-100">
+              Terminal Fonts
+            </label>
+            <select
+              value={normalizeTerminalFont(terminalFont)}
+              onChange={(e) => onTerminalFontSelect(e.target.value)}
+              disabled={isLoadingFonts}
+              className="w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100 transition-colors focus:border-neutral-600 focus:outline-none disabled:opacity-50"
+            >
+              <option value="">
+                {isLoadingFonts ? 'Loading terminal fonts...' : 'Select a terminal font'}
+              </option>
+              {availableFonts.map((font) => (
+                <option key={font} value={font}>
+                  {font}
+                </option>
+              ))}
+            </select>
+          </div>
 
-            return (
-              <button
-                key={fontOption.id}
-                type="button"
-                onClick={() => onTerminalFontSelect(fontOption.fontFamily)}
-                className={`rounded-xl border p-3 text-left transition-colors ${
-                  isActive
-                    ? 'border-neutral-500 bg-neutral-800/80'
-                    : 'border-neutral-800 bg-neutral-900/70 hover:border-neutral-600 hover:bg-neutral-800/60'
-                }`}
+          {terminalFont && (
+            <div>
+              <p className="text-xs text-neutral-400 mb-2">Preview:</p>
+              <p
+                className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+                style={{ fontFamily: terminalFont }}
               >
-                <p className="text-sm font-medium text-neutral-100">{fontOption.label}</p>
-                <p className="mt-1 text-xs text-neutral-400">{fontOption.description}</p>
-                <p
-                  className="mt-3 rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-2 text-[12px] text-neutral-200"
-                  style={{ fontFamily: fontOption.fontFamily }}
-                >
-                  PS C:\Projects\Prometheus&gt; git status
-                </p>
-              </button>
-            )
-          })}
+                PS C:\Projects\Prometheus&gt; git status
+              </p>
+            </div>
+          )}
         </div>
       </SectionCard>
     </div>
   )
 }
+
 
 interface AppLauncherTabProps {
   apps: LauncherApp[]

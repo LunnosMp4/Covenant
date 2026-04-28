@@ -21,6 +21,7 @@ import dotenv from 'dotenv'
 import OpenAI from 'openai'
 import { ProxyAgent } from 'undici'
 import { terminalManager, type TerminalExitPayload } from './terminalManager'
+import { getTerminalFonts } from './fontManager'
 
 // Expose V8's garbage collector so we can force a collection on window hide.
 // Must be set before app.whenReady() — top-level module scope satisfies this.
@@ -85,16 +86,6 @@ const DEFAULT_CONFIG: AppConfig = {
   launchOnStartup: true,
   terminalFont: 'Cascadia Mono, Consolas, "Courier New", monospace'
 }
-
-const TERMINAL_FONT_OPTIONS = [
-  DEFAULT_CONFIG.terminalFont,
-  'JetBrains Mono, Cascadia Mono, Consolas, "Courier New", monospace',
-  'Fira Code, Cascadia Mono, Consolas, "Courier New", monospace',
-  'Source Code Pro, Cascadia Mono, Consolas, "Courier New", monospace',
-  'IBM Plex Mono, Cascadia Mono, Consolas, "Courier New", monospace'
-] as const
-
-const TERMINAL_FONT_SET = new Set<string>(TERMINAL_FONT_OPTIONS)
 
 const WORKFLOW_LANGUAGE_SET = new Set<WorkflowLanguage>([
   'powershell',
@@ -737,13 +728,23 @@ function getConfigPath(): string {
   return join(app.getPath('userData'), 'config.json')
 }
 
+function extractTerminalFontFamily(fontFamily: string): string {
+  const primaryFont = fontFamily.trim().split(',')[0] ?? ''
+  return primaryFont.replace(/^['\"]|['\"]$/g, '').trim()
+}
+
 function normalizeTerminalFont(rawFont: unknown): string {
   if (typeof rawFont !== 'string') {
     return DEFAULT_CONFIG.terminalFont
   }
 
-  const normalizedFont = rawFont.trim()
-  return TERMINAL_FONT_SET.has(normalizedFont) ? normalizedFont : DEFAULT_CONFIG.terminalFont
+  const normalizedFont = extractTerminalFontFamily(rawFont)
+  if (!normalizedFont) {
+    return DEFAULT_CONFIG.terminalFont
+  }
+
+  const terminalFonts = new Set(getTerminalFonts().map((font) => font.toLowerCase()))
+  return terminalFonts.has(normalizedFont.toLowerCase()) ? normalizedFont : DEFAULT_CONFIG.terminalFont
 }
 
 function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined): AppConfig {
@@ -1361,6 +1362,15 @@ ipcMain.on('update-terminal-font', (_event, terminalFont: string) => {
 
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.webContents.send('terminal-font-updated', nextTerminalFont)
+  }
+})
+
+ipcMain.handle('get-terminal-fonts', () => {
+  try {
+    return getTerminalFonts()
+  } catch (error) {
+    console.error('Failed to get terminal fonts:', error)
+    return []
   }
 })
 

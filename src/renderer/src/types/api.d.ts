@@ -37,6 +37,7 @@ interface PrometheusAPI {
     updateTheme: (gradientClass: string) => void
     updateStartupSetting: (launchOnStartup: boolean) => void
     updateTerminalFont: (terminalFont: string) => void
+    getTerminalFonts: () => Promise<string[]>
     /** Subscribes to theme changes. Returns a cleanup function that removes the listener. */
     onThemeUpdated: (callback: (gradientClass: string) => void) => () => void
     /** Subscribes to terminal font changes. Returns a cleanup function that removes the listener. */
@@ -88,6 +89,7 @@ declare global {
       updateTheme: (gradientClass: string) => void
       updateStartupSetting: (launchOnStartup: boolean) => void
       updateTerminalFont: (terminalFont: string) => void
+      getTerminalFonts: () => Promise<string[]>
       onThemeUpdated: (callback: (gradientClass: string) => void) => () => void
       onTerminalFontUpdated: (callback: (terminalFont: string) => void) => () => void
       askPrometheus: (prompt: string) => Promise<string>

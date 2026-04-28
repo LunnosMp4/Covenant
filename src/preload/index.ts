@@ -101,7 +101,8 @@ const api = {
       return () => {
         ipcRenderer.removeListener('terminal-font-updated', listener)
       }
-    }
+    },
+    getTerminalFonts: () => ipcRenderer.invoke('get-terminal-fonts') as Promise<string[]>
   },
   chat: {
     askPrometheus: (prompt: string) => ipcRenderer.invoke('prometheus:chat', prompt) as Promise<string>
@@ -200,6 +201,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateTheme: api.config.updateTheme,
   updateStartupSetting: api.config.updateStartupSetting,
   updateTerminalFont: api.config.updateTerminalFont,
+  getTerminalFonts: api.config.getTerminalFonts,
   onThemeUpdated: api.config.onThemeUpdated,
   onTerminalFontUpdated: api.config.onTerminalFontUpdated,
   askPrometheus: api.chat.askPrometheus,
