@@ -679,16 +679,16 @@ export default function App(): JSX.Element {
 
   return (
     <div
-      className="w-screen h-screen flex items-end justify-center pb-5 select-none"
+      className="relative w-screen h-screen flex items-end justify-center pb-5 select-none"
       style={{ background: 'transparent' }}
       onClick={handleOverlayClick}
       onKeyDownCapture={handleRootKeyDownCapture}
     >
       {/*
-        isAppVisible gates the entire component tree so React fully unmounts
-        all children — including ModulePopup, WorkflowList, and log panels —
-        once the exit animation has finished. This is the primary mechanism
-        for freeing heap memory during the passive/hidden state.
+        isAppVisible tracks whether the visible command bar has finished its
+        exit animation. Heavy transient UI such as popups should respect it,
+        but the terminal host stays mounted so its scrollback survives hide/
+        show cycles.
       */}
       <AnimatePresence onExitComplete={() => setIsAppVisible(false)}>
         {visible && (
@@ -819,46 +819,6 @@ export default function App(): JSX.Element {
             </motion.div>
 
             <AnimatePresence>
-              {mode === 'terminal' && (
-                <motion.div
-                  key="terminal-container"
-                  className="absolute inset-x-0 bottom-0 z-20 h-[360px] pointer-events-auto"
-                  initial={{ y: '100%', opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  exit={{ y: '100%', opacity: 0 }}
-                  transition={{
-                    type: 'spring',
-                    damping: 20,
-                    stiffness: 200,
-                    mass: 1,
-                    duration: 0.2
-                  }}
-                >
-                  <div
-                    className={`flex h-full w-full flex-col overflow-hidden rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10`}
-                    style={{
-                      WebkitBackdropFilter: 'blur(40px)',
-                      backdropFilter: 'blur(40px)'
-                    }}
-                  >
-                    <div className="min-h-0 flex-1">
-                      {hasInitializedTerminal ? (
-                        <TerminalView
-                          active={mode === 'terminal' && isAppVisible}
-                          fontFamily={terminalFont}
-                        />
-                      ) : (
-                        <div className="flex h-full items-center justify-center rounded-xl border border-white/10 bg-black/35 text-sm text-neutral-300">
-                          Press Tab to start terminal mode.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <AnimatePresence>
               {mode === 'ai' && aiResponse && (
                 <motion.div
                   key="ai-response"
@@ -878,6 +838,36 @@ export default function App(): JSX.Element {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {(hasInitializedTerminal || mode === 'terminal') && (
+        <motion.div
+          key="terminal-container"
+          className="absolute inset-x-0 bottom-0 z-20 h-[360px] pointer-events-auto flex justify-center"
+          initial={false}
+          animate={mode === 'terminal' ? { y: 0, opacity: 1 } : { y: '100%', opacity: 0 }}
+          transition={{
+            type: 'spring',
+            damping: 20,
+            stiffness: 200,
+            mass: 1,
+            duration: 0.2
+          }}
+          style={{ pointerEvents: mode === 'terminal' && visible ? 'auto' : 'none' }}
+          aria-hidden={mode !== 'terminal' || !visible}
+        >
+          <div
+            className={`flex h-full w-[750px] max-w-full flex-col overflow-hidden rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10`}
+            style={{
+              WebkitBackdropFilter: 'blur(40px)',
+              backdropFilter: 'blur(40px)'
+            }}
+          >
+            <div className="min-h-0 flex-1">
+              <TerminalView active={mode === 'terminal' && visible && isAppVisible} fontFamily={terminalFont} />
+            </div>
+          </div>
+        </motion.div>
+      )}
     </div>
   )
 }
