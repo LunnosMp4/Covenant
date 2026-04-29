@@ -535,7 +535,7 @@ async function executeWorkflowScript(
   const runtime = resolveWorkflowRuntime(normalizedWorkflow)
   const tempFilePath = join(
     tmpdir(),
-    `prometheus-workflow-${Date.now()}-${randomUUID()}${runtime.extension}`
+    `covenant-workflow-${Date.now()}-${randomUUID()}${runtime.extension}`
   )
 
   await fsPromises.writeFile(tempFilePath, normalizedWorkflow.content, { encoding: 'utf-8' })
@@ -906,7 +906,7 @@ function createSettingsWindow(): void {
     height: SETTINGS_WINDOW_HEIGHT,
     minWidth: 800,
     minHeight: 450,
-    title: 'Prometheus Settings',
+    title: 'Covenant Settings',
     show: false,
     frame: false,
     transparent: true,
@@ -1025,12 +1025,12 @@ function createTray(): void {
     tray = new Tray(trayIconPath)
     
     // Set tooltip
-    tray.setToolTip('Prometheus - Alt+Space')
+    tray.setToolTip('Covenant - Alt+Space')
 
     // Create context menu
     const contextMenu = Menu.buildFromTemplate([
       {
-        label: 'Open Prometheus',
+        label: 'Open Covenant',
         click: () => {
           showWindow()
         }
@@ -1043,7 +1043,7 @@ function createTray(): void {
       },
       { type: 'separator' },
       {
-        label: 'Quit Prometheus',
+        label: 'Quit Covenant',
         click: () => {
           app.quit()
         }
@@ -1391,7 +1391,7 @@ ipcMain.on('update-startup-setting', (_event, launchOnStartup: boolean) => {
   }
 })
 
-ipcMain.handle('prometheus:chat', async (_event, userPrompt: string) => {
+ipcMain.handle('covenant:chat', async (_event, userPrompt: string) => {
   const prompt = userPrompt?.trim()
   if (!prompt) {
     throw new Error('Prompt cannot be empty.')
@@ -1420,7 +1420,7 @@ ipcMain.handle('prometheus:chat', async (_event, userPrompt: string) => {
       {
         role: 'system',
         content:
-          "You are Prometheus, a helpful, concise AI assistant integrated into a user's operating system. Keep your answers brief and to the point."
+          "You are Covenant, a helpful, concise AI assistant integrated into a user's operating system. Keep your answers brief and to the point."
       },
       { role: 'user', content: prompt }
     ]

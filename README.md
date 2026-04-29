@@ -1,4 +1,4 @@
-# Prometheus
+# Covenant
 
 A next-generation command bar app for Windows and macOS, inspired by the visual language of Raycast and Claude Desktop.
 
@@ -51,7 +51,7 @@ If you are behind a corporate proxy, you can optionally add:
 OPENAI_PROXY_URL=http://10.31.255.65:8080
 ```
 
-Prometheus checks proxy variables in this order: `OPENAI_PROXY_URL`, `HTTPS_PROXY`, then `HTTP_PROXY`.
+Covenant checks proxy variables in this order: `OPENAI_PROXY_URL`, `HTTPS_PROXY`, then `HTTP_PROXY`.
 
 > This project uses `OPENAI_API_KEY` (not `VITE_OPENAI_API_KEY`) because OpenAI calls run in the Electron **main process** via IPC, so the key is not exposed to the renderer bundle.
 
@@ -75,7 +75,7 @@ Outputs bundled files to `out/`.
 
 1. Launch the app — the window is hidden on startup.
 2. Press **Alt+Space** (or **Option+Space** on macOS) to open the command bar.
-3. Type a prompt for Prometheus.
+3. Type a prompt for Covenant.
 4. Press **Enter** to send it to OpenAI (`gpt-4o-mini`).
 5. Press **Escape** or click outside to close with a graceful exit animation.
 

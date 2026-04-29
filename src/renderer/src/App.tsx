@@ -492,12 +492,12 @@ export default function App(): JSX.Element {
     setQuery('')
 
     try {
-      if (!window.api?.chat.askPrometheus) {
+      if (!window.api?.chat.askCovenant) {
         setAiResponse('OpenAI chat is only available in the Electron app.')
         return
       }
 
-      const response = await window.api.chat.askPrometheus(prompt)
+      const response = await window.api.chat.askCovenant(prompt)
       setAiResponse(response)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to fetch AI response.'

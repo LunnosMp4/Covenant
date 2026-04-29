@@ -105,7 +105,7 @@ const api = {
     getTerminalFonts: () => ipcRenderer.invoke('get-terminal-fonts') as Promise<string[]>
   },
   chat: {
-    askPrometheus: (prompt: string) => ipcRenderer.invoke('prometheus:chat', prompt) as Promise<string>
+    askCovenant: (prompt: string) => ipcRenderer.invoke('covenant:chat', prompt) as Promise<string>
   },
   terminal: {
     startTerminal: (size?: { cols?: number; rows?: number }) =>
@@ -204,6 +204,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getTerminalFonts: api.config.getTerminalFonts,
   onThemeUpdated: api.config.onThemeUpdated,
   onTerminalFontUpdated: api.config.onTerminalFontUpdated,
-  askPrometheus: api.chat.askPrometheus,
+  askCovenant: api.chat.askCovenant,
   onToggleVisibility: api.window.onToggleVisibility
 })

@@ -21,7 +21,7 @@ interface TerminalExitPayload {
   signal?: number
 }
 
-interface PrometheusAPI {
+interface CovenantAPI {
   window: {
     hideWindow: () => void
     openSettings: () => void
@@ -44,7 +44,7 @@ interface PrometheusAPI {
     onTerminalFontUpdated: (callback: (terminalFont: string) => void) => () => void
   }
   chat: {
-    askPrometheus: (prompt: string) => Promise<string>
+    askCovenant: (prompt: string) => Promise<string>
   }
   terminal: {
     startTerminal: (size?: { cols?: number; rows?: number }) => Promise<TerminalStartResult>
@@ -77,7 +77,7 @@ interface PrometheusAPI {
 
 declare global {
   interface Window {
-    api?: PrometheusAPI
+    api?: CovenantAPI
     electronAPI?: {
       hideWindow: () => void
       openSettings: () => void
@@ -92,7 +92,7 @@ declare global {
       getTerminalFonts: () => Promise<string[]>
       onThemeUpdated: (callback: (gradientClass: string) => void) => () => void
       onTerminalFontUpdated: (callback: (terminalFont: string) => void) => () => void
-      askPrometheus: (prompt: string) => Promise<string>
+      askCovenant: (prompt: string) => Promise<string>
       onToggleVisibility: (callback: (visible: boolean) => void) => () => void
     }
   }

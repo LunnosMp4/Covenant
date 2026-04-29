@@ -1,5 +1,5 @@
 {
-  "name": "prometheus",
+  "name": "covenant",
   "version": "1.0.0",
   "description": "A next-generation command bar app for Windows and macOS",
   "main": "out/main/index.js",
@@ -11,8 +11,8 @@
     "start": "electron ."
   },
   "build": {
-    "appId": "com.prometheus.app",
-    "productName": "Prometheus",
+    "appId": "com.covenant.app",
+    "productName": "Covenant",
     "files": [
       "out/**/*",
       "node_modules/**/*",

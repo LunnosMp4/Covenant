@@ -229,7 +229,7 @@ function GeneralTab({
     <div className="space-y-6">
       <SectionCard
         title="OpenAI API Key"
-        description="Stored in your local OS user data directory. This key is used by Prometheus chat requests."
+        description="Stored in your local OS user data directory. This key is used by Covenant chat requests."
       >
         <div>
           <label htmlFor="openai-key" className="mb-2 block text-sm font-medium text-neutral-300">
@@ -332,13 +332,13 @@ function GeneralTab({
 
       <SectionCard
         title="Startup"
-        description="Automatically launch Prometheus when you start your computer."
+        description="Automatically launch Covenant when you start your computer."
       >
         <MinimalistToggle
           checked={launchOnStartup}
           onChange={onLaunchOnStartupChange}
           label="Launch on startup"
-          description="Prometheus will open automatically when your system starts."
+          description="Covenant will open automatically when your system starts."
         />
       </SectionCard>
     </div>
@@ -416,7 +416,7 @@ function TerminalTab({ terminalFont, onTerminalFontSelect }: TerminalTabProps): 
                 className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
                 style={{ fontFamily: terminalFont }}
               >
-                PS C:\Projects\Prometheus&gt; git status
+                PS C:\Projects\Covenant&gt; git status
               </p>
             </div>
           )}
@@ -1010,7 +1010,7 @@ export default function Settings(): JSX.Element {
           <div className="absolute inset-0 border-b border-neutral-800/80 bg-neutral-900/40" style={dragRegionStyle}>
             <div className="flex h-full items-center px-4 text-xs uppercase tracking-[0.1em] text-neutral-500">
               <span className="h-2 w-2 rounded-full bg-amber-400/80" />
-              <span className="ml-2">Prometheus Settings</span>
+              <span className="ml-2">Covenant Settings</span>
             </div>
           </div>
 
@@ -1038,7 +1038,7 @@ export default function Settings(): JSX.Element {
         <div className="flex h-[calc(100%-2.5rem)]">
           <aside className="w-64 border-r border-neutral-800 bg-neutral-950/85 p-4">
             <div className="px-2 pb-4 pt-2">
-              <p className="text-xs uppercase tracking-[0.1em] text-neutral-500">Prometheus</p>
+              <p className="text-xs uppercase tracking-[0.1em] text-neutral-500">Covenant</p>
               <h1 className="mt-2 text-lg font-semibold text-neutral-100">Settings</h1>
             </div>
 
