@@ -117,7 +117,7 @@ export default function WorkflowFormModal({
   }
 
   return (
-    <ModalOverlay onClose={onCancel} contentClassName="max-w-3xl">
+    <ModalOverlay onClose={onCancel} contentClassName="max-w-3xl h-[540px]">
       <div className="rounded-2xl border border-neutral-800 bg-neutral-900/95 p-5 shadow-[0_22px_60px_rgba(0,0,0,0.55)]">
         <h3 className="text-lg font-semibold text-neutral-100">
           {initialData ? 'Edit Workflow' : 'Add Workflow'}

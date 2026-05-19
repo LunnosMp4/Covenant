@@ -12,6 +12,8 @@ export default function ModalOverlay({
   onClose,
   contentClassName
 }: ModalOverlayProps): JSX.Element {
+  const resolvedContentClassName = contentClassName ?? 'max-w-xl'
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -30,7 +32,7 @@ export default function ModalOverlay({
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 8, scale: 0.98 }}
         transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-        className={`w-full ${contentClassName ?? 'max-w-xl'}`}
+        className={`modal-scroll w-full max-h-[calc(100vh-2rem)] overflow-y-auto ${resolvedContentClassName}`}
         onMouseDown={(event) => event.stopPropagation()}
       >
         {children}

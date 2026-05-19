@@ -157,7 +157,7 @@ export default function AppFormModal({ initialData, onCancel, onSave }: AppFormM
   }
 
   return (
-    <ModalOverlay onClose={onCancel}>
+    <ModalOverlay onClose={onCancel} contentClassName="max-w-xl h-[520px]">
       <div className="rounded-2xl border border-neutral-800 bg-neutral-900/95 p-5 shadow-[0_22px_60px_rgba(0,0,0,0.55)]">
         <h3 className="text-lg font-semibold text-neutral-100">{isEditMode ? 'Edit Application' : 'Add Application'}</h3>
 
