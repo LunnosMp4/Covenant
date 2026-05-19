@@ -14,6 +14,24 @@ interface Preprompt {
   content: string
 }
 
+type ChatRole = 'system' | 'user' | 'assistant'
+
+interface ChatMessage {
+  id: string
+  role: ChatRole
+  content: string
+  createdAt: number
+}
+
+interface ChatConversation {
+  id: string
+  title: string
+  createdAt: number
+  updatedAt: number
+  messages: ChatMessage[]
+  systemPrompt?: string
+}
+
 interface LauncherApp {
   id: string
   title: string
@@ -111,7 +129,12 @@ const api = {
     getTerminalFonts: () => ipcRenderer.invoke('get-terminal-fonts') as Promise<string[]>
   },
   chat: {
-    askCovenant: (prompt: string) => ipcRenderer.invoke('covenant:chat', prompt) as Promise<string>
+    askCovenant: (messages: Array<{ role: ChatRole; content: string }>) =>
+      ipcRenderer.invoke('covenant:chat', messages) as Promise<string>,
+    getConversations: () => ipcRenderer.invoke('get-conversations') as Promise<ChatConversation[]>,
+    getConversation: (id: string) => ipcRenderer.invoke('get-conversation', id) as Promise<ChatConversation | null>,
+    saveConversation: (conversation: ChatConversation) =>
+      ipcRenderer.invoke('save-conversation', conversation) as Promise<ChatConversation[]>
   },
   terminal: {
     startTerminal: (size?: { cols?: number; rows?: number }) =>

@@ -19,6 +19,24 @@ interface AppConfig {
   terminalFont: string
 }
 
+type ChatRole = 'user' | 'assistant' | 'system'
+
+interface ChatMessage {
+  id: string
+  role: ChatRole
+  content: string
+  createdAt: number
+}
+
+interface ChatConversation {
+  id: string
+  title: string
+  createdAt: number
+  updatedAt: number
+  messages: ChatMessage[]
+  systemPrompt?: string
+}
+
 type AppMode = 'ai' | 'terminal'
 
 const DEFAULT_THEME_GRADIENT = 'from-neutral-900/95 to-[#1c0f03]'
@@ -31,6 +49,10 @@ const AVAILABLE_THEME_GRADIENTS = [
 
 const AVAILABLE_THEME_GRADIENT_SET = new Set<string>(AVAILABLE_THEME_GRADIENTS)
 const MAX_WORKFLOW_LOG_LINES = 200
+const MAX_CONVERSATION_TITLE_LENGTH = 48
+const DEFAULT_CONVERSATION_TITLE = 'New chat'
+const CHAT_SCROLL_HEIGHT = 224
+const CHAT_ROLE_ORDER: ChatRole[] = ['system', 'user', 'assistant']
 
 function normalizeThemeGradient(themeGradient: string | undefined): string {
   if (!themeGradient) return DEFAULT_THEME_GRADIENT
@@ -144,6 +166,43 @@ function SpinnerIcon(): JSX.Element {
   )
 }
 
+function MenuIcon(): JSX.Element {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M4 6h16" />
+      <path d="M4 12h16" />
+      <path d="M4 18h16" />
+    </svg>
+  )
+}
+
+function createConversationTitle(prompt: string): string {
+  const trimmed = prompt.trim()
+  if (!trimmed) return DEFAULT_CONVERSATION_TITLE
+  const firstLine = trimmed.split('\n')[0] || trimmed
+  if (firstLine.length <= MAX_CONVERSATION_TITLE_LENGTH) return firstLine
+  return `${firstLine.slice(0, MAX_CONVERSATION_TITLE_LENGTH - 3)}...`
+}
+
+function createMessageId(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID()
+  }
+
+  return `msg_${Math.random().toString(36).slice(2)}_${Date.now()}`
+}
+
+function sortConversations(conversations: ChatConversation[]): ChatConversation[] {
+  return [...conversations].sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+function normalizeMessageOrder(messages: ChatMessage[]): ChatMessage[] {
+  return [...messages].sort((a, b) => {
+    if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt
+    return CHAT_ROLE_ORDER.indexOf(a.role) - CHAT_ROLE_ORDER.indexOf(b.role)
+  })
+}
+
 export default function App(): JSX.Element {
   const [visible, setVisible] = useState(false)
   // Tracks whether the window is truly visible to the user (including after the
@@ -152,7 +211,11 @@ export default function App(): JSX.Element {
   const [isAppVisible, setIsAppVisible] = useState(false)
   const [query, setQuery] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [aiResponse, setAiResponse] = useState('')
+  const [conversations, setConversations] = useState<ChatConversation[]>([])
+  const [activeConversation, setActiveConversation] = useState<ChatConversation | null>(null)
+  const [pendingSystemPrompt, setPendingSystemPrompt] = useState('')
+  const [isChatOpen, setIsChatOpen] = useState(false)
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [mode, setMode] = useState<AppMode>('ai')
   const [hasInitializedTerminal, setHasInitializedTerminal] = useState(false)
   const [themeGradient, setThemeGradient] = useState<string>(DEFAULT_THEME_GRADIENT)
@@ -169,6 +232,9 @@ export default function App(): JSX.Element {
   const popupRef = useRef<HTMLDivElement>(null)
   const moduleButtonsRef = useRef<HTMLDivElement>(null)
   const module4ButtonRef = useRef<HTMLButtonElement>(null)
+  const chatScrollRef = useRef<HTMLDivElement>(null)
+  const historyMenuRef = useRef<HTMLDivElement>(null)
+  const historyButtonRef = useRef<HTMLButtonElement>(null)
   const successResetTimersRef = useRef<Record<string, number>>({})
   // Ref for the hide-delay timer so it can be cancelled on rapid show/hide.
   const hideDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -236,7 +302,8 @@ export default function App(): JSX.Element {
             hideDelayTimerRef.current = null
             setQuery('')
             setIsLoading(false)
-            setAiResponse('')
+            setIsChatOpen(false)
+            setIsHistoryOpen(false)
             setMode('ai')
             setActivePopup(null)
             // isAppVisible is set to false via AnimatePresence onExitComplete,
@@ -299,7 +366,8 @@ export default function App(): JSX.Element {
     setTimeout(() => {
       setQuery('')
       setIsLoading(false)
-      setAiResponse('')
+      setIsChatOpen(false)
+      setIsHistoryOpen(false)
       window.api?.window.hideWindow()
     }, 240)
   }, [])
@@ -345,6 +413,74 @@ export default function App(): JSX.Element {
       setWorkflows([])
     }
   }, [])
+
+  const loadConversations = useCallback(async (): Promise<void> => {
+    if (!window.api?.chat.getConversations) {
+      setConversations([])
+      return
+    }
+
+    try {
+      const savedConversations = await window.api.chat.getConversations()
+      setConversations(sortConversations(savedConversations))
+    } catch {
+      setConversations([])
+    }
+  }, [])
+
+  const upsertConversation = useCallback((conversation: ChatConversation): void => {
+    setConversations((previous) => {
+      const filtered = previous.filter((item) => item.id !== conversation.id)
+      return sortConversations([conversation, ...filtered])
+    })
+  }, [])
+
+  const persistConversation = useCallback((conversation: ChatConversation): void => {
+    if (!window.api?.chat.saveConversation) return
+
+    void window.api.chat
+      .saveConversation(conversation)
+      .then((nextConversations) => {
+        setConversations(sortConversations(nextConversations))
+      })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    void loadConversations()
+  }, [loadConversations])
+
+  useEffect(() => {
+    if (!isChatOpen) return
+
+    const scrollTimer = window.setTimeout(() => {
+      if (!chatScrollRef.current) return
+      chatScrollRef.current.scrollTo({
+        top: chatScrollRef.current.scrollHeight,
+        behavior: 'smooth'
+      })
+    }, 40)
+
+    return () => {
+      window.clearTimeout(scrollTimer)
+    }
+  }, [isChatOpen, activeConversation, isLoading])
+
+  useEffect(() => {
+    if (!isHistoryOpen) return
+
+    const handleClickOutsideHistory = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (historyMenuRef.current?.contains(target)) return
+      if (historyButtonRef.current?.contains(target)) return
+      setIsHistoryOpen(false)
+    }
+
+    document.addEventListener('mousedown', handleClickOutsideHistory)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutsideHistory)
+    }
+  }, [isHistoryOpen])
 
   useEffect(() => {
     if (activePopup === 'module4') {
@@ -520,34 +656,168 @@ export default function App(): JSX.Element {
   }, [])
 
   const handleSubmit = useCallback(async () => {
-    const prompt = query.trim()
-    if (!prompt || isLoading) return
+    const rawPrompt = query.trim()
+    if (!rawPrompt || isLoading) return
+
+    const now = Date.now()
+    const trimmedSystemPrompt = pendingSystemPrompt.trim()
+    let prompt = rawPrompt
+
+    if (trimmedSystemPrompt && rawPrompt.startsWith(trimmedSystemPrompt)) {
+      const remainder = rawPrompt.slice(trimmedSystemPrompt.length).trim()
+      if (remainder) {
+        prompt = remainder
+      }
+    }
+
+    const shouldStartNewConversation = !isChatOpen
+    let nextConversation = shouldStartNewConversation ? null : activeConversation
+    if (!nextConversation) {
+      const createdAt = now
+      nextConversation = {
+        id: createMessageId(),
+        title: createConversationTitle(rawPrompt),
+        createdAt,
+        updatedAt: createdAt,
+        messages: [],
+        systemPrompt: trimmedSystemPrompt || undefined
+      }
+      setActiveConversation(nextConversation)
+      setPendingSystemPrompt('')
+    }
+
+    const userMessage: ChatMessage = {
+      id: createMessageId(),
+      role: 'user',
+      content: prompt,
+      createdAt: now
+    }
+
+    const userConversation: ChatConversation = {
+      ...nextConversation,
+      updatedAt: now,
+      messages: normalizeMessageOrder([...nextConversation.messages, userMessage]),
+      systemPrompt: nextConversation.systemPrompt ?? (trimmedSystemPrompt || undefined)
+    }
+
+    if (!nextConversation.systemPrompt && trimmedSystemPrompt) {
+      setPendingSystemPrompt('')
+    }
 
     setIsLoading(true)
+    setIsChatOpen(true)
+    setIsHistoryOpen(false)
     setQuery('')
+    setActiveConversation(userConversation)
+    upsertConversation(userConversation)
+    persistConversation(userConversation)
 
     try {
       if (!window.api?.chat.askCovenant) {
-        setAiResponse('OpenAI chat is only available in the Electron app.')
-        return
+        throw new Error('OpenAI chat is only available in the Electron app.')
       }
 
-      const response = await window.api.chat.askCovenant(prompt)
-      setAiResponse(response)
+      const requestMessages = [
+        ...(userConversation.systemPrompt
+          ? [{ role: 'system' as const, content: userConversation.systemPrompt }]
+          : []),
+        ...userConversation.messages.map((message) => ({
+          role: message.role,
+          content: message.content
+        }))
+      ]
+
+      const response = await window.api.chat.askCovenant(requestMessages)
+      const assistantMessage: ChatMessage = {
+        id: createMessageId(),
+        role: 'assistant',
+        content: response,
+        createdAt: Date.now()
+      }
+
+      const updatedConversation: ChatConversation = {
+        ...userConversation,
+        updatedAt: Date.now(),
+        messages: normalizeMessageOrder([...userConversation.messages, assistantMessage])
+      }
+
+      setActiveConversation(updatedConversation)
+      upsertConversation(updatedConversation)
+      persistConversation(updatedConversation)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to fetch AI response.'
-      setAiResponse(`Error: ${message}`)
+      const errorMessage: ChatMessage = {
+        id: createMessageId(),
+        role: 'assistant',
+        content: `Error: ${message}`,
+        createdAt: Date.now()
+      }
+
+      const updatedConversation: ChatConversation = {
+        ...userConversation,
+        updatedAt: Date.now(),
+        messages: normalizeMessageOrder([...userConversation.messages, errorMessage])
+      }
+
+      setActiveConversation(updatedConversation)
+      upsertConversation(updatedConversation)
+      persistConversation(updatedConversation)
     } finally {
       setIsLoading(false)
       if (mode === 'ai') {
         inputRef.current?.focus()
       }
     }
-  }, [query, isLoading, mode])
+  }, [
+    query,
+    isLoading,
+    mode,
+    activeConversation,
+    pendingSystemPrompt,
+    upsertConversation,
+    persistConversation
+  ])
+
+  const appendAssistantMessage = useCallback(
+    (content: string) => {
+      const now = Date.now()
+      const baseConversation =
+        activeConversation ??
+        ({
+          id: createMessageId(),
+          title: DEFAULT_CONVERSATION_TITLE,
+          createdAt: now,
+          updatedAt: now,
+          messages: [],
+          systemPrompt: undefined
+        } as ChatConversation)
+
+      const assistantMessage: ChatMessage = {
+        id: createMessageId(),
+        role: 'assistant',
+        content,
+        createdAt: now
+      }
+
+      const updatedConversation: ChatConversation = {
+        ...baseConversation,
+        updatedAt: now,
+        messages: normalizeMessageOrder([...baseConversation.messages, assistantMessage])
+      }
+
+      setActiveConversation(updatedConversation)
+      setIsChatOpen(true)
+      setIsHistoryOpen(false)
+      upsertConversation(updatedConversation)
+      persistConversation(updatedConversation)
+    },
+    [activeConversation, persistConversation, upsertConversation]
+  )
 
   const handlePopupItemSelect = useCallback(
     (item: PopupItem) => {
       if (activePopup === 'module4' && item.promptText) {
+        setPendingSystemPrompt(item.promptText)
         setQuery((previous) => {
           const trimmedPrevious = previous.trim()
           if (!trimmedPrevious) {
@@ -566,24 +836,24 @@ export default function App(): JSX.Element {
 
         const launchApp = window.api?.launchApp
         if (!launchApp) {
-          setAiResponse('App launching is only available in the Electron app.')
+          appendAssistantMessage('App launching is only available in the Electron app.')
         } else {
           void (async () => {
             for (const target of launchTargets) {
               const result = await launchApp(target.path, target.arguments ?? '')
               if (!result.success) {
-                setAiResponse(`Error: ${result.error ?? 'Unable to launch application.'}`)
+                appendAssistantMessage(`Error: ${result.error ?? 'Unable to launch application.'}`)
                 return
               }
             }
           })().catch((error) => {
             const message = error instanceof Error ? error.message : 'Unable to launch application.'
-            setAiResponse(`Error: ${message}`)
+            appendAssistantMessage(`Error: ${message}`)
           })
         }
       } else if (activePopup === 'module3' && item.workflowData) {
         if (!window.api?.executeWorkflow) {
-          setAiResponse('Workflow execution is only available in the Electron app.')
+          appendAssistantMessage('Workflow execution is only available in the Electron app.')
         } else {
           const workflowId = item.workflowData.id
           const activeSuccessTimeout = successResetTimersRef.current[workflowId]
@@ -669,7 +939,7 @@ export default function App(): JSX.Element {
         }
       }
     },
-    [activePopup, mode]
+    [activePopup, appendAssistantMessage, mode]
   )
 
   const handleKeyDown = useCallback(
@@ -704,6 +974,23 @@ export default function App(): JSX.Element {
 
   const handleRootKeyDownCapture = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
+      const hasChatHistory = Boolean(activeConversation?.messages.length || conversations.length)
+      if (
+        mode === 'ai' &&
+        hasChatHistory &&
+        event.ctrlKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        !event.shiftKey &&
+        (event.key === 'Tab' || event.key === '`')
+      ) {
+        event.preventDefault()
+        event.stopPropagation()
+        setIsChatOpen((open) => !open)
+        setIsHistoryOpen(false)
+        return
+      }
+
       if (event.key === 'Tab' && !event.altKey && !event.ctrlKey && !event.metaKey) {
         event.preventDefault()
         event.stopPropagation()
@@ -716,8 +1003,12 @@ export default function App(): JSX.Element {
         switchToAiMode()
       }
     },
-    [activePopup, mode, switchToAiMode, toggleMode]
+    [activeConversation, activePopup, conversations, mode, switchToAiMode, toggleMode]
   )
+
+  const chatMessages = activeConversation
+    ? normalizeMessageOrder(activeConversation.messages)
+    : []
 
   return (
     <div
@@ -788,6 +1079,116 @@ export default function App(): JSX.Element {
                   onSelectItem={handlePopupItemSelect}
                   anchorSide={activePopup === 'module4' ? 'left' : 'right'}
                 />
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+              {mode === 'ai' && isChatOpen && (
+                <motion.div
+                  key="chat-window"
+                  initial={{ opacity: 0, y: -8, height: 0 }}
+                  animate={{ opacity: 1, y: 0, height: 'auto' }}
+                  exit={{ opacity: 0, y: -6, height: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="mb-2 rounded-2xl border border-white/10 bg-neutral-900 p-4"
+                >
+                  <div className="relative flex items-center justify-between">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.24em] text-neutral-500">Conversation</p>
+                      <p className="text-sm font-medium text-neutral-200">
+                        {activeConversation?.title ?? DEFAULT_CONVERSATION_TITLE}
+                      </p>
+                    </div>
+                    <button
+                      ref={historyButtonRef}
+                      type="button"
+                      onClick={() => setIsHistoryOpen((open) => !open)}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-neutral-300 transition-colors hover:border-white/20 hover:bg-white/10"
+                      aria-label="Open conversation history"
+                    >
+                      <MenuIcon />
+                    </button>
+
+                    <AnimatePresence>
+                      {isHistoryOpen && (
+                        <motion.div
+                          key="history-menu"
+                          ref={historyMenuRef}
+                          initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                          transition={{ duration: 0.15 }}
+                          className="absolute right-0 top-10 z-20 w-64 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/95 shadow-xl"
+                        >
+                          <div className="max-h-56 overflow-y-auto scrollbar-hidden py-2">
+                            {conversations.length === 0 ? (
+                              <p className="px-3 py-2 text-xs text-neutral-500">No conversations yet.</p>
+                            ) : (
+                              conversations.map((conversation) => (
+                                <button
+                                  key={conversation.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveConversation(conversation)
+                                    setIsChatOpen(true)
+                                    setIsHistoryOpen(false)
+                                    setPendingSystemPrompt('')
+                                  }}
+                                  className={`flex w-full flex-col gap-1 px-3 py-2 text-left text-sm transition-colors hover:bg-neutral-800/70 ${
+                                    conversation.id === activeConversation?.id
+                                      ? 'bg-neutral-800/70 text-neutral-100'
+                                      : 'text-neutral-300'
+                                  }`}
+                                >
+                                  <span className="truncate font-medium">{conversation.title}</span>
+                                  <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+                                    {conversation.messages.length} messages
+                                  </span>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  <div
+                    ref={chatScrollRef}
+                    className="mt-3 h-56 overflow-y-auto scrollbar-hidden space-y-3 pr-2"
+                    style={{ height: CHAT_SCROLL_HEIGHT }}
+                  >
+                    {chatMessages.length === 0 ? (
+                      <p className="text-xs text-neutral-500">No messages yet.</p>
+                    ) : (
+                      chatMessages.map((message) => (
+                        <div
+                          key={message.id}
+                          className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                        >
+                          <div
+                            className={`max-w-[78%] rounded-2xl border px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap select-text ${
+                              message.role === 'user'
+                                ? 'border-orange-500/30 bg-orange-500/10 text-orange-100'
+                                : 'border-white/10 bg-neutral-900/80 text-neutral-100'
+                            }`}
+                          >
+                            {message.content}
+                          </div>
+                        </div>
+                      ))
+                    )}
+
+                    {isLoading && (
+                      <div className="flex justify-start">
+                        <div className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-neutral-900/80 px-3 py-2 text-sm text-neutral-300">
+                          <SpinnerIcon />
+                          <span>Thinking...</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
               )}
             </AnimatePresence>
 
@@ -862,24 +1263,6 @@ export default function App(): JSX.Element {
                 </button>
               </div>
             </motion.div>
-
-            <AnimatePresence>
-              {mode === 'ai' && aiResponse && (
-                <motion.div
-                  key="ai-response"
-                  initial={{ opacity: 0, y: -6, height: 0 }}
-                  animate={{ opacity: 1, y: 0, height: 'auto' }}
-                  exit={{ opacity: 0, y: -4, height: 0 }}
-                  transition={{ duration: 0.18 }}
-                  className="mt-2 px-4 py-3 text-sm text-neutral-200 bg-neutral-900/65 backdrop-blur-2xl rounded-xl border border-white/10 border-t-white/15 max-h-44 overflow-y-auto"
-                  style={{ WebkitBackdropFilter: 'blur(30px)', backdropFilter: 'blur(30px)' }}
-                >
-                  <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
-                    {aiResponse}
-                  </motion.p>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </motion.div>
         )}
       </AnimatePresence>

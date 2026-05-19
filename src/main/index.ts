@@ -55,6 +55,24 @@ interface Preprompt {
   content: string
 }
 
+type ChatRole = 'system' | 'user' | 'assistant'
+
+interface ChatMessage {
+  id: string
+  role: ChatRole
+  content: string
+  createdAt: number
+}
+
+interface ChatConversation {
+  id: string
+  title: string
+  createdAt: number
+  updatedAt: number
+  messages: ChatMessage[]
+  systemPrompt?: string
+}
+
 type WorkflowLanguage = 'powershell' | 'cmd' | 'python' | 'nodejs' | 'shell' | 'custom'
 
 interface Workflow {
@@ -83,6 +101,7 @@ interface AppStoreSchema {
   preprompts: Preprompt[]
   apps: LauncherApp[]
   workflows: Workflow[]
+  conversations: ChatConversation[]
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -104,6 +123,8 @@ const WORKFLOW_LANGUAGE_SET = new Set<WorkflowLanguage>([
 
 const runningWorkflowIds = new Set<string>()
 const terminalSubscribers = new Set<WebContents>()
+const MAX_CONVERSATIONS = 20
+const CHAT_ROLE_SET = new Set<ChatRole>(['system', 'user', 'assistant'])
 
 const MAX_TERMINAL_INPUT_CHUNK = 8192
 const DEFAULT_TERMINAL_COLS = 120
@@ -189,7 +210,8 @@ const appStore = new StoreClass<AppStoreSchema>({
   defaults: {
     preprompts: [],
     apps: [],
-    workflows: []
+    workflows: [],
+    conversations: []
   },
   schema: {
     preprompts: {
@@ -240,6 +262,37 @@ const appStore = new StoreClass<AppStoreSchema>({
         },
         required: ['id', 'title', 'language', 'content']
       }
+    },
+    conversations: {
+      type: 'array',
+      default: [],
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          id: { type: 'string' },
+          title: { type: 'string' },
+          createdAt: { type: 'number' },
+          updatedAt: { type: 'number' },
+          systemPrompt: { type: 'string' },
+          messages: {
+            type: 'array',
+            default: [],
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                id: { type: 'string' },
+                role: { type: 'string', enum: ['system', 'user', 'assistant'] },
+                content: { type: 'string' },
+                createdAt: { type: 'number' }
+              },
+              required: ['id', 'role', 'content', 'createdAt']
+            }
+          }
+        },
+        required: ['id', 'title', 'createdAt', 'updatedAt', 'messages']
+      }
     }
   }
 })
@@ -288,6 +341,82 @@ function deletePreprompt(id: string): Preprompt[] {
   const nextPreprompts = getPreprompts().filter((item) => item.id !== normalizedId)
   appStore.set('preprompts', nextPreprompts)
   return nextPreprompts
+}
+
+function normalizeChatMessage(payload: Partial<ChatMessage>): ChatMessage | null {
+  const role = typeof payload.role === 'string' ? payload.role.trim() : ''
+  if (!CHAT_ROLE_SET.has(role as ChatRole)) return null
+
+  const content = typeof payload.content === 'string' ? payload.content.trim() : ''
+  if (!content) return null
+
+  const createdAt =
+    typeof payload.createdAt === 'number' && Number.isFinite(payload.createdAt)
+      ? payload.createdAt
+      : Date.now()
+
+  const id = typeof payload.id === 'string' && payload.id.trim() ? payload.id.trim() : randomUUID()
+
+  return {
+    id,
+    role: role as ChatRole,
+    content,
+    createdAt
+  }
+}
+
+function normalizeConversation(payload: Partial<ChatConversation>): ChatConversation {
+  const id = typeof payload.id === 'string' && payload.id.trim() ? payload.id.trim() : randomUUID()
+  const title = typeof payload.title === 'string' ? payload.title.trim() : ''
+  const normalizedTitle = title || 'New chat'
+  const createdAt =
+    typeof payload.createdAt === 'number' && Number.isFinite(payload.createdAt)
+      ? payload.createdAt
+      : Date.now()
+  const updatedAt =
+    typeof payload.updatedAt === 'number' && Number.isFinite(payload.updatedAt)
+      ? payload.updatedAt
+      : createdAt
+  const systemPrompt =
+    typeof payload.systemPrompt === 'string' && payload.systemPrompt.trim()
+      ? payload.systemPrompt.trim()
+      : undefined
+
+  const rawMessages = Array.isArray(payload.messages) ? payload.messages : []
+  const normalizedMessages = rawMessages
+    .map((message) => normalizeChatMessage(message))
+    .filter((message): message is ChatMessage => Boolean(message))
+
+  return {
+    id,
+    title: normalizedTitle,
+    createdAt,
+    updatedAt,
+    messages: normalizedMessages,
+    systemPrompt
+  }
+}
+
+function getConversations(): ChatConversation[] {
+  const conversations = appStore.get('conversations', [])
+  return [...conversations].sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+function getConversationById(conversationId: string): ChatConversation | null {
+  const normalizedId = typeof conversationId === 'string' ? conversationId.trim() : ''
+  if (!normalizedId) return null
+  return getConversations().find((conversation) => conversation.id === normalizedId) ?? null
+}
+
+function saveConversation(payload: Partial<ChatConversation>): ChatConversation[] {
+  const normalizedConversation = normalizeConversation(payload)
+  const existing = getConversations().filter((conversation) => conversation.id !== normalizedConversation.id)
+  const nextConversations = [normalizedConversation, ...existing]
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, MAX_CONVERSATIONS)
+
+  appStore.set('conversations', nextConversations)
+  return nextConversations
 }
 
 function normalizeLauncherTargets(payload: Partial<LauncherApp>): LauncherAppTarget[] {
@@ -1243,6 +1372,18 @@ ipcMain.handle('get-config', () => {
   return readConfig()
 })
 
+ipcMain.handle('get-conversations', () => {
+  return getConversations()
+})
+
+ipcMain.handle('get-conversation', (_event, conversationId: string) => {
+  return getConversationById(conversationId)
+})
+
+ipcMain.handle('save-conversation', (_event, payload: Partial<ChatConversation>) => {
+  return saveConversation(payload)
+})
+
 ipcMain.handle('get-preprompts', () => {
   return getPreprompts()
 })
@@ -1480,9 +1621,20 @@ ipcMain.on('update-startup-setting', (_event, launchOnStartup: boolean) => {
   }
 })
 
-ipcMain.handle('covenant:chat', async (_event, userPrompt: string) => {
-  const prompt = userPrompt?.trim()
-  if (!prompt) {
+ipcMain.handle('covenant:chat', async (_event, rawMessages: Array<{ role?: string; content?: string }>) => {
+  const sanitizedMessages = Array.isArray(rawMessages)
+    ? rawMessages
+        .map((message) => {
+          const role = typeof message.role === 'string' ? message.role.trim() : ''
+          if (!CHAT_ROLE_SET.has(role as ChatRole)) return null
+          const content = typeof message.content === 'string' ? message.content.trim() : ''
+          if (!content) return null
+          return { role: role as ChatRole, content }
+        })
+        .filter((message): message is { role: ChatRole; content: string } => Boolean(message))
+    : []
+
+  if (sanitizedMessages.length === 0) {
     throw new Error('Prompt cannot be empty.')
   }
 
@@ -1511,7 +1663,7 @@ ipcMain.handle('covenant:chat', async (_event, userPrompt: string) => {
         content:
           "You are Covenant, a helpful, concise AI assistant integrated into a user's operating system. Keep your answers brief and to the point."
       },
-      { role: 'user', content: prompt }
+      ...sanitizedMessages
     ]
   })
 

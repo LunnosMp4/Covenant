@@ -10,6 +10,24 @@ interface AppConfig {
   terminalFont: string
 }
 
+type ChatRole = 'system' | 'user' | 'assistant'
+
+interface ChatMessage {
+  id: string
+  role: ChatRole
+  content: string
+  createdAt: number
+}
+
+interface ChatConversation {
+  id: string
+  title: string
+  createdAt: number
+  updatedAt: number
+  messages: ChatMessage[]
+  systemPrompt?: string
+}
+
 interface TerminalStartResult {
   pid: number
   shell: string
@@ -44,7 +62,10 @@ interface CovenantAPI {
     onTerminalFontUpdated: (callback: (terminalFont: string) => void) => () => void
   }
   chat: {
-    askCovenant: (prompt: string) => Promise<string>
+    askCovenant: (messages: Array<{ role: ChatRole; content: string }>) => Promise<string>
+    getConversations: () => Promise<ChatConversation[]>
+    getConversation: (id: string) => Promise<ChatConversation | null>
+    saveConversation: (conversation: ChatConversation) => Promise<ChatConversation[]>
   }
   terminal: {
     startTerminal: (size?: { cols?: number; rows?: number }) => Promise<TerminalStartResult>
@@ -92,7 +113,7 @@ declare global {
       getTerminalFonts: () => Promise<string[]>
       onThemeUpdated: (callback: (gradientClass: string) => void) => () => void
       onTerminalFontUpdated: (callback: (terminalFont: string) => void) => () => void
-      askCovenant: (prompt: string) => Promise<string>
+      askCovenant: (messages: Array<{ role: ChatRole; content: string }>) => Promise<string>
       onToggleVisibility: (callback: (visible: boolean) => void) => () => void
     }
   }
