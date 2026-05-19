@@ -1,0 +1,32 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Install dependencies",
+      "type": "shell",
+      "command": "npm install",
+      "inAgents": true,
+      "runOptions": {
+        "runOn": "worktreeCreated"
+      }
+    },
+    {
+      "label": "Dev server",
+      "type": "shell",
+      "command": "npm run dev",
+      "inAgents": true
+    },
+    {
+      "label": "Build",
+      "type": "shell",
+      "command": "npm run build",
+      "inAgents": true
+    },
+    {
+      "label": "Distribution build",
+      "type": "shell",
+      "command": "npm run dist",
+      "inAgents": true
+    }
+  ]
+}
