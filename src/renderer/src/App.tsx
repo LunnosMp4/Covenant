@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import ModulePopup, { type ActivePopup, type PopupItem } from './components/ModulePopup'
 import TerminalView from './components/TerminalView'
 import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from './constants/terminalFonts'
-import type { LauncherApp } from './types/launcher-app'
+import type { LauncherApp, LauncherAppTarget } from './types/launcher-app'
 import type { Preprompt } from './types/preprompt'
 import type {
   Workflow,
@@ -44,6 +44,41 @@ function splitWorkflowLogLines(text: string): string[] {
     .split('\n')
     .map((line) => line.trimEnd())
     .filter((line) => line.length > 0)
+}
+
+function normalizeLauncherAppTargets(app: LauncherApp): LauncherAppTarget[] {
+  if (Array.isArray(app.targets) && app.targets.length > 0) {
+    return app.targets
+  }
+
+  const legacyPath = typeof app.path === 'string' ? app.path.trim() : ''
+  if (!legacyPath) {
+    return []
+  }
+
+  return [{ path: legacyPath, arguments: app.arguments ?? '' }]
+}
+
+function normalizePopupLaunchTargets(item: PopupItem): LauncherAppTarget[] {
+  if (Array.isArray(item.appLaunchTargets) && item.appLaunchTargets.length > 0) {
+    return item.appLaunchTargets
+  }
+
+  const legacyPath = typeof item.appPath === 'string' ? item.appPath.trim() : ''
+  if (!legacyPath) {
+    return []
+  }
+
+  return [{ path: legacyPath, arguments: item.launchArguments ?? '' }]
+}
+
+function formatTargetsSummary(targets: LauncherAppTarget[]): string {
+  const count = targets.length
+  if (count === 0) {
+    return 'No apps'
+  }
+
+  return `${count} app${count === 1 ? '' : 's'}`
 }
 
 function SendIcon(): JSX.Element {
@@ -523,21 +558,28 @@ export default function App(): JSX.Element {
         })
 
         setTimeout(() => inputRef.current?.focus(), 40)
-      } else if (activePopup === 'module2' && item.appPath) {
-        if (!window.api?.launchApp) {
+      } else if (activePopup === 'module2') {
+        const launchTargets = normalizePopupLaunchTargets(item)
+        if (launchTargets.length === 0) {
+          return
+        }
+
+        const launchApp = window.api?.launchApp
+        if (!launchApp) {
           setAiResponse('App launching is only available in the Electron app.')
         } else {
-          void window.api
-            .launchApp(item.appPath, item.launchArguments ?? '')
-            .then((result) => {
+          void (async () => {
+            for (const target of launchTargets) {
+              const result = await launchApp(target.path, target.arguments ?? '')
               if (!result.success) {
                 setAiResponse(`Error: ${result.error ?? 'Unable to launch application.'}`)
+                return
               }
-            })
-            .catch((error) => {
-              const message = error instanceof Error ? error.message : 'Unable to launch application.'
-              setAiResponse(`Error: ${message}`)
-            })
+            }
+          })().catch((error) => {
+            const message = error instanceof Error ? error.message : 'Unable to launch application.'
+            setAiResponse(`Error: ${message}`)
+          })
         }
       } else if (activePopup === 'module3' && item.workflowData) {
         if (!window.api?.executeWorkflow) {
@@ -708,14 +750,16 @@ export default function App(): JSX.Element {
                   popupRef={popupRef}
                   themeGradient={themeGradient}
                   isAppVisible={isAppVisible}
-                  module2Items={apps.map((item) => ({
-                    id: item.id,
-                    title: item.title,
-                    subtitle: item.path,
-                    icon: 'grid',
-                    appPath: item.path,
-                    launchArguments: item.arguments
-                  }))}
+                  module2Items={apps.map((item) => {
+                    const targets = normalizeLauncherAppTargets(item)
+                    return {
+                      id: item.id,
+                      title: item.title,
+                      subtitle: formatTargetsSummary(targets),
+                      icon: 'grid',
+                      appLaunchTargets: targets
+                    }
+                  })}
                   module3Items={workflows.map((item) => ({
                     id: item.id,
                     title: item.title,

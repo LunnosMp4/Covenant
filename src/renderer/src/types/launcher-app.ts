@@ -1,7 +1,14 @@
+export interface LauncherAppTarget {
+  id?: string
+  path: string
+  arguments: string
+}
+
 export interface LauncherApp {
   id: string
   title: string
-  path: string
   iconBase64: string
-  arguments: string
+  targets: LauncherAppTarget[]
+  path?: string
+  arguments?: string
 }

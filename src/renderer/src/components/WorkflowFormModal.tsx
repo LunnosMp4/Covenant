@@ -78,6 +78,14 @@ export default function WorkflowFormModal({
     return Array.from({ length: totalLines }, (_, index) => index + 1)
   }, [content])
 
+  const editorLineHeight = 24
+  const editorVerticalPadding = 24
+  const editorMinHeight = 280
+  const editorHeight = useMemo(() => {
+    const contentHeight = lineNumbers.length * editorLineHeight + editorVerticalPadding
+    return Math.max(contentHeight, editorMinHeight)
+  }, [lineNumbers.length])
+
   const isCustomLanguage = language === 'custom'
   const isDisabled =
     !title.trim() || !content.trim() || (isCustomLanguage && !customCommand.trim())
@@ -188,13 +196,15 @@ export default function WorkflowFormModal({
               onValueChange={(value) => setContent(value)}
               highlight={(code) => highlightCode(code, language)}
               padding={12}
-              className="w-full font-mono text-sm leading-6 text-neutral-100 focus:outline-none"
+              className="min-w-full w-max shrink-0 font-mono text-sm leading-6 text-neutral-100 focus:outline-none"
               style={{
                 background: '#1e1e1e',
-                minHeight: '280px',
+                minHeight: editorHeight,
+                overflow: 'visible',
                 whiteSpace: 'pre'
               }}
-              textareaClassName="focus:outline-none"
+              textareaClassName="focus:outline-none !whitespace-pre !break-normal"
+              preClassName="!whitespace-pre !break-normal"
             />
           </div>
         </div>

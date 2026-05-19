@@ -17,8 +17,14 @@ interface Preprompt {
 interface LauncherApp {
   id: string
   title: string
-  path: string
   iconBase64: string
+  targets: LauncherAppTarget[]
+  path?: string
+  arguments?: string
+}
+
+interface LauncherAppTarget {
+  path: string
   arguments: string
 }
 

@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import type { RefObject } from 'react'
+import type { LauncherAppTarget } from '../types/launcher-app'
 import type { Workflow, WorkflowExecutionState } from '../types/workflow'
 import WorkflowList from './WorkflowList'
 
@@ -17,6 +18,7 @@ export interface PopupItem {
   iconDataUrl?: string
   appPath?: string
   launchArguments?: string
+  appLaunchTargets?: LauncherAppTarget[]
   workflowData?: Workflow
 }
 

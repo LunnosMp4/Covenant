@@ -194,6 +194,21 @@ function getAppBadgeText(title: string): string {
   return trimmedTitle.slice(0, 2).toUpperCase() || 'AP'
 }
 
+function getAppTargetsSummary(app: LauncherApp): string {
+  const targetCount =
+    Array.isArray(app.targets) && app.targets.length > 0
+      ? app.targets.length
+      : app.path
+      ? 1
+      : 0
+
+  if (targetCount === 0) {
+    return 'No apps'
+  }
+
+  return `${targetCount} app${targetCount === 1 ? '' : 's'}`
+}
+
 interface GeneralTabProps {
   apiKey: string
   onApiKeyChange: (value: string) => void
@@ -464,7 +479,7 @@ function AppLauncherTab({
         <div className="grid grid-cols-[80px_1fr_2fr_160px] border-b border-neutral-800 bg-neutral-900 px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
           <span>Icon</span>
           <span>App Name</span>
-          <span>Path</span>
+          <span>Apps</span>
           <span className="text-right">Actions</span>
         </div>
 
@@ -486,7 +501,7 @@ function AppLauncherTab({
               {getAppBadgeText(appItem.title)}
             </span>
             <span className="text-neutral-100">{appItem.title}</span>
-            <span className="truncate text-neutral-400">{appItem.path}</span>
+            <span className="truncate text-neutral-400">{getAppTargetsSummary(appItem)}</span>
             <span className="flex justify-end gap-2">
               <button
                 type="button"
@@ -585,7 +600,7 @@ function WorkflowsTab({
               </div>
             </div>
             <p className="mt-3 rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-400">
-              {item.content}
+              {item.content.substring(0, 50)}...
             </p>
           </article>
         ))}
@@ -872,9 +887,10 @@ export default function Settings(): JSX.Element {
   const handleSaveApp = async (payload: {
     id?: string
     title: string
-    path: string
     iconBase64: string
-    arguments: string
+    targets: LauncherApp['targets']
+    path?: string
+    arguments?: string
   }): Promise<void> => {
     if (!window.api?.store.saveApp) return
 
