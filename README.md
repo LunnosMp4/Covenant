@@ -76,7 +76,7 @@ Outputs bundled files to `out/`.
 1. Launch the app — the window is hidden on startup.
 2. Press **Alt+Space** (or **Option+Space** on macOS) to open the command bar.
 3. Type a prompt for Covenant.
-4. Press **Enter** to send it to OpenAI (`gpt-4o-mini`).
+4. Press **Enter** to send it to OpenAI (`gpt-5.4-nano`).
 5. Press **Escape** or click outside to close with a graceful exit animation.
 
 ## Project Structure

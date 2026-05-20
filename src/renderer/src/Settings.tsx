@@ -8,18 +8,17 @@ import {
   DEFAULT_TERMINAL_FONT,
   normalizeTerminalFont
 } from './constants/terminalFonts'
+import {
+  DEFAULT_THEME_GRADIENT,
+  THEME_OPTIONS,
+  normalizeThemeGradient
+} from './constants/theme'
 import type { LauncherApp } from './types/launcher-app'
 import type { Preprompt } from './types/preprompt'
 import type { Workflow } from './types/workflow'
 
 type SettingsTab = 'general' | 'terminal' | 'module2' | 'module3' | 'module4'
 
-interface ThemeOption {
-  id: string
-  label: string
-  description: string
-  gradientClass: string
-}
 
 interface AppConfig {
   apiKey: string
@@ -29,40 +28,7 @@ interface AppConfig {
   terminalFont: string
 }
 
-const DEFAULT_THEME_GRADIENT = 'from-neutral-900/95 to-[#1c0f03]'
-const THEME_OPTIONS: ThemeOption[] = [
-  {
-    id: 'dark-default',
-    label: 'Dark Neutral',
-    description: 'Balanced dark gradient',
-    gradientClass: 'from-neutral-900/95 to-[#1c0f03]'
-  },
-  {
-    id: 'blue-depth',
-    label: 'Blue Depth',
-    description: 'Cool steel tone',
-    gradientClass: 'from-slate-900 to-[#071726]'
-  },
-  {
-    id: 'violet-focus',
-    label: 'Violet Focus',
-    description: 'Focused creative mood',
-    gradientClass: 'from-zinc-900 to-[#1a1026]'
-  },
-  {
-    id: 'emerald-night',
-    label: 'Emerald Night',
-    description: 'Dark green accent',
-    gradientClass: 'from-neutral-900 to-[#0a1f17]'
-  }
-]
-
 const THEME_GRADIENT_SET = new Set<string>(THEME_OPTIONS.map((option) => option.gradientClass))
-
-function normalizeThemeGradient(themeGradient: string | undefined): string {
-  if (!themeGradient) return DEFAULT_THEME_GRADIENT
-  return THEME_GRADIENT_SET.has(themeGradient) ? themeGradient : DEFAULT_THEME_GRADIENT
-}
 
 function SidebarGlyph({ tab }: { tab: SettingsTab }): JSX.Element {
   if (tab === 'general') {

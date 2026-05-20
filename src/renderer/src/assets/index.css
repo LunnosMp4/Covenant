@@ -80,3 +80,162 @@ body[data-window='settings'] *::-webkit-scrollbar {
   width: 0;
   height: 0;
 }
+
+.chat-surface {
+  backdrop-filter: blur(36px);
+}
+
+.chat-message {
+  border-width: 1px;
+  word-break: break-word;
+}
+
+.chat-message--user {
+  background: var(--chat-accent-soft);
+  border-color: var(--chat-accent-strong);
+  color: var(--chat-user-text);
+}
+
+.chat-message--assistant {
+  background: var(--chat-assistant-bg);
+  border-color: var(--chat-assistant-border);
+  color: var(--chat-assistant-text);
+}
+
+.chat-message-meta {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--chat-meta-text);
+}
+
+.chat-thinking {
+  margin-bottom: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.chat-thinking-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--chat-meta-text);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.chat-thinking-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--chat-accent);
+}
+
+.chat-thinking-caret {
+  margin-left: auto;
+  font-size: 12px;
+}
+
+.chat-thinking-body {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--chat-meta-text);
+}
+
+.chat-thinking-empty {
+  margin: 0;
+}
+
+.chat-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--chat-scroll-thumb) transparent;
+}
+
+.chat-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.chat-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--chat-scroll-thumb);
+  border-radius: 999px;
+  min-height: 40px;
+}
+
+.chat-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--chat-scroll-thumb-hover);
+}
+
+.chat-markdown {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.chat-markdown h1,
+.chat-markdown h2,
+.chat-markdown h3 {
+  margin: 12px 0 6px;
+  font-weight: 600;
+}
+
+.chat-markdown h1 {
+  font-size: 18px;
+}
+
+.chat-markdown h2 {
+  font-size: 16px;
+}
+
+.chat-markdown h3 {
+  font-size: 15px;
+}
+
+.chat-markdown p {
+  margin: 6px 0;
+}
+
+.chat-markdown ul,
+.chat-markdown ol {
+  margin: 6px 0 6px 18px;
+}
+
+.chat-markdown li {
+  margin: 4px 0;
+}
+
+.chat-markdown a {
+  color: var(--chat-accent);
+  text-decoration: underline;
+}
+
+.chat-code-inline {
+  padding: 0 4px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.45);
+  font-family: 'Cascadia Mono', 'Fira Code', 'SFMono-Regular', monospace;
+  font-size: 12px;
+}
+
+.chat-code-block {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.55);
+  overflow-x: auto;
+}
+
+.chat-code-block code {
+  font-family: 'Cascadia Mono', 'Fira Code', 'SFMono-Regular', monospace;
+  font-size: 12px;
+  color: inherit;
+}

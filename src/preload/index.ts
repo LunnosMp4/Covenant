@@ -21,6 +21,24 @@ interface ChatMessage {
   role: ChatRole
   content: string
   createdAt: number
+  reasoning?: string
+  usage?: ChatUsage
+  model?: string
+}
+
+interface ChatUsage {
+  promptTokens?: number
+  completionTokens?: number
+  totalTokens?: number
+}
+
+interface ChatStreamEvent {
+  id: string
+  type: 'content' | 'reasoning' | 'done' | 'error'
+  delta?: string
+  usage?: ChatUsage
+  error?: string
+  model?: string
 }
 
 interface ChatConversation {
@@ -131,6 +149,19 @@ const api = {
   chat: {
     askCovenant: (messages: Array<{ role: ChatRole; content: string }>) =>
       ipcRenderer.invoke('covenant:chat', messages) as Promise<string>,
+    askCovenantStream: (messages: Array<{ role: ChatRole; content: string }>) =>
+      ipcRenderer.invoke('covenant:chat-stream', messages) as Promise<{ id: string }>,
+    onStreamEvent: (callback: (event: ChatStreamEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: ChatStreamEvent) => {
+        callback(payload)
+      }
+
+      ipcRenderer.on('covenant:chat-stream-event', listener)
+
+      return () => {
+        ipcRenderer.removeListener('covenant:chat-stream-event', listener)
+      }
+    },
     getConversations: () => ipcRenderer.invoke('get-conversations') as Promise<ChatConversation[]>,
     getConversation: (id: string) => ipcRenderer.invoke('get-conversation', id) as Promise<ChatConversation | null>,
     saveConversation: (conversation: ChatConversation) =>

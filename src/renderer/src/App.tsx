@@ -1,8 +1,23 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import Prism from 'prismjs'
+import 'prismjs/components/prism-bash'
+import 'prismjs/components/prism-batch'
+import 'prismjs/components/prism-json'
+import 'prismjs/components/prism-javascript'
+import 'prismjs/components/prism-typescript'
+import 'prismjs/components/prism-powershell'
+import 'prismjs/components/prism-python'
 import ModulePopup, { type ActivePopup, type PopupItem } from './components/ModulePopup'
 import TerminalView from './components/TerminalView'
 import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from './constants/terminalFonts'
+import {
+  DEFAULT_THEME_GRADIENT,
+  getThemePalette,
+  normalizeThemeGradient
+} from './constants/theme'
 import type { LauncherApp, LauncherAppTarget } from './types/launcher-app'
 import type { Preprompt } from './types/preprompt'
 import type {
@@ -26,6 +41,15 @@ interface ChatMessage {
   role: ChatRole
   content: string
   createdAt: number
+  reasoning?: string
+  usage?: ChatUsage
+  model?: string
+}
+
+interface ChatUsage {
+  promptTokens?: number
+  completionTokens?: number
+  totalTokens?: number
 }
 
 interface ChatConversation {
@@ -37,27 +61,22 @@ interface ChatConversation {
   systemPrompt?: string
 }
 
+interface ChatStreamEvent {
+  id: string
+  type: 'content' | 'reasoning' | 'done' | 'error'
+  delta?: string
+  usage?: ChatUsage
+  error?: string
+  model?: string
+}
+
 type AppMode = 'ai' | 'terminal'
 
-const DEFAULT_THEME_GRADIENT = 'from-neutral-900/95 to-[#1c0f03]'
-const AVAILABLE_THEME_GRADIENTS = [
-  DEFAULT_THEME_GRADIENT,
-  'from-slate-900 to-[#071726]',
-  'from-zinc-900 to-[#1a1026]',
-  'from-neutral-900 to-[#0a1f17]'
-] as const
-
-const AVAILABLE_THEME_GRADIENT_SET = new Set<string>(AVAILABLE_THEME_GRADIENTS)
 const MAX_WORKFLOW_LOG_LINES = 200
 const MAX_CONVERSATION_TITLE_LENGTH = 48
 const DEFAULT_CONVERSATION_TITLE = 'New chat'
-const CHAT_SCROLL_HEIGHT = 224
+const CHAT_SCROLL_HEIGHT = 300
 const CHAT_ROLE_ORDER: ChatRole[] = ['system', 'user', 'assistant']
-
-function normalizeThemeGradient(themeGradient: string | undefined): string {
-  if (!themeGradient) return DEFAULT_THEME_GRADIENT
-  return AVAILABLE_THEME_GRADIENT_SET.has(themeGradient) ? themeGradient : DEFAULT_THEME_GRADIENT
-}
 
 function splitWorkflowLogLines(text: string): string[] {
   return text
@@ -203,6 +222,58 @@ function normalizeMessageOrder(messages: ChatMessage[]): ChatMessage[] {
   })
 }
 
+function highlightMarkdownCode(code: string, language: string | undefined): string {
+  if (!language) return code
+  const grammar = Prism.languages[language]
+  if (!grammar) return code
+  return Prism.highlight(code, grammar, language)
+}
+
+function AssistantMarkdown({ content }: { content: string }): JSX.Element {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      className="chat-markdown"
+      components={{
+        a({ href, children, ...props }) {
+          const safeHref = typeof href === 'string' ? href : undefined
+          return (
+            <a href={safeHref} target="_blank" rel="noreferrer" {...props}>
+              {children}
+            </a>
+          )
+        },
+        code({ inline, className, children, ...props }) {
+          const rawCode = String(children ?? '').replace(/\n$/, '')
+          const match = /language-(\w+)/.exec(className ?? '')
+          const language = match?.[1]
+
+          if (!inline) {
+            const highlighted = highlightMarkdownCode(rawCode, language)
+            return (
+              <pre className="chat-code-block">
+                <code
+                  className={className}
+                  dangerouslySetInnerHTML={{ __html: highlighted }}
+                  {...props}
+                />
+              </pre>
+            )
+          }
+
+          return (
+            <code className="chat-code-inline" {...props}>
+              {children}
+            </code>
+          )
+        }
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  )
+}
+
 export default function App(): JSX.Element {
   const [visible, setVisible] = useState(false)
   // Tracks whether the window is truly visible to the user (including after the
@@ -220,6 +291,11 @@ export default function App(): JSX.Element {
   const [hasInitializedTerminal, setHasInitializedTerminal] = useState(false)
   const [themeGradient, setThemeGradient] = useState<string>(DEFAULT_THEME_GRADIENT)
   const [terminalFont, setTerminalFont] = useState<string>(DEFAULT_TERMINAL_FONT)
+  const [thinkingOpenById, setThinkingOpenById] = useState<Record<string, boolean>>({})
+  const [activeStreamId, setActiveStreamId] = useState<string | null>(null)
+  const [activeStreamMessageId, setActiveStreamMessageId] = useState<string | null>(null)
+  const [activeStreamConversationId, setActiveStreamConversationId] = useState<string | null>(null)
+  const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
   const [apps, setApps] = useState<LauncherApp[]>([])
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [preprompts, setPreprompts] = useState<Preprompt[]>([])
@@ -236,6 +312,8 @@ export default function App(): JSX.Element {
   const historyMenuRef = useRef<HTMLDivElement>(null)
   const historyButtonRef = useRef<HTMLButtonElement>(null)
   const successResetTimersRef = useRef<Record<string, number>>({})
+  const activeConversationRef = useRef<ChatConversation | null>(null)
+  const streamBufferRef = useRef<{ content: string; reasoning: string } | null>(null)
   // Ref for the hide-delay timer so it can be cancelled on rapid show/hide.
   const hideDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -451,7 +529,16 @@ export default function App(): JSX.Element {
   }, [loadConversations])
 
   useEffect(() => {
+    activeConversationRef.current = activeConversation
+  }, [activeConversation])
+
+  useEffect(() => {
     if (!isChatOpen) return
+    setAutoScrollEnabled(true)
+  }, [isChatOpen, activeConversation?.id])
+
+  useEffect(() => {
+    if (!isChatOpen || !autoScrollEnabled) return
 
     const scrollTimer = window.setTimeout(() => {
       if (!chatScrollRef.current) return
@@ -464,7 +551,19 @@ export default function App(): JSX.Element {
     return () => {
       window.clearTimeout(scrollTimer)
     }
-  }, [isChatOpen, activeConversation, isLoading])
+  }, [isChatOpen, activeConversation, isLoading, autoScrollEnabled])
+
+  const handleChatScroll = useCallback(() => {
+    const scrollElement = chatScrollRef.current
+    if (!scrollElement) return
+
+    const threshold = 24
+    const atBottom =
+      scrollElement.scrollTop + scrollElement.clientHeight >=
+      scrollElement.scrollHeight - threshold
+
+    setAutoScrollEnabled((previous) => (previous === atBottom ? previous : atBottom))
+  }, [])
 
   useEffect(() => {
     if (!isHistoryOpen) return
@@ -655,6 +754,139 @@ export default function App(): JSX.Element {
     }))
   }, [])
 
+  const updateConversationMessage = useCallback(
+    (conversationId: string, messageId: string, updater: (message: ChatMessage) => ChatMessage) => {
+      setActiveConversation((current) => {
+        if (!current || current.id !== conversationId) return current
+
+        const nextMessages = current.messages.map((message) =>
+          message.id === messageId ? updater(message) : message
+        )
+
+        return {
+          ...current,
+          messages: normalizeMessageOrder(nextMessages)
+        }
+      })
+    },
+    []
+  )
+
+  useEffect(() => {
+    if (!window.api?.chat.onStreamEvent) {
+      return
+    }
+
+    const unsubscribe = window.api.chat.onStreamEvent((event: ChatStreamEvent) => {
+      if (!activeStreamId || event.id !== activeStreamId) return
+
+      const conversationId = activeStreamConversationId
+      const messageId = activeStreamMessageId
+      if (!conversationId || !messageId) return
+
+      if (event.type === 'content' && event.delta) {
+        streamBufferRef.current = {
+          content: `${streamBufferRef.current?.content ?? ''}${event.delta}`,
+          reasoning: streamBufferRef.current?.reasoning ?? ''
+        }
+
+        updateConversationMessage(conversationId, messageId, (message) => ({
+          ...message,
+          content: `${message.content}${event.delta}`
+        }))
+        return
+      }
+
+      if (event.type === 'reasoning' && event.delta) {
+        streamBufferRef.current = {
+          content: streamBufferRef.current?.content ?? '',
+          reasoning: `${streamBufferRef.current?.reasoning ?? ''}${event.delta}`
+        }
+
+        updateConversationMessage(conversationId, messageId, (message) => ({
+          ...message,
+          reasoning: `${message.reasoning ?? ''}${event.delta}`
+        }))
+        return
+      }
+
+      if (event.type === 'error') {
+        updateConversationMessage(conversationId, messageId, (message) => ({
+          ...message,
+          content: `Error: ${event.error ?? 'Unable to fetch AI response.'}`
+        }))
+        setIsLoading(false)
+        setActiveStreamId(null)
+        setActiveStreamMessageId(null)
+        setActiveStreamConversationId(null)
+        setThinkingOpenById((previous) => ({
+          ...previous,
+          [messageId]: false
+        }))
+        streamBufferRef.current = null
+        return
+      }
+
+      if (event.type === 'done') {
+        const currentConversation = activeConversationRef.current
+        if (!currentConversation || currentConversation.id !== conversationId) {
+          setIsLoading(false)
+          setActiveStreamId(null)
+          setActiveStreamMessageId(null)
+          setActiveStreamConversationId(null)
+          streamBufferRef.current = null
+          return
+        }
+
+        const updatedMessages = normalizeMessageOrder(
+          currentConversation.messages.map((message) =>
+            message.id === messageId
+              ? {
+                  ...message,
+                  content: streamBufferRef.current?.content ?? message.content,
+                  usage: event.usage,
+                  reasoning: streamBufferRef.current?.reasoning ?? message.reasoning,
+                  model: event.model ?? message.model
+                }
+              : message
+          )
+        )
+
+        const updatedConversation: ChatConversation = {
+          ...currentConversation,
+          updatedAt: Date.now(),
+          messages: updatedMessages
+        }
+
+        setActiveConversation(updatedConversation)
+        upsertConversation(updatedConversation)
+        persistConversation(updatedConversation)
+        setIsLoading(false)
+        setActiveStreamId(null)
+        setActiveStreamMessageId(null)
+        setActiveStreamConversationId(null)
+        setThinkingOpenById((previous) => ({
+          ...previous,
+          [messageId]: false
+        }))
+        streamBufferRef.current = null
+      }
+    })
+
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe()
+      }
+    }
+  }, [
+    activeStreamConversationId,
+    activeStreamId,
+    activeStreamMessageId,
+    persistConversation,
+    updateConversationMessage,
+    upsertConversation
+  ])
+
   const handleSubmit = useCallback(async () => {
     const rawPrompt = query.trim()
     if (!rawPrompt || isLoading) return
@@ -712,6 +944,8 @@ export default function App(): JSX.Element {
     upsertConversation(userConversation)
     persistConversation(userConversation)
 
+    let keepLoading = false
+
     try {
       if (!window.api?.chat.askCovenant) {
         throw new Error('OpenAI chat is only available in the Electron app.')
@@ -727,23 +961,53 @@ export default function App(): JSX.Element {
         }))
       ]
 
-      const response = await window.api.chat.askCovenant(requestMessages)
-      const assistantMessage: ChatMessage = {
-        id: createMessageId(),
+      const assistantMessageId = createMessageId()
+      const placeholderAssistant: ChatMessage = {
+        id: assistantMessageId,
         role: 'assistant',
-        content: response,
-        createdAt: Date.now()
+        content: '',
+        createdAt: Date.now(),
+        reasoning: ''
       }
 
-      const updatedConversation: ChatConversation = {
+      const placeholderConversation: ChatConversation = {
         ...userConversation,
         updatedAt: Date.now(),
-        messages: normalizeMessageOrder([...userConversation.messages, assistantMessage])
+        messages: normalizeMessageOrder([...userConversation.messages, placeholderAssistant])
       }
 
-      setActiveConversation(updatedConversation)
-      upsertConversation(updatedConversation)
-      persistConversation(updatedConversation)
+      setActiveConversation(placeholderConversation)
+      upsertConversation(placeholderConversation)
+      streamBufferRef.current = { content: '', reasoning: '' }
+
+      if (window.api.chat.askCovenantStream) {
+        const streamResponse = await window.api.chat.askCovenantStream(requestMessages)
+        setActiveStreamId(streamResponse.id)
+        setActiveStreamMessageId(assistantMessageId)
+        setActiveStreamConversationId(placeholderConversation.id)
+        keepLoading = true
+      } else {
+        const response = await window.api.chat.askCovenant(requestMessages)
+        const updatedConversation: ChatConversation = {
+          ...placeholderConversation,
+          updatedAt: Date.now(),
+          messages: normalizeMessageOrder(
+            placeholderConversation.messages.map((message) =>
+              message.id === assistantMessageId
+                ? {
+                    ...message,
+                    content: response,
+                    model: 'gpt-5.4-nano'
+                  }
+                : message
+            )
+          )
+        }
+
+        setActiveConversation(updatedConversation)
+        upsertConversation(updatedConversation)
+        persistConversation(updatedConversation)
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to fetch AI response.'
       const errorMessage: ChatMessage = {
@@ -763,9 +1027,11 @@ export default function App(): JSX.Element {
       upsertConversation(updatedConversation)
       persistConversation(updatedConversation)
     } finally {
-      setIsLoading(false)
-      if (mode === 'ai') {
-        inputRef.current?.focus()
+      if (!keepLoading) {
+        setIsLoading(false)
+        if (mode === 'ai') {
+          inputRef.current?.focus()
+        }
       }
     }
   }, [
@@ -960,16 +1226,20 @@ export default function App(): JSX.Element {
 
   const handleOverlayClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
-      if (e.target === e.currentTarget) {
-        if (activePopup) {
-          setActivePopup(null)
-          return
-        }
+      if (e.target !== e.currentTarget) return
 
-        handleClose()
+      if (activePopup) {
+        setActivePopup(null)
+        return
       }
+
+      if (isChatOpen) {
+        return
+      }
+
+      handleClose()
     },
-    [activePopup, handleClose]
+    [activePopup, handleClose, isChatOpen]
   )
 
   const handleRootKeyDownCapture = useCallback(
@@ -1010,6 +1280,20 @@ export default function App(): JSX.Element {
     ? normalizeMessageOrder(activeConversation.messages)
     : []
 
+  const themePalette = getThemePalette(themeGradient)
+  const themeStyles: CSSProperties = {
+    '--chat-accent': themePalette.accent,
+    '--chat-accent-soft': themePalette.accentSoft,
+    '--chat-accent-strong': themePalette.accentStrong,
+    '--chat-user-text': themePalette.userText,
+    '--chat-assistant-text': themePalette.assistantText,
+    '--chat-assistant-bg': themePalette.assistantBg,
+    '--chat-assistant-border': themePalette.assistantBorder,
+    '--chat-scroll-thumb': themePalette.scrollbarThumb,
+    '--chat-scroll-thumb-hover': themePalette.scrollbarThumbHover,
+    '--chat-meta-text': themePalette.metaText
+  } as CSSProperties
+
   return (
     <div
       className="relative w-screen h-screen flex items-end justify-center pb-5 select-none"
@@ -1032,6 +1316,7 @@ export default function App(): JSX.Element {
             exit={{ opacity: 0, y: 14, scale: 0.97 }}
             transition={{ type: 'spring', damping: 15, stiffness: 120, mass: 0.8 }}
             className="relative flex flex-col w-[750px] max-w-full"
+            style={themeStyles}
           >
             <AnimatePresence mode="wait">
               {mode === 'ai' && activePopup && isAppVisible && (
@@ -1090,7 +1375,7 @@ export default function App(): JSX.Element {
                   animate={{ opacity: 1, y: 0, height: 'auto' }}
                   exit={{ opacity: 0, y: -6, height: 0 }}
                   transition={{ duration: 0.2 }}
-                  className="mb-2 rounded-2xl border border-white/10 bg-neutral-900 p-4"
+                  className={`mb-2 rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} p-4 chat-surface`}
                 >
                   <div className="relative flex items-center justify-between">
                     <div>
@@ -1118,11 +1403,11 @@ export default function App(): JSX.Element {
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: -8, scale: 0.98 }}
                           transition={{ duration: 0.15 }}
-                          className="absolute right-0 top-10 z-20 w-64 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/95 shadow-xl"
+                          className="absolute right-0 top-10 z-20 w-56 overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950/95 shadow-xl"
                         >
-                          <div className="max-h-56 overflow-y-auto scrollbar-hidden py-2">
+                          <div className="max-h-40 overflow-y-auto scrollbar-hidden py-1">
                             {conversations.length === 0 ? (
-                              <p className="px-3 py-2 text-xs text-neutral-500">No conversations yet.</p>
+                              <p className="px-2.5 py-2 text-[11px] text-neutral-500">No conversations yet.</p>
                             ) : (
                               conversations.map((conversation) => (
                                 <button
@@ -1134,14 +1419,14 @@ export default function App(): JSX.Element {
                                     setIsHistoryOpen(false)
                                     setPendingSystemPrompt('')
                                   }}
-                                  className={`flex w-full flex-col gap-1 px-3 py-2 text-left text-sm transition-colors hover:bg-neutral-800/70 ${
+                                  className={`flex w-full flex-col gap-0.5 px-2.5 py-1.5 text-left text-[12px] transition-colors hover:bg-neutral-800/70 ${
                                     conversation.id === activeConversation?.id
                                       ? 'bg-neutral-800/70 text-neutral-100'
                                       : 'text-neutral-300'
                                   }`}
                                 >
                                   <span className="truncate font-medium">{conversation.title}</span>
-                                  <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+                                  <span className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
                                     {conversation.messages.length} messages
                                   </span>
                                 </button>
@@ -1155,37 +1440,95 @@ export default function App(): JSX.Element {
 
                   <div
                     ref={chatScrollRef}
-                    className="mt-3 h-56 overflow-y-auto scrollbar-hidden space-y-3 pr-2"
+                    onScroll={handleChatScroll}
+                    className="mt-3 h-56 overflow-y-auto chat-scrollbar space-y-3 pr-2"
                     style={{ height: CHAT_SCROLL_HEIGHT }}
                   >
                     {chatMessages.length === 0 ? (
                       <p className="text-xs text-neutral-500">No messages yet.</p>
                     ) : (
-                      chatMessages.map((message) => (
-                        <div
-                          key={message.id}
-                          className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                        >
-                          <div
-                            className={`max-w-[78%] rounded-2xl border px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap select-text ${
-                              message.role === 'user'
-                                ? 'border-orange-500/30 bg-orange-500/10 text-orange-100'
-                                : 'border-white/10 bg-neutral-900/80 text-neutral-100'
-                            }`}
-                          >
-                            {message.content}
-                          </div>
-                        </div>
-                      ))
-                    )}
+                      chatMessages.map((message) => {
+                        const isAssistant = message.role === 'assistant'
+                        const isUser = message.role === 'user'
+                        const isStreaming =
+                          isAssistant && isLoading && activeStreamMessageId === message.id
+                        const reasoningText = message.reasoning?.trim() ?? ''
+                        const showThinking = isAssistant && (isStreaming || reasoningText.length > 0)
+                        const isThinkingOpen = Boolean(thinkingOpenById[message.id])
+                        const usage = message.usage
+                        const totalTokens =
+                          usage?.totalTokens ??
+                          (usage?.promptTokens && usage?.completionTokens
+                            ? usage.promptTokens + usage.completionTokens
+                            : undefined)
+                        const modelLabel = message.model?.trim()
+                        const tokenLabel = totalTokens ? `${totalTokens}tk` : undefined
+                        const metaLabel = [modelLabel, tokenLabel].filter(Boolean).join(` \u00b7 `)
 
-                    {isLoading && (
-                      <div className="flex justify-start">
-                        <div className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-neutral-900/80 px-3 py-2 text-sm text-neutral-300">
-                          <SpinnerIcon />
-                          <span>Thinking...</span>
-                        </div>
-                      </div>
+                        return (
+                          <div
+                            key={message.id}
+                            className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
+                          >
+                            <div
+                              className={`chat-message max-w-[78%] rounded-2xl border px-3 py-2 text-[13px] leading-relaxed select-text ${
+                                isUser
+                                  ? 'chat-message--user whitespace-pre-wrap'
+                                  : 'chat-message--assistant'
+                              }`}
+                            >
+                              {showThinking && (
+                                <div className="chat-thinking">
+                                  <button
+                                    type="button"
+                                    className="chat-thinking-toggle"
+                                    onClick={() =>
+                                      setThinkingOpenById((previous) => ({
+                                        ...previous,
+                                        [message.id]: !isThinkingOpen
+                                      }))
+                                    }
+                                  >
+                                    <span className="chat-thinking-indicator">
+                                      {isStreaming ? <SpinnerIcon /> : null}
+                                    </span>
+                                    <span>Thinking...</span>
+                                    <span className="chat-thinking-caret">
+                                      {isThinkingOpen ? 'v' : '>'}
+                                    </span>
+                                  </button>
+
+                                  {isThinkingOpen && (
+                                    <div className="chat-thinking-body">
+                                      {reasoningText ? (
+                                        <p className="whitespace-pre-wrap">{reasoningText}</p>
+                                      ) : (
+                                        <p className="chat-thinking-empty">
+                                          {isStreaming
+                                            ? 'Reasoning is streaming...'
+                                            : 'Reasoning not available.'}
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {isAssistant ? (
+                                <AssistantMarkdown content={message.content} />
+                              ) : (
+                                message.content
+                              )}
+
+                              {isAssistant && metaLabel ? (
+                                <div className="chat-message-meta">
+                                  {metaLabel}
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        )
+                      })
                     )}
                   </div>
                 </motion.div>
@@ -1222,7 +1565,8 @@ export default function App(): JSX.Element {
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="What can I help you with today?"
-                className="flex-1 bg-transparent text-lg text-neutral-100 placeholder:text-neutral-500 border-none focus:outline-none focus:ring-0 px-4 py-3 caret-orange-400"
+                className="flex-1 bg-transparent text-lg text-neutral-100 placeholder:text-neutral-500 border-none focus:outline-none focus:ring-0 px-4 py-3"
+                style={{ caretColor: 'var(--chat-accent)' }}
                 spellCheck={false}
                 autoComplete="off"
                 autoCorrect="off"

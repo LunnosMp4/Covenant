@@ -36,7 +36,7 @@ const isMac = process.platform === 'darwin'
 const isWindows = process.platform === 'win32'
 
 const WINDOW_WIDTH = 800
-const WINDOW_HEIGHT = 420
+const WINDOW_HEIGHT = 520
 const WINDOW_BOTTOM_MARGIN = 48
 const SETTINGS_WINDOW_WIDTH = 1024
 const SETTINGS_WINDOW_HEIGHT = 576
@@ -62,6 +62,15 @@ interface ChatMessage {
   role: ChatRole
   content: string
   createdAt: number
+  reasoning?: string
+  usage?: ChatUsage
+  model?: string
+}
+
+interface ChatUsage {
+  promptTokens?: number
+  completionTokens?: number
+  totalTokens?: number
 }
 
 interface ChatConversation {
@@ -285,7 +294,18 @@ const appStore = new StoreClass<AppStoreSchema>({
                 id: { type: 'string' },
                 role: { type: 'string', enum: ['system', 'user', 'assistant'] },
                 content: { type: 'string' },
-                createdAt: { type: 'number' }
+                createdAt: { type: 'number' },
+                reasoning: { type: 'string' },
+                model: { type: 'string' },
+                usage: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    promptTokens: { type: 'number' },
+                    completionTokens: { type: 'number' },
+                    totalTokens: { type: 'number' }
+                  }
+                }
               },
               required: ['id', 'role', 'content', 'createdAt']
             }
@@ -343,6 +363,34 @@ function deletePreprompt(id: string): Preprompt[] {
   return nextPreprompts
 }
 
+function normalizeChatUsage(payload: unknown): ChatUsage | undefined {
+  if (!payload || typeof payload !== 'object') return undefined
+
+  const raw = payload as Partial<ChatUsage>
+  const promptTokens =
+    typeof raw.promptTokens === 'number' && Number.isFinite(raw.promptTokens)
+      ? raw.promptTokens
+      : undefined
+  const completionTokens =
+    typeof raw.completionTokens === 'number' && Number.isFinite(raw.completionTokens)
+      ? raw.completionTokens
+      : undefined
+  const totalTokens =
+    typeof raw.totalTokens === 'number' && Number.isFinite(raw.totalTokens)
+      ? raw.totalTokens
+      : undefined
+
+  if (promptTokens === undefined && completionTokens === undefined && totalTokens === undefined) {
+    return undefined
+  }
+
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens
+  }
+}
+
 function normalizeChatMessage(payload: Partial<ChatMessage>): ChatMessage | null {
   const role = typeof payload.role === 'string' ? payload.role.trim() : ''
   if (!CHAT_ROLE_SET.has(role as ChatRole)) return null
@@ -357,11 +405,19 @@ function normalizeChatMessage(payload: Partial<ChatMessage>): ChatMessage | null
 
   const id = typeof payload.id === 'string' && payload.id.trim() ? payload.id.trim() : randomUUID()
 
+  const reasoning =
+    typeof payload.reasoning === 'string' && payload.reasoning.trim() ? payload.reasoning.trim() : undefined
+  const usage = normalizeChatUsage(payload.usage)
+  const model = typeof payload.model === 'string' && payload.model.trim() ? payload.model.trim() : undefined
+
   return {
     id,
     role: role as ChatRole,
     content,
-    createdAt
+    createdAt,
+    reasoning,
+    usage,
+    model
   }
 }
 
@@ -1621,6 +1677,103 @@ ipcMain.on('update-startup-setting', (_event, launchOnStartup: boolean) => {
   }
 })
 
+ipcMain.handle('covenant:chat-stream', async (event, rawMessages: Array<{ role?: string; content?: string }>) => {
+  const sanitizedMessages = Array.isArray(rawMessages)
+    ? rawMessages
+        .map((message) => {
+          const role = typeof message.role === 'string' ? message.role.trim() : ''
+          if (!CHAT_ROLE_SET.has(role as ChatRole)) return null
+          const content = typeof message.content === 'string' ? message.content.trim() : ''
+          if (!content) return null
+          return { role: role as ChatRole, content }
+        })
+        .filter((message): message is { role: ChatRole; content: string } => Boolean(message))
+    : []
+
+  if (sanitizedMessages.length === 0) {
+    throw new Error('Prompt cannot be empty.')
+  }
+
+  const storedConfig = readConfig()
+  const apiKey = storedConfig.apiKey || process.env.OPENAI_API_KEY
+  if (!apiKey) {
+    throw new Error('OpenAI API key is missing. Add it in Settings > General or set OPENAI_API_KEY.')
+  }
+
+  const proxyUrl = resolveOpenAIProxyUrl(storedConfig.proxyUrl)
+  const openAIProxyAgent = proxyUrl ? new ProxyAgent(proxyUrl) : undefined
+
+  const client = new OpenAI({
+    apiKey,
+    fetchOptions: openAIProxyAgent
+      ? {
+          dispatcher: openAIProxyAgent
+        }
+      : undefined
+  })
+
+  const streamId = randomUUID()
+  const sender = event.sender
+  const sendStreamEvent = (payload: { id: string } & Record<string, unknown>): void => {
+    if (sender.isDestroyed()) return
+    sender.send('covenant:chat-stream-event', payload)
+  }
+
+  const model = 'gpt-5.4-nano'
+  const stream = await client.chat.completions.create({
+    model,
+    stream: true,
+    stream_options: { include_usage: true },
+    reasoning_effort: 'low',
+    verbosity: 'low',
+    messages: [
+      {
+        role: 'system',
+        content:
+          "You are Covenant, a helpful, concise AI assistant integrated into a user's operating system. Keep your answers brief and to the point."
+      },
+      ...sanitizedMessages
+    ]
+  })
+
+  void (async () => {
+    let finalUsage: ChatUsage | undefined
+
+    try {
+      for await (const chunk of stream) {
+        const choice = chunk.choices?.[0]
+        const delta = choice?.delta?.content
+        const reasoning =
+          (choice?.delta as { reasoning?: string; thinking?: string })?.reasoning ??
+          (choice?.delta as { reasoning?: string; thinking?: string })?.thinking
+
+        if (typeof delta === 'string' && delta.length > 0) {
+          sendStreamEvent({ id: streamId, type: 'content', delta })
+        }
+
+        if (typeof reasoning === 'string' && reasoning.length > 0) {
+          sendStreamEvent({ id: streamId, type: 'reasoning', delta: reasoning })
+        }
+
+        if (chunk.usage) {
+          finalUsage = {
+            promptTokens: chunk.usage.prompt_tokens,
+            completionTokens: chunk.usage.completion_tokens,
+            totalTokens: chunk.usage.total_tokens
+          }
+        }
+      }
+
+      sendStreamEvent({ id: streamId, type: 'done', usage: finalUsage, model })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to fetch AI response.'
+      sendStreamEvent({ id: streamId, type: 'error', error: message })
+    }
+  })()
+
+  return { id: streamId }
+})
+
 ipcMain.handle('covenant:chat', async (_event, rawMessages: Array<{ role?: string; content?: string }>) => {
   const sanitizedMessages = Array.isArray(rawMessages)
     ? rawMessages
@@ -1656,7 +1809,7 @@ ipcMain.handle('covenant:chat', async (_event, rawMessages: Array<{ role?: strin
       : undefined
   })
   const completion = await client.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model: 'gpt-5.4-nano',
     messages: [
       {
         role: 'system',

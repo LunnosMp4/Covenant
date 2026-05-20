@@ -17,6 +17,24 @@ interface ChatMessage {
   role: ChatRole
   content: string
   createdAt: number
+  reasoning?: string
+  usage?: ChatUsage
+  model?: string
+}
+
+interface ChatUsage {
+  promptTokens?: number
+  completionTokens?: number
+  totalTokens?: number
+}
+
+interface ChatStreamEvent {
+  id: string
+  type: 'content' | 'reasoning' | 'done' | 'error'
+  delta?: string
+  usage?: ChatUsage
+  error?: string
+  model?: string
 }
 
 interface ChatConversation {
@@ -63,6 +81,8 @@ interface CovenantAPI {
   }
   chat: {
     askCovenant: (messages: Array<{ role: ChatRole; content: string }>) => Promise<string>
+    askCovenantStream: (messages: Array<{ role: ChatRole; content: string }>) => Promise<{ id: string }>
+    onStreamEvent: (callback: (event: ChatStreamEvent) => void) => () => void
     getConversations: () => Promise<ChatConversation[]>
     getConversation: (id: string) => Promise<ChatConversation | null>
     saveConversation: (conversation: ChatConversation) => Promise<ChatConversation[]>
