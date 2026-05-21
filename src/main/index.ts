@@ -249,9 +249,21 @@ const appStore = new StoreClass<AppStoreSchema>({
           title: { type: 'string' },
           path: { type: 'string' },
           iconBase64: { type: 'string' },
-          arguments: { type: 'string' }
+          arguments: { type: 'string' },
+          targets: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                path: { type: 'string' },
+                arguments: { type: 'string' }
+              },
+              required: ['path', 'arguments']
+            }
+          }
         },
-        required: ['id', 'title', 'path', 'iconBase64', 'arguments']
+        required: ['id', 'title', 'path', 'iconBase64', 'arguments', 'targets']
       }
     },
     workflows: {
