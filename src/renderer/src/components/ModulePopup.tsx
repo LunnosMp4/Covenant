@@ -80,8 +80,19 @@ interface ModulePopupProps {
   onToggleWorkflowLogs?: (workflowId: string) => void
   anchorSide?: PopupAnchorSide
   themeGradient: string
+  selectedModule4ItemId?: string | null
+  onClearSelectedModule4Item?: () => void
   /** Forwarded to WorkflowList to pause CPU-intensive animations when hidden. */
   isAppVisible?: boolean
+}
+
+function CloseIcon(): JSX.Element {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M18 6L6 18" />
+      <path d="M6 6l12 12" />
+    </svg>
+  )
 }
 
 function PlusIcon(): JSX.Element {
@@ -175,6 +186,8 @@ export default function ModulePopup({
   onToggleWorkflowLogs,
   anchorSide = 'right',
   themeGradient,
+  selectedModule4ItemId = null,
+  onClearSelectedModule4Item,
   isAppVisible = true
 }: ModulePopupProps): JSX.Element {
   const items =
@@ -231,20 +244,59 @@ export default function ModulePopup({
           />
         ) : (
           items.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onSelectItem(item)}
-              className="flex w-full cursor-pointer items-center gap-3 rounded-xl p-3 text-left text-sm text-neutral-200 transition-colors duration-150 hover:bg-white/5"
-            >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-xs font-semibold uppercase tracking-[0.08em] text-neutral-200">
-                {activePopup === 'module2' ? getAppBadgeText(item.title) : <ItemIcon icon={item.icon} />}
-              </span>
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate">{item.title}</span>
-                {item.subtitle && <span className="mt-0.5 truncate text-xs text-neutral-500">{item.subtitle}</span>}
-              </span>
-            </button>
+            activePopup === 'module4' && selectedModule4ItemId === item.id ? (
+              <motion.div
+                key={item.id}
+                initial={{ opacity: 0.95, scale: 0.995 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="relative overflow-hidden rounded-xl border border-emerald-400/70 bg-emerald-400/10 p-3 text-sm text-emerald-50 shadow-[0_0_0_1px_rgba(16,185,129,0.18)]"
+              >
+                <motion.div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-y-0 left-[-30%] w-[30%] bg-gradient-to-r from-transparent via-emerald-200/20 to-transparent"
+                  animate={{ x: ['0%', '420%'] }}
+                  transition={{ duration: 2.8, repeat: Number.POSITIVE_INFINITY, ease: 'linear' }}
+                />
+                <div className="relative flex items-center gap-3">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-300/25 bg-emerald-300/10 text-xs font-semibold uppercase tracking-[0.08em] text-emerald-50">
+                    <ItemIcon icon={item.icon} />
+                  </span>
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate font-medium text-emerald-50">{item.title}</span>
+                    {item.subtitle && <span className="mt-0.5 truncate text-xs text-emerald-50/65">{item.subtitle}</span>}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={onClearSelectedModule4Item}
+                    className="shrink-0 rounded-lg border border-emerald-300/20 bg-emerald-300/10 p-1.5 text-emerald-50 transition-colors hover:bg-emerald-300/20 hover:text-white"
+                    aria-label="Remove selected system prompt"
+                  >
+                    <CloseIcon />
+                  </button>
+                </div>
+              </motion.div>
+            ) : (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onSelectItem(item)}
+                disabled={activePopup === 'module4' && Boolean(selectedModule4ItemId)}
+                className={`flex w-full items-center gap-3 rounded-xl p-3 text-left text-sm transition-colors duration-150 ${
+                  activePopup === 'module4' && Boolean(selectedModule4ItemId)
+                    ? 'cursor-not-allowed border border-neutral-800/90 bg-neutral-950/55 text-neutral-500 opacity-55'
+                    : 'cursor-pointer text-neutral-200 hover:bg-white/5'
+                }`}
+                aria-disabled={activePopup === 'module4' && Boolean(selectedModule4ItemId)}
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-xs font-semibold uppercase tracking-[0.08em] text-neutral-200">
+                  {activePopup === 'module2' ? getAppBadgeText(item.title) : <ItemIcon icon={item.icon} />}
+                </span>
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate">{item.title}</span>
+                  {item.subtitle && <span className="mt-0.5 truncate text-xs text-neutral-500">{item.subtitle}</span>}
+                </span>
+              </button>
+            )
           ))
         )}
       </div>

@@ -61,6 +61,12 @@ interface ChatConversation {
   systemPrompt?: string
 }
 
+interface SelectedSystemPrompt {
+  id: string
+  title: string
+  content: string
+}
+
 interface ChatStreamEvent {
   id: string
   type: 'content' | 'reasoning' | 'done' | 'error'
@@ -211,6 +217,22 @@ function createMessageId(): string {
   return `msg_${Math.random().toString(36).slice(2)}_${Date.now()}`
 }
 
+function createSelectedSystemPrompt(preprompt: Preprompt): SelectedSystemPrompt {
+  return {
+    id: preprompt.id,
+    title: preprompt.title,
+    content: preprompt.content
+  }
+}
+
+function createCustomSystemPromptSelection(conversationId: string, content: string): SelectedSystemPrompt {
+  return {
+    id: `conversation-${conversationId}`,
+    title: 'Custom system prompt',
+    content
+  }
+}
+
 function sortConversations(conversations: ChatConversation[]): ChatConversation[] {
   return [...conversations].sort((a, b) => b.updatedAt - a.updatedAt)
 }
@@ -284,7 +306,7 @@ export default function App(): JSX.Element {
   const [isLoading, setIsLoading] = useState(false)
   const [conversations, setConversations] = useState<ChatConversation[]>([])
   const [activeConversation, setActiveConversation] = useState<ChatConversation | null>(null)
-  const [pendingSystemPrompt, setPendingSystemPrompt] = useState('')
+  const [selectedSystemPrompt, setSelectedSystemPrompt] = useState<SelectedSystemPrompt | null>(null)
   const [isChatOpen, setIsChatOpen] = useState(false)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [mode, setMode] = useState<AppMode>('ai')
@@ -597,6 +619,25 @@ export default function App(): JSX.Element {
     }
   }, [activePopup, loadApps, loadPreprompts, loadWorkflows])
 
+  useEffect(() => {
+    if (!activeConversation) {
+      return
+    }
+
+    const systemPrompt = activeConversation.systemPrompt?.trim() ?? ''
+    if (!systemPrompt) {
+      setSelectedSystemPrompt(null)
+      return
+    }
+
+    const matchingPreprompt = preprompts.find((item) => item.content.trim() === systemPrompt)
+    setSelectedSystemPrompt(
+      matchingPreprompt
+        ? createSelectedSystemPrompt(matchingPreprompt)
+        : createCustomSystemPromptSelection(activeConversation.id, systemPrompt)
+    )
+  }, [activeConversation, preprompts])
+
   const togglePopup = useCallback(
     (popup: ActivePopup) => {
       if (mode !== 'ai') {
@@ -892,15 +933,7 @@ export default function App(): JSX.Element {
     if (!rawPrompt || isLoading) return
 
     const now = Date.now()
-    const trimmedSystemPrompt = pendingSystemPrompt.trim()
-    let prompt = rawPrompt
-
-    if (trimmedSystemPrompt && rawPrompt.startsWith(trimmedSystemPrompt)) {
-      const remainder = rawPrompt.slice(trimmedSystemPrompt.length).trim()
-      if (remainder) {
-        prompt = remainder
-      }
-    }
+    const activeSystemPrompt = selectedSystemPrompt?.content.trim() || activeConversation?.systemPrompt?.trim() || ''
 
     const shouldStartNewConversation = !isChatOpen
     let nextConversation = shouldStartNewConversation ? null : activeConversation
@@ -912,16 +945,15 @@ export default function App(): JSX.Element {
         createdAt,
         updatedAt: createdAt,
         messages: [],
-        systemPrompt: trimmedSystemPrompt || undefined
+        systemPrompt: activeSystemPrompt || undefined
       }
       setActiveConversation(nextConversation)
-      setPendingSystemPrompt('')
     }
 
     const userMessage: ChatMessage = {
       id: createMessageId(),
       role: 'user',
-      content: prompt,
+      content: rawPrompt,
       createdAt: now
     }
 
@@ -929,11 +961,7 @@ export default function App(): JSX.Element {
       ...nextConversation,
       updatedAt: now,
       messages: normalizeMessageOrder([...nextConversation.messages, userMessage]),
-      systemPrompt: nextConversation.systemPrompt ?? (trimmedSystemPrompt || undefined)
-    }
-
-    if (!nextConversation.systemPrompt && trimmedSystemPrompt) {
-      setPendingSystemPrompt('')
+      systemPrompt: nextConversation.systemPrompt ?? (activeSystemPrompt || undefined)
     }
 
     setIsLoading(true)
@@ -1039,10 +1067,36 @@ export default function App(): JSX.Element {
     isLoading,
     mode,
     activeConversation,
-    pendingSystemPrompt,
+    selectedSystemPrompt,
     upsertConversation,
     persistConversation
   ])
+
+  const setCurrentSystemPrompt = useCallback(
+    (selection: SelectedSystemPrompt | null) => {
+      setSelectedSystemPrompt(selection)
+
+      const currentConversation = activeConversationRef.current
+      if (!currentConversation) {
+        return
+      }
+
+      const updatedConversation: ChatConversation = {
+        ...currentConversation,
+        updatedAt: Date.now(),
+        systemPrompt: selection?.content.trim() || undefined
+      }
+
+      setActiveConversation(updatedConversation)
+      upsertConversation(updatedConversation)
+      persistConversation(updatedConversation)
+    },
+    [persistConversation, upsertConversation]
+  )
+
+  const clearCurrentSystemPrompt = useCallback(() => {
+    setCurrentSystemPrompt(null)
+  }, [setCurrentSystemPrompt])
 
   const appendAssistantMessage = useCallback(
     (content: string) => {
@@ -1083,14 +1137,10 @@ export default function App(): JSX.Element {
   const handlePopupItemSelect = useCallback(
     (item: PopupItem) => {
       if (activePopup === 'module4' && item.promptText) {
-        setPendingSystemPrompt(item.promptText)
-        setQuery((previous) => {
-          const trimmedPrevious = previous.trim()
-          if (!trimmedPrevious) {
-            return item.promptText as string
-          }
-
-          return `${trimmedPrevious}\n\n${item.promptText}`
+        setCurrentSystemPrompt({
+          id: item.id,
+          title: item.title,
+          content: item.promptText
         })
 
         setTimeout(() => inputRef.current?.focus(), 40)
@@ -1326,6 +1376,8 @@ export default function App(): JSX.Element {
                   popupRef={popupRef}
                   themeGradient={themeGradient}
                   isAppVisible={isAppVisible}
+                  selectedModule4ItemId={selectedSystemPrompt?.id}
+                  onClearSelectedModule4Item={clearCurrentSystemPrompt}
                   module2Items={apps.map((item) => {
                     const targets = normalizeLauncherAppTargets(item)
                     return {
@@ -1417,7 +1469,6 @@ export default function App(): JSX.Element {
                                     setActiveConversation(conversation)
                                     setIsChatOpen(true)
                                     setIsHistoryOpen(false)
-                                    setPendingSystemPrompt('')
                                   }}
                                   className={`flex w-full flex-col gap-0.5 px-2.5 py-1.5 text-left text-[12px] transition-colors hover:bg-neutral-800/70 ${
                                     conversation.id === activeConversation?.id
