@@ -28,6 +28,7 @@ interface ChatMessage {
 
 interface ChatUsage {
   promptTokens?: number
+  cachedPromptTokens?: number
   completionTokens?: number
   totalTokens?: number
 }

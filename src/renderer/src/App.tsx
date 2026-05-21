@@ -48,6 +48,7 @@ interface ChatMessage {
 
 interface ChatUsage {
   promptTokens?: number
+  cachedPromptTokens?: number
   completionTokens?: number
   totalTokens?: number
 }
@@ -126,6 +127,66 @@ function formatTargetsSummary(targets: LauncherAppTarget[]): string {
   }
 
   return `${count} app${count === 1 ? '' : 's'}`
+}
+
+const CHAT_MODEL_PRICING: Record<
+  string,
+  {
+    inputPerMillion: number
+    cachedInputPerMillion: number
+    outputPerMillion: number
+  }
+> = {
+  'gpt-5.4-nano': {
+    inputPerMillion: 0.2,
+    cachedInputPerMillion: 0.02,
+    outputPerMillion: 1.25
+  }
+}
+
+function formatTokenCount(tokens: number): string {
+  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(tokens)
+}
+
+function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 4,
+    maximumFractionDigits: 4
+  }).format(amount)
+}
+
+function formatUsageSummary(message: ChatMessage): string | undefined {
+  const usage = message.usage
+  if (!usage) {
+    return undefined
+  }
+
+  const promptTokens = usage.promptTokens ?? 0
+  const cachedPromptTokens = Math.min(usage.cachedPromptTokens ?? 0, promptTokens)
+  const completionTokens = usage.completionTokens ?? 0
+  const pricing = message.model ? CHAT_MODEL_PRICING[message.model.trim()] : undefined
+
+  const inputTokens = promptTokens - cachedPromptTokens
+  const inputCost = pricing ? (inputTokens * pricing.inputPerMillion) / 1_000_000 : 0
+  const cachedInputCost = pricing ? (cachedPromptTokens * pricing.cachedInputPerMillion) / 1_000_000 : 0
+  const outputCost = pricing ? (completionTokens * pricing.outputPerMillion) / 1_000_000 : 0
+  const totalCost = inputCost + cachedInputCost + outputCost
+
+  const parts = [
+    `>${formatTokenCount(promptTokens)}tk`,
+    `${formatTokenCount(completionTokens)}tk`
+  ]
+
+  if (pricing) {
+    parts.push(formatCurrency(totalCost))
+  } else {
+    const totalTokens = usage.totalTokens ?? promptTokens + completionTokens
+    parts.push(`${formatTokenCount(totalTokens)}tk`)
+  }
+
+  return parts.join(' · ')
 }
 
 function SendIcon(): JSX.Element {
@@ -1506,15 +1567,9 @@ export default function App(): JSX.Element {
                         const reasoningText = message.reasoning?.trim() ?? ''
                         const showThinking = isAssistant && (isStreaming || reasoningText.length > 0)
                         const isThinkingOpen = Boolean(thinkingOpenById[message.id])
-                        const usage = message.usage
-                        const totalTokens =
-                          usage?.totalTokens ??
-                          (usage?.promptTokens && usage?.completionTokens
-                            ? usage.promptTokens + usage.completionTokens
-                            : undefined)
                         const modelLabel = message.model?.trim()
-                        const tokenLabel = totalTokens ? `${totalTokens}tk` : undefined
-                        const metaLabel = [modelLabel, tokenLabel].filter(Boolean).join(` \u00b7 `)
+                        const usageLabel = formatUsageSummary(message)
+                        const metaLabel = [modelLabel, usageLabel].filter(Boolean).join(` \u00b7 `)
 
                         return (
                           <div

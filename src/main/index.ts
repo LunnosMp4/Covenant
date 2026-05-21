@@ -69,6 +69,7 @@ interface ChatMessage {
 
 interface ChatUsage {
   promptTokens?: number
+  cachedPromptTokens?: number
   completionTokens?: number
   totalTokens?: number
 }
@@ -1756,8 +1757,13 @@ ipcMain.handle('covenant:chat-stream', async (event, rawMessages: Array<{ role?:
         }
 
         if (chunk.usage) {
+          const promptTokensDetails = chunk.usage.prompt_tokens_details as
+            | { cached_tokens?: number }
+            | undefined
+
           finalUsage = {
             promptTokens: chunk.usage.prompt_tokens,
+            cachedPromptTokens: promptTokensDetails?.cached_tokens,
             completionTokens: chunk.usage.completion_tokens,
             totalTokens: chunk.usage.total_tokens
           }
