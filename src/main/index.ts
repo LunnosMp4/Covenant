@@ -22,6 +22,7 @@ import OpenAI from 'openai'
 import { ProxyAgent } from 'undici'
 import { terminalManager, type TerminalExitPayload } from './terminalManager'
 import { getTerminalFonts } from './fontManager'
+import type { AppConfig, McpAuth, McpHeader, McpServer, McpTool } from '../shared/mcp'
 
 // Expose V8's garbage collector so we can force a collection on window hide.
 // Must be set before app.whenReady() — top-level module scope satisfies this.
@@ -40,14 +41,6 @@ const WINDOW_HEIGHT = 520
 const WINDOW_BOTTOM_MARGIN = 48
 const SETTINGS_WINDOW_WIDTH = 1024
 const SETTINGS_WINDOW_HEIGHT = 576
-
-interface AppConfig {
-  apiKey: string
-  themeGradient: string
-  proxyUrl: string
-  launchOnStartup: boolean
-  terminalFont: string
-}
 
 interface Preprompt {
   id: string
@@ -119,7 +112,8 @@ const DEFAULT_CONFIG: AppConfig = {
   themeGradient: 'from-neutral-900/95 to-[#1c0f03]',
   proxyUrl: '',
   launchOnStartup: true,
-  terminalFont: 'Cascadia Mono, Consolas, "Courier New", monospace'
+  terminalFont: 'Cascadia Mono, Consolas, "Courier New", monospace',
+  mcpServers: []
 }
 
 const WORKFLOW_LANGUAGE_SET = new Set<WorkflowLanguage>([
@@ -132,6 +126,7 @@ const WORKFLOW_LANGUAGE_SET = new Set<WorkflowLanguage>([
 ])
 
 const runningWorkflowIds = new Set<string>()
+const mcpSessionIds = new Map<string, string>()
 const terminalSubscribers = new Set<WebContents>()
 const MAX_CONVERSATIONS = 20
 const CHAT_ROLE_SET = new Set<ChatRole>(['system', 'user', 'assistant'])
@@ -1049,7 +1044,8 @@ function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined): AppC
       typeof rawConfig?.launchOnStartup === 'boolean'
         ? rawConfig.launchOnStartup
         : DEFAULT_CONFIG.launchOnStartup,
-    terminalFont: normalizeTerminalFont(rawConfig?.terminalFont)
+    terminalFont: normalizeTerminalFont(rawConfig?.terminalFont),
+    mcpServers: normalizeStoredMcpServers(rawConfig?.mcpServers)
   }
 }
 
@@ -1091,6 +1087,493 @@ function updateConfig(configPatch: Partial<AppConfig>): AppConfig {
   const merged = normalizeConfig({ ...current, ...configPatch })
   writeConfig(merged)
   return merged
+}
+
+function normalizeMcpHeaders(rawHeaders: unknown): McpHeader[] {
+  if (!Array.isArray(rawHeaders)) {
+    return []
+  }
+
+  return rawHeaders
+    .map((header) => {
+      const name = typeof header?.name === 'string' ? header.name.trim() : ''
+      const value = typeof header?.value === 'string' ? header.value.trim() : ''
+      if (!name) return null
+      return { name, value }
+    })
+    .filter((header): header is McpHeader => Boolean(header))
+}
+
+function normalizeMcpAuth(rawAuth: unknown): McpAuth {
+  if (!rawAuth || typeof rawAuth !== 'object') {
+    return { type: 'none' }
+  }
+
+  const authType = typeof (rawAuth as { type?: unknown }).type === 'string'
+    ? (rawAuth as { type?: string }).type
+    : 'none'
+
+  if (authType === 'accessToken') {
+    const token = typeof (rawAuth as { token?: unknown }).token === 'string'
+      ? (rawAuth as { token?: string }).token.trim()
+      : ''
+    return { type: 'accessToken', token }
+  }
+
+  if (authType === 'customHeaders') {
+    return { type: 'customHeaders', headers: normalizeMcpHeaders((rawAuth as { headers?: unknown }).headers) }
+  }
+
+  return { type: 'none' }
+}
+
+function normalizeMcpTools(rawTools: unknown): McpTool[] {
+  if (!Array.isArray(rawTools)) {
+    return []
+  }
+
+  return rawTools
+    .map((tool) => {
+      const name = typeof tool?.name === 'string' ? tool.name.trim() : ''
+      if (!name) return null
+      const description = typeof tool?.description === 'string' ? tool.description.trim() : ''
+      const inputSchema =
+        tool && typeof tool === 'object' && tool.inputSchema && typeof tool.inputSchema === 'object'
+          ? (tool.inputSchema as Record<string, unknown>)
+          : undefined
+      const enabled = typeof tool?.enabled === 'boolean' ? tool.enabled : true
+
+      return {
+        name,
+        description,
+        inputSchema,
+        enabled
+      }
+    })
+    .filter((tool): tool is McpTool => Boolean(tool))
+}
+
+function normalizeStoredMcpServer(rawServer: Partial<McpServer> | null | undefined): McpServer | null {
+  if (!rawServer || typeof rawServer !== 'object') {
+    return null
+  }
+
+  const name = typeof rawServer.name === 'string' ? rawServer.name.trim() : ''
+  const url = typeof rawServer.url === 'string' ? rawServer.url.trim() : ''
+
+  if (!name || !url) {
+    return null
+  }
+
+  const id = typeof rawServer.id === 'string' && rawServer.id.trim() ? rawServer.id.trim() : randomUUID()
+  const description = typeof rawServer.description === 'string' ? rawServer.description.trim() : ''
+  const active = typeof rawServer.active === 'boolean' ? rawServer.active : false
+
+  return {
+    id,
+    name,
+    url,
+    description,
+    active,
+    auth: normalizeMcpAuth(rawServer.auth),
+    tools: normalizeMcpTools(rawServer.tools),
+    lastSyncedAt:
+      typeof rawServer.lastSyncedAt === 'number' && Number.isFinite(rawServer.lastSyncedAt)
+        ? rawServer.lastSyncedAt
+        : undefined,
+    lastError:
+      typeof rawServer.lastError === 'string' && rawServer.lastError.trim()
+        ? rawServer.lastError.trim()
+        : undefined
+  }
+}
+
+function normalizeStoredMcpServers(rawServers: unknown): McpServer[] {
+  if (!Array.isArray(rawServers)) {
+    return []
+  }
+
+  return rawServers
+    .map((server) => normalizeStoredMcpServer(server))
+    .filter((server): server is McpServer => Boolean(server))
+}
+
+function getMcpServers(): McpServer[] {
+  return readConfig().mcpServers
+}
+
+function saveMcpServer(payload: Partial<McpServer>): McpServer[] {
+  const currentServers = getMcpServers()
+  const existingId = typeof payload.id === 'string' ? payload.id.trim() : ''
+  const existingServer = existingId ? currentServers.find((item) => item.id === existingId) : undefined
+  const normalizedServer = normalizeStoredMcpServer(
+    existingServer ? { ...existingServer, ...payload, id: existingServer.id } : payload
+  )
+
+  if (!normalizedServer) {
+    throw new Error('MCP server name and URL are required.')
+  }
+
+  const nextServers = existingId && currentServers.some((item) => item.id === existingId)
+    ? currentServers.map((item) =>
+        item.id === existingId ? { ...item, ...normalizedServer, id: existingId } : item
+      )
+    : [...currentServers, { ...normalizedServer, id: existingId || normalizedServer.id }]
+
+  updateConfig({ mcpServers: nextServers })
+  return nextServers
+}
+
+function deleteMcpServer(id: string): McpServer[] {
+  const normalizedId = typeof id === 'string' ? id.trim() : ''
+  if (!normalizedId) {
+    return getMcpServers()
+  }
+
+  mcpSessionIds.delete(normalizedId)
+  const nextServers = getMcpServers().filter((item) => item.id !== normalizedId)
+  updateConfig({ mcpServers: nextServers })
+  return nextServers
+}
+
+function resolveMcpEndpointUrl(rawUrl: string): string {
+  const parsed = new URL(rawUrl)
+  if (parsed.pathname.endsWith('/mcp')) {
+    return parsed.toString()
+  }
+
+  parsed.pathname = parsed.pathname.endsWith('/') ? `${parsed.pathname}mcp` : `${parsed.pathname}/mcp`
+  return parsed.toString()
+}
+
+function buildMcpHeaders(server: McpServer): Headers {
+  const headers = new Headers()
+  headers.set('Content-Type', 'application/json')
+  headers.set('Accept', 'application/json, text/event-stream')
+
+  if (server.auth.type === 'accessToken' && server.auth.token.trim()) {
+    headers.set('Authorization', `Bearer ${server.auth.token.trim()}`)
+  }
+
+  if (server.auth.type === 'customHeaders') {
+    server.auth.headers.forEach((header) => {
+      if (header.name.trim()) {
+        headers.set(header.name.trim(), header.value.trim())
+      }
+    })
+  }
+
+  const sessionId = mcpSessionIds.get(server.id)
+  if (sessionId) {
+    headers.set('mcp-session-id', sessionId)
+  }
+
+  return headers
+}
+
+function extractMcpJsonResponse(text: string): unknown {
+  const trimmed = text.trim()
+  if (!trimmed) {
+    return null
+  }
+
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    return JSON.parse(trimmed) as unknown
+  }
+
+  const dataMatches = [...trimmed.matchAll(/^data:\s*(.+)$/gm)]
+  if (dataMatches.length > 0) {
+    const lastData = dataMatches[dataMatches.length - 1]?.[1]
+    if (lastData) {
+      return JSON.parse(lastData) as unknown
+    }
+  }
+
+  throw new Error('Unable to parse MCP response.')
+}
+
+async function sendMcpRequest(
+  server: McpServer,
+  method: string,
+  params?: Record<string, unknown>
+): Promise<unknown> {
+  const response = await fetch(resolveMcpEndpointUrl(server.url), {
+    method: 'POST',
+    headers: buildMcpHeaders(server),
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: randomUUID(),
+      method,
+      params
+    })
+  })
+
+  const sessionId = response.headers.get('mcp-session-id')
+  if (sessionId) {
+    mcpSessionIds.set(server.id, sessionId)
+  }
+
+  const responseText = await response.text()
+  if (!response.ok) {
+    throw new Error(responseText.trim() || `MCP request failed with status ${response.status}.`)
+  }
+
+  return extractMcpJsonResponse(responseText)
+}
+
+async function initializeMcpServer(server: McpServer): Promise<void> {
+  await sendMcpRequest(server, 'initialize', {
+    protocolVersion: '2024-11-05',
+    capabilities: {},
+    clientInfo: {
+      name: 'Covenant',
+      version: app.getVersion()
+    }
+  })
+
+  try {
+    await sendMcpRequest(server, 'notifications/initialized')
+  } catch {
+    // Optional notification.
+  }
+}
+
+async function refreshMcpServerTools(server: McpServer): Promise<McpServer> {
+  await initializeMcpServer(server)
+
+  const response = (await sendMcpRequest(server, 'tools/list', {})) as
+    | { result?: { tools?: unknown } }
+    | { tools?: unknown }
+  const rawTools = (response as { result?: { tools?: unknown } }).result?.tools ?? (response as { tools?: unknown }).tools
+  const discoveredTools = Array.isArray(rawTools)
+    ? rawTools
+        .map((tool) => {
+          const name = typeof tool?.name === 'string' ? tool.name.trim() : ''
+          if (!name) return null
+
+          return {
+            name,
+            description: typeof tool?.description === 'string' ? tool.description.trim() : '',
+            inputSchema:
+              tool && typeof tool === 'object' && tool.inputSchema && typeof tool.inputSchema === 'object'
+                ? (tool.inputSchema as Record<string, unknown>)
+                : undefined
+          }
+        })
+        .filter(
+          (tool): tool is { name: string; description: string; inputSchema?: Record<string, unknown> } =>
+            Boolean(tool)
+        )
+    : []
+
+  const existingToolsByName = new Map(server.tools.map((tool) => [tool.name, tool]))
+  const hadPriorTools = server.tools.length > 0
+  const normalizedTools = discoveredTools.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+    enabled: existingToolsByName.get(tool.name)?.enabled ?? !hadPriorTools
+  }))
+
+  return {
+    ...server,
+    tools: normalizedTools,
+    lastSyncedAt: Date.now(),
+    lastError: undefined
+  }
+}
+
+async function refreshMcpServerToolsById(serverId: string): Promise<McpServer[]> {
+  const normalizedId = typeof serverId === 'string' ? serverId.trim() : ''
+  if (!normalizedId) {
+    return getMcpServers()
+  }
+
+  const servers = getMcpServers()
+  const targetServer = servers.find((server) => server.id === normalizedId)
+  if (!targetServer) {
+    return servers
+  }
+
+  try {
+    const refreshedServer = await refreshMcpServerTools(targetServer)
+    const nextServers = servers.map((server) => (server.id === normalizedId ? refreshedServer : server))
+    updateConfig({ mcpServers: nextServers })
+    return nextServers
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to refresh MCP tools.'
+    const nextServers = servers.map((server) =>
+      server.id === normalizedId ? { ...server, lastError: message, lastSyncedAt: Date.now() } : server
+    )
+    updateConfig({ mcpServers: nextServers })
+    throw new Error(message)
+  }
+}
+
+interface McpToolRegistryEntry {
+  server: McpServer
+  tool: McpTool
+  qualifiedName: string
+}
+
+function normalizeMcpToolNameSegment(value: string): string {
+  const normalized = value.trim().replace(/[^a-zA-Z0-9_]/g, '_')
+  return normalized || 'tool'
+}
+
+function getActiveMcpToolRegistry(): McpToolRegistryEntry[] {
+  const servers = getMcpServers().filter((server) => server.active)
+  const registry: McpToolRegistryEntry[] = []
+
+  servers.forEach((server) => {
+    server.tools
+      .filter((tool) => tool.enabled)
+      .forEach((tool) => {
+        registry.push({
+          server,
+          tool,
+          qualifiedName: `mcp_${normalizeMcpToolNameSegment(server.id)}_${normalizeMcpToolNameSegment(tool.name)}`
+        })
+      })
+  })
+
+  return registry
+}
+
+function parseMcpToolResultContent(result: unknown): string {
+  if (typeof result === 'string') {
+    return result
+  }
+
+  if (!result || typeof result !== 'object') {
+    return JSON.stringify(result)
+  }
+
+  const content = (result as { content?: unknown }).content
+  if (typeof content === 'string') {
+    return content
+  }
+
+  if (Array.isArray(content)) {
+    const textSegments = content
+      .map((part) => {
+        if (typeof part === 'string') {
+          return part
+        }
+
+        if (part && typeof part === 'object') {
+          const typedPart = part as { type?: unknown; text?: unknown; content?: unknown }
+          if (typedPart.type === 'text' && typeof typedPart.text === 'string') {
+            return typedPart.text
+          }
+
+          if (typeof typedPart.content === 'string') {
+            return typedPart.content
+          }
+        }
+
+        return ''
+      })
+      .filter((segment) => Boolean(segment))
+
+    if (textSegments.length > 0) {
+      return textSegments.join('\n')
+    }
+  }
+
+  return JSON.stringify(result)
+}
+
+async function callMcpTool(entry: McpToolRegistryEntry, rawArguments: string | undefined): Promise<string> {
+  let parsedArguments: Record<string, unknown> = {}
+
+  if (typeof rawArguments === 'string' && rawArguments.trim()) {
+    try {
+      parsedArguments = JSON.parse(rawArguments) as Record<string, unknown>
+    } catch {
+      parsedArguments = { input: rawArguments }
+    }
+  }
+
+  const response = (await sendMcpRequest(entry.server, 'tools/call', {
+    name: entry.tool.name,
+    arguments: parsedArguments
+  })) as { result?: unknown } | unknown
+
+  const resultPayload = typeof response === 'object' && response !== null && 'result' in response
+    ? (response as { result?: unknown }).result
+    : response
+
+  return parseMcpToolResultContent(resultPayload)
+}
+
+async function completeChatWithMcp(
+  client: OpenAI,
+  sanitizedMessages: Array<{ role: ChatRole; content: string }>,
+  toolRegistry: McpToolRegistryEntry[]
+): Promise<string> {
+  const openAiMessages: Array<Record<string, unknown>> = [
+    {
+      role: 'system',
+      content:
+        "You are Covenant, a helpful, concise AI assistant integrated into a user's operating system. Keep your answers brief and to the point."
+    },
+    ...sanitizedMessages
+  ]
+
+  const openAiTools = toolRegistry.map((entry) => ({
+    type: 'function' as const,
+    function: {
+      name: entry.qualifiedName,
+      description: entry.tool.description || undefined,
+      parameters: entry.tool.inputSchema ?? { type: 'object', additionalProperties: true }
+    }
+  }))
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const completion = await client.chat.completions.create({
+      model: 'gpt-5.4-nano',
+      messages: openAiMessages as any,
+      tools: openAiTools as any,
+      tool_choice: openAiTools.length > 0 ? 'auto' : undefined,
+      reasoning_effort: 'low',
+      verbosity: 'low'
+    })
+
+    const message = completion.choices[0]?.message
+    const assistantContent = typeof message?.content === 'string' ? message.content.trim() : ''
+
+    if (!message?.tool_calls || message.tool_calls.length === 0) {
+      return assistantContent || 'No response from model.'
+    }
+
+    openAiMessages.push({
+      role: 'assistant',
+      content: assistantContent,
+      tool_calls: message.tool_calls
+    })
+
+    for (const toolCall of message.tool_calls) {
+      const resolvedEntry = toolRegistry.find((entry) => entry.qualifiedName === toolCall.function.name)
+      if (!resolvedEntry) {
+        openAiMessages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: `Tool ${toolCall.function.name} is unavailable.`
+        })
+        continue
+      }
+
+      const toolOutput = await callMcpTool(resolvedEntry, toolCall.function.arguments)
+      openAiMessages.push({
+        role: 'tool',
+        tool_call_id: toolCall.id,
+        content: toolOutput
+      })
+    }
+  }
+
+  return 'The model requested too many tool calls without finishing.'
 }
 
 function loadRendererWindow(targetWindow: BrowserWindow, route?: 'settings'): void {
@@ -1441,6 +1924,10 @@ ipcMain.handle('get-config', () => {
   return readConfig()
 })
 
+ipcMain.handle('get-mcp-servers', () => {
+  return getMcpServers()
+})
+
 ipcMain.handle('get-conversations', () => {
   return getConversations()
 })
@@ -1638,6 +2125,18 @@ ipcMain.on('save-openai-settings', (_event, payload: { apiKey?: string; proxyUrl
   updateConfig({ apiKey, proxyUrl })
 })
 
+ipcMain.handle('save-mcp-server', (_event, payload: Partial<McpServer>) => {
+  return saveMcpServer(payload)
+})
+
+ipcMain.handle('delete-mcp-server', (_event, serverId: string) => {
+  return deleteMcpServer(serverId)
+})
+
+ipcMain.handle('refresh-mcp-server-tools', async (_event, serverId: string) => {
+  return refreshMcpServerToolsById(serverId)
+})
+
 ipcMain.on('update-theme', (_event, gradientClass: string) => {
   const nextTheme =
     typeof gradientClass === 'string' && gradientClass.trim()
@@ -1730,6 +2229,19 @@ ipcMain.handle('covenant:chat-stream', async (event, rawMessages: Array<{ role?:
   const sendStreamEvent = (payload: { id: string } & Record<string, unknown>): void => {
     if (sender.isDestroyed()) return
     sender.send('covenant:chat-stream-event', payload)
+  }
+
+  const toolRegistry = getActiveMcpToolRegistry()
+
+  if (toolRegistry.length > 0) {
+    const responseText = await completeChatWithMcp(client, sanitizedMessages, toolRegistry)
+
+    void (async () => {
+      sendStreamEvent({ id: streamId, type: 'content', delta: responseText })
+      sendStreamEvent({ id: streamId, type: 'done', usage: undefined, model: 'gpt-5.4-nano' })
+    })()
+
+    return { id: streamId }
   }
 
   const model = 'gpt-5.4-nano'
@@ -1826,6 +2338,11 @@ ipcMain.handle('covenant:chat', async (_event, rawMessages: Array<{ role?: strin
         }
       : undefined
   })
+
+  const toolRegistry = getActiveMcpToolRegistry()
+  if (toolRegistry.length > 0) {
+    return completeChatWithMcp(client, sanitizedMessages, toolRegistry)
+  }
   const completion = await client.chat.completions.create({
     model: 'gpt-5.4-nano',
     messages: [

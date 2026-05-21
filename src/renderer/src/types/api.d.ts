@@ -1,14 +1,7 @@
 import type { Preprompt } from './preprompt'
 import type { LauncherApp } from './launcher-app'
 import type { Workflow, WorkflowLogPayload, WorkflowStatusUpdatePayload } from './workflow'
-
-interface AppConfig {
-  apiKey: string
-  themeGradient: string
-  proxyUrl: string
-  launchOnStartup: boolean
-  terminalFont: string
-}
+import type { AppConfig, McpServer } from '../../../shared/mcp'
 
 type ChatRole = 'system' | 'user' | 'assistant'
 
@@ -71,6 +64,10 @@ interface CovenantAPI {
     getConfig: () => Promise<AppConfig>
     saveApiKey: (apiKey: string) => void
     saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string }) => void
+    getMcpServers: () => Promise<McpServer[]>
+    saveMcpServer: (server: Partial<McpServer>) => Promise<McpServer[]>
+    deleteMcpServer: (serverId: string) => Promise<McpServer[]>
+    refreshMcpServerTools: (serverId: string) => Promise<McpServer[]>
     updateTheme: (gradientClass: string) => void
     updateStartupSetting: (launchOnStartup: boolean) => void
     updateTerminalFont: (terminalFont: string) => void
@@ -128,6 +125,10 @@ declare global {
       getConfig: () => Promise<AppConfig>
       saveApiKey: (apiKey: string) => void
       saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string }) => void
+      getMcpServers: () => Promise<McpServer[]>
+      saveMcpServer: (server: Partial<McpServer>) => Promise<McpServer[]>
+      deleteMcpServer: (serverId: string) => Promise<McpServer[]>
+      refreshMcpServerTools: (serverId: string) => Promise<McpServer[]>
       updateTheme: (gradientClass: string) => void
       updateStartupSetting: (launchOnStartup: boolean) => void
       updateTerminalFont: (terminalFont: string) => void

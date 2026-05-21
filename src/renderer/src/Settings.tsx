@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import AppFormModal from './components/AppFormModal'
 import ConfirmDeleteModal from './components/ConfirmDeleteModal'
+import McpServerFormModal from './components/McpServerFormModal'
+import McpServersTab from './components/McpServersTab'
 import PrepromptFormModal from './components/PrepromptFormModal'
 import WorkflowFormModal from './components/WorkflowFormModal'
 import {
@@ -13,20 +15,12 @@ import {
   THEME_OPTIONS,
   normalizeThemeGradient
 } from './constants/theme'
+import type { AppConfig, McpServer } from '../../shared/mcp'
 import type { LauncherApp } from './types/launcher-app'
 import type { Preprompt } from './types/preprompt'
 import type { Workflow } from './types/workflow'
 
-type SettingsTab = 'general' | 'terminal' | 'module2' | 'module3' | 'module4'
-
-
-interface AppConfig {
-  apiKey: string
-  themeGradient: string
-  proxyUrl: string
-  launchOnStartup: boolean
-  terminalFont: string
-}
+type SettingsTab = 'general' | 'terminal' | 'module2' | 'module3' | 'module4' | 'mcp'
 
 const THEME_GRADIENT_SET = new Set<string>(THEME_OPTIONS.map((option) => option.gradientClass))
 
@@ -67,6 +61,21 @@ function SidebarGlyph({ tab }: { tab: SettingsTab }): JSX.Element {
         <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         <path d="M9 9h8" />
         <path d="M9 13h5" />
+      </svg>
+    )
+  }
+
+  if (tab === 'mcp') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+        <path d="M12 3v5" />
+        <path d="M12 16v5" />
+        <path d="M5 12H3" />
+        <path d="M21 12h-2" />
+        <path d="M7.8 7.8 6.4 6.4" />
+        <path d="M17.6 17.6 16.2 16.2" />
+        <path d="M16.2 7.8 17.6 6.4" />
+        <path d="M6.4 17.6 7.8 16.2" />
       </svg>
     )
   }
@@ -658,6 +667,12 @@ export default function Settings(): JSX.Element {
   const [terminalFont, setTerminalFont] = useState(DEFAULT_TERMINAL_FONT)
   const [isSavingApiKey, setIsSavingApiKey] = useState(false)
   const [saveFeedbackMessage, setSaveFeedbackMessage] = useState('')
+  const [mcpServers, setMcpServers] = useState<McpServer[]>([])
+  const [isMcpServersLoading, setIsMcpServersLoading] = useState(false)
+  const [mcpFeedbackMessage, setMcpFeedbackMessage] = useState('')
+  const [isMcpFormOpen, setIsMcpFormOpen] = useState(false)
+  const [editingMcpServer, setEditingMcpServer] = useState<McpServer | undefined>(undefined)
+  const [deletingMcpServer, setDeletingMcpServer] = useState<McpServer | undefined>(undefined)
   const [apps, setApps] = useState<LauncherApp[]>([])
   const [isAppsLoading, setIsAppsLoading] = useState(false)
   const [appsFeedbackMessage, setAppsFeedbackMessage] = useState('')
@@ -694,6 +709,7 @@ export default function Settings(): JSX.Element {
         setSelectedTheme(normalizeThemeGradient(config.themeGradient))
         setLaunchOnStartup(typeof config.launchOnStartup === 'boolean' ? config.launchOnStartup : true)
         setTerminalFont(normalizeTerminalFont(config.terminalFont))
+        setMcpServers(Array.isArray(config.mcpServers) ? config.mcpServers : [])
       } catch {
         if (!isMounted) return
         setApiKey('')
@@ -701,10 +717,38 @@ export default function Settings(): JSX.Element {
         setSelectedTheme(DEFAULT_THEME_GRADIENT)
         setLaunchOnStartup(true)
         setTerminalFont(DEFAULT_TERMINAL_FONT)
+        setMcpServers([])
       }
     }
 
     void loadConfig()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadMcpServers = async (): Promise<void> => {
+      if (!window.api?.config.getMcpServers) return
+
+      try {
+        setIsMcpServersLoading(true)
+        const savedServers = await window.api.config.getMcpServers()
+        if (!isMounted) return
+        setMcpServers(savedServers)
+      } catch {
+        if (!isMounted) return
+        setMcpServers([])
+      } finally {
+        if (!isMounted) return
+        setIsMcpServersLoading(false)
+      }
+    }
+
+    void loadMcpServers()
 
     return () => {
       isMounted = false
@@ -825,6 +869,113 @@ export default function Settings(): JSX.Element {
   const handleLaunchOnStartupChange = (value: boolean): void => {
     setLaunchOnStartup(value)
     window.api?.config.updateStartupSetting?.(value)
+  }
+
+  const handleOpenAddMcpServer = (): void => {
+    setEditingMcpServer(undefined)
+    setMcpFeedbackMessage('')
+    setIsMcpFormOpen(true)
+  }
+
+  const handleOpenEditMcpServer = (server: McpServer): void => {
+    setEditingMcpServer(server)
+    setMcpFeedbackMessage('')
+    setIsMcpFormOpen(true)
+  }
+
+  const handleCloseMcpForm = (): void => {
+    setIsMcpFormOpen(false)
+    setEditingMcpServer(undefined)
+  }
+
+  const handleSaveMcpServer = async (payload: {
+    id?: string
+    name: string
+    url: string
+    description: string
+    active: boolean
+    auth: McpServer['auth']
+  }): Promise<void> => {
+    if (!window.api?.config.saveMcpServer) return
+
+    try {
+      const updatedServers = await window.api.config.saveMcpServer({
+        ...editingMcpServer,
+        ...payload,
+        tools: editingMcpServer?.tools ?? []
+      })
+      setMcpServers(updatedServers)
+      setIsMcpFormOpen(false)
+      setEditingMcpServer(undefined)
+      setMcpFeedbackMessage('MCP server saved.')
+      window.setTimeout(() => setMcpFeedbackMessage(''), 1600)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to save MCP server.'
+      setMcpFeedbackMessage(message)
+    }
+  }
+
+  const handleToggleMcpServerActive = async (server: McpServer, active: boolean): Promise<void> => {
+    if (!window.api?.config.saveMcpServer) return
+
+    try {
+      const updatedServers = await window.api.config.saveMcpServer({
+        ...server,
+        active
+      })
+      setMcpServers(updatedServers)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to update MCP server.'
+      setMcpFeedbackMessage(message)
+    }
+  }
+
+  const handleToggleMcpTool = async (server: McpServer, toolName: string, enabled: boolean): Promise<void> => {
+    if (!window.api?.config.saveMcpServer) return
+
+    const nextServer = {
+      ...server,
+      tools: server.tools.map((tool) => (tool.name === toolName ? { ...tool, enabled } : tool))
+    }
+
+    try {
+      const updatedServers = await window.api.config.saveMcpServer(nextServer)
+      setMcpServers(updatedServers)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to update MCP tool selection.'
+      setMcpFeedbackMessage(message)
+    }
+  }
+
+  const handleRefreshMcpTools = async (server: McpServer): Promise<void> => {
+    if (!window.api?.config.refreshMcpServerTools) return
+
+    try {
+      setMcpFeedbackMessage('Refreshing MCP tools...')
+      const refreshedServers = await window.api.config.refreshMcpServerTools(server.id)
+      setMcpServers(refreshedServers)
+      setMcpFeedbackMessage('MCP tools refreshed.')
+      window.setTimeout(() => setMcpFeedbackMessage(''), 1600)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to refresh MCP tools.'
+      setMcpFeedbackMessage(message)
+    }
+  }
+
+  const handleDeleteMcpServer = async (): Promise<void> => {
+    const targetServer = deletingMcpServer
+    if (!targetServer || !window.api?.config.deleteMcpServer) return
+
+    try {
+      const updatedServers = await window.api.config.deleteMcpServer(targetServer.id)
+      setMcpServers(updatedServers)
+      setDeletingMcpServer(undefined)
+      setMcpFeedbackMessage('MCP server removed.')
+      window.setTimeout(() => setMcpFeedbackMessage(''), 1600)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to delete MCP server.'
+      setMcpFeedbackMessage(message)
+    }
   }
 
   const handleTerminalFontSelect = (fontFamily: string): void => {
@@ -982,7 +1133,8 @@ export default function Settings(): JSX.Element {
     if (activeTab === 'terminal') return 'Terminal'
     if (activeTab === 'module2') return 'App Launcher'
     if (activeTab === 'module3') return 'Workflows'
-    return 'Preprompts'
+    if (activeTab === 'module4') return 'Preprompts'
+    return 'MCP Servers'
   }, [activeTab])
 
   return (
@@ -1030,7 +1182,8 @@ export default function Settings(): JSX.Element {
                 { id: 'terminal' as const, label: 'Terminal' },
                 { id: 'module2' as const, label: 'App Launcher' },
                 { id: 'module3' as const, label: 'Workflows' },
-                { id: 'module4' as const, label: 'Preprompts' }
+                { id: 'module4' as const, label: 'Preprompts' },
+                { id: 'mcp' as const, label: 'MCP Servers' }
               ].map((item) => {
                 const isActive = activeTab === item.id
 
@@ -1113,6 +1266,19 @@ export default function Settings(): JSX.Element {
                 onDelete={(preprompt) => setDeletingPreprompt(preprompt)}
               />
             )}
+            {activeTab === 'mcp' && (
+              <McpServersTab
+                servers={mcpServers}
+                isLoading={isMcpServersLoading}
+                feedbackMessage={mcpFeedbackMessage}
+                onAdd={handleOpenAddMcpServer}
+                onEdit={handleOpenEditMcpServer}
+                onDelete={(server) => setDeletingMcpServer(server)}
+                onToggleActive={handleToggleMcpServerActive}
+                onToggleTool={handleToggleMcpTool}
+                onRefreshTools={handleRefreshMcpTools}
+              />
+            )}
           </main>
         </div>
       </div>
@@ -1187,6 +1353,31 @@ export default function Settings(): JSX.Element {
             onCancel={() => setDeletingPreprompt(undefined)}
             onConfirm={() => {
               void handleConfirmDeletePreprompt()
+            }}
+          />
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isMcpFormOpen ? (
+          <McpServerFormModal
+            initialData={editingMcpServer}
+            onCancel={handleCloseMcpForm}
+            onSave={(payload) => {
+              void handleSaveMcpServer(payload)
+            }}
+          />
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {deletingMcpServer ? (
+          <ConfirmDeleteModal
+            title="Delete MCP Server"
+            message={`Are you sure you want to delete \"${deletingMcpServer.name}\"? This will remove its saved tools and credentials.`}
+            onCancel={() => setDeletingMcpServer(undefined)}
+            onConfirm={() => {
+              void handleDeleteMcpServer()
             }}
           />
         ) : null}

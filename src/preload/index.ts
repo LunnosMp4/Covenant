@@ -1,12 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-
-interface AppConfig {
-  apiKey: string
-  themeGradient: string
-  proxyUrl: string
-  launchOnStartup: boolean
-  terminalFont: string
-}
+import type { AppConfig, McpServer } from '../shared/mcp'
 
 interface Preprompt {
   id: string
@@ -120,6 +113,13 @@ const api = {
     saveApiKey: (apiKey: string) => ipcRenderer.send('save-api-key', apiKey),
     saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string }) =>
       ipcRenderer.send('save-openai-settings', settings),
+    getMcpServers: () => ipcRenderer.invoke('get-mcp-servers') as Promise<McpServer[]>,
+    saveMcpServer: (server: Partial<McpServer>) =>
+      ipcRenderer.invoke('save-mcp-server', server) as Promise<McpServer[]>,
+    deleteMcpServer: (serverId: string) =>
+      ipcRenderer.invoke('delete-mcp-server', serverId) as Promise<McpServer[]>,
+    refreshMcpServerTools: (serverId: string) =>
+      ipcRenderer.invoke('refresh-mcp-server-tools', serverId) as Promise<McpServer[]>,
     updateTheme: (gradientClass: string) => ipcRenderer.send('update-theme', gradientClass),
     updateStartupSetting: (launchOnStartup: boolean) => ipcRenderer.send('update-startup-setting', launchOnStartup),
     updateTerminalFont: (terminalFont: string) => ipcRenderer.send('update-terminal-font', terminalFont),
@@ -259,6 +259,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getConfig: api.config.getConfig,
   saveApiKey: api.config.saveApiKey,
   saveOpenAISettings: api.config.saveOpenAISettings,
+  getMcpServers: api.config.getMcpServers,
+  saveMcpServer: api.config.saveMcpServer,
+  deleteMcpServer: api.config.deleteMcpServer,
+  refreshMcpServerTools: api.config.refreshMcpServerTools,
   updateTheme: api.config.updateTheme,
   updateStartupSetting: api.config.updateStartupSetting,
   updateTerminalFont: api.config.updateTerminalFont,
