@@ -338,9 +338,11 @@ function GeneralTab({
 interface TerminalTabProps {
   terminalFont: string
   onTerminalFontSelect: (fontFamily: string) => void
+  preferredShell?: string
+  onPreferredShellChange: (shell: string) => void
 }
 
-function TerminalTab({ terminalFont, onTerminalFontSelect }: TerminalTabProps): JSX.Element {
+function TerminalTab({ terminalFont, onTerminalFontSelect, preferredShell, onPreferredShellChange }: TerminalTabProps): JSX.Element {
   const [availableFonts, setAvailableFonts] = useState<string[]>([])
   const [isLoadingFonts, setIsLoadingFonts] = useState(true)
 
@@ -373,6 +375,29 @@ function TerminalTab({ terminalFont, onTerminalFontSelect }: TerminalTabProps): 
 
   return (
     <div className="space-y-6">
+      <SectionCard
+        title="Terminal Shell"
+        description="Choose your preferred shell for Terminal Mode. The app will automatically fall back to available shells if your preference isn't found."
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-neutral-100">
+              Preferred Shell
+            </label>
+            <input
+              type="text"
+              value={preferredShell || ''}
+              onChange={(e) => onPreferredShellChange(e.target.value)}
+              placeholder="/bin/zsh"
+              className="w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 transition-colors focus:border-neutral-600 focus:outline-none"
+            />
+            <p className="mt-2 text-xs text-neutral-400">
+              Examples: /bin/zsh, /bin/bash, /bin/sh. Leave empty to auto-detect.
+            </p>
+          </div>
+        </div>
+      </SectionCard>
+
       <SectionCard
         title="Terminal Font"
         description="Choose how your shell text is rendered in Terminal Mode. This updates instantly and is saved locally."
@@ -665,6 +690,7 @@ export default function Settings(): JSX.Element {
   const [selectedTheme, setSelectedTheme] = useState(DEFAULT_THEME_GRADIENT)
   const [launchOnStartup, setLaunchOnStartup] = useState(true)
   const [terminalFont, setTerminalFont] = useState(DEFAULT_TERMINAL_FONT)
+  const [preferredShell, setPreferredShell] = useState<string | undefined>(undefined)
   const [isSavingApiKey, setIsSavingApiKey] = useState(false)
   const [saveFeedbackMessage, setSaveFeedbackMessage] = useState('')
   const [mcpServers, setMcpServers] = useState<McpServer[]>([])
@@ -709,6 +735,7 @@ export default function Settings(): JSX.Element {
         setSelectedTheme(normalizeThemeGradient(config.themeGradient))
         setLaunchOnStartup(typeof config.launchOnStartup === 'boolean' ? config.launchOnStartup : true)
         setTerminalFont(normalizeTerminalFont(config.terminalFont))
+        setPreferredShell(typeof config.preferredShell === 'string' ? config.preferredShell : undefined)
         setMcpServers(Array.isArray(config.mcpServers) ? config.mcpServers : [])
       } catch {
         if (!isMounted) return
@@ -717,6 +744,7 @@ export default function Settings(): JSX.Element {
         setSelectedTheme(DEFAULT_THEME_GRADIENT)
         setLaunchOnStartup(true)
         setTerminalFont(DEFAULT_TERMINAL_FONT)
+        setPreferredShell(undefined)
         setMcpServers([])
       }
     }
@@ -984,6 +1012,11 @@ export default function Settings(): JSX.Element {
     window.api?.config.updateTerminalFont?.(safeTerminalFont)
   }
 
+  const handlePreferredShellChange = (shell: string): void => {
+    setPreferredShell(shell || undefined)
+    window.api?.config.updatePreferredShell?.(shell)
+  }
+
   const handleOpenAddApp = (): void => {
     setEditingApp(undefined)
     setAppsFeedbackMessage('')
@@ -1235,6 +1268,8 @@ export default function Settings(): JSX.Element {
               <TerminalTab
                 terminalFont={terminalFont}
                 onTerminalFontSelect={handleTerminalFontSelect}
+                preferredShell={preferredShell}
+                onPreferredShellChange={handlePreferredShellChange}
               />
             )}
             {activeTab === 'module2' && (

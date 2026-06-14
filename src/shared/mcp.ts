@@ -4,6 +4,7 @@ export interface AppConfig {
   proxyUrl: string
   launchOnStartup: boolean
   terminalFont: string
+  preferredShell?: string
   mcpServers: McpServer[]
 }
 

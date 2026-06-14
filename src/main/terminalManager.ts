@@ -1,4 +1,5 @@
 import { spawn, type IPty } from 'node-pty'
+import { existsSync } from 'fs'
 
 const DEFAULT_COLS = 120
 const DEFAULT_ROWS = 30
@@ -35,7 +36,15 @@ function clampDimension(value: number | undefined, fallback: number, min: number
   return Math.min(max, Math.max(min, normalizedValue))
 }
 
-function getShellCandidates(): ShellCandidate[] {
+function validateShellPath(command: string): boolean {
+  try {
+    return existsSync(command)
+  } catch {
+    return false
+  }
+}
+
+function getShellCandidates(preferredShell?: string): ShellCandidate[] {
   if (process.platform === 'win32') {
     return [
       { command: 'pwsh.exe', args: ['-NoLogo'] },
@@ -44,13 +53,43 @@ function getShellCandidates(): ShellCandidate[] {
     ]
   }
 
-  const envShell = process.env.SHELL?.trim()
+  // macOS and Linux
+  const candidates: ShellCandidate[] = []
 
-  return [
-    ...(envShell ? [{ command: envShell, args: [] }] : []),
-    { command: '/bin/bash', args: [] },
-    { command: '/bin/sh', args: [] }
-  ]
+  // Add preferred shell first if provided
+  if (preferredShell && validateShellPath(preferredShell)) {
+    candidates.push({ command: preferredShell, args: [] })
+  }
+
+  // For macOS, prioritize zsh → bash
+  if (process.platform === 'darwin') {
+    if (!preferredShell || preferredShell !== '/bin/zsh') {
+      if (validateShellPath('/bin/zsh')) {
+        candidates.push({ command: '/bin/zsh', args: [] })
+      }
+    }
+    if (!preferredShell || preferredShell !== '/bin/bash') {
+      if (validateShellPath('/bin/bash')) {
+        candidates.push({ command: '/bin/bash', args: [] })
+      }
+    }
+  } else {
+    // For other Unix-like systems, use $SHELL first
+    const envShell = process.env.SHELL?.trim()
+    if (envShell && validateShellPath(envShell)) {
+      candidates.push({ command: envShell, args: [] })
+    }
+    if (validateShellPath('/bin/bash')) {
+      candidates.push({ command: '/bin/bash', args: [] })
+    }
+  }
+
+  // Fallback to sh if available
+  if (validateShellPath('/bin/sh')) {
+    candidates.push({ command: '/bin/sh', args: [] })
+  }
+
+  return candidates
 }
 
 class TerminalManager {
@@ -62,7 +101,7 @@ class TerminalManager {
 
   private readonly exitListeners = new Set<ExitListener>()
 
-  start(cols?: number, rows?: number): TerminalStartResult {
+  start(cols?: number, rows?: number, preferredShell?: string): TerminalStartResult {
     const normalizedCols = clampDimension(cols, DEFAULT_COLS, MIN_COLS, MAX_COLS)
     const normalizedRows = clampDimension(rows, DEFAULT_ROWS, MIN_ROWS, MAX_ROWS)
 
@@ -75,23 +114,40 @@ class TerminalManager {
       }
     }
 
-    const env = { ...process.env }
-    const shellCandidates = getShellCandidates()
+    const shellCandidates = getShellCandidates(preferredShell)
     let lastError: unknown
+    const errors: Array<{ shell: string; error: string }> = []
 
     for (const candidate of shellCandidates) {
       try {
+        // Create a minimal environment with only essential variables for shell spawn
+        // Using a minimal env helps avoid posix_spawnp failures on macOS
+        const spawnEnv: Record<string, string> = {
+          PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+          HOME: process.env.HOME || '/tmp',
+          SHELL: candidate.command,
+          TERM: 'xterm-256color',
+          LANG: process.env.LANG || 'en_US.UTF-8'
+        }
+
+        // Only add LC_ALL if it exists
+        if (process.env.LC_ALL) {
+          spawnEnv.LC_ALL = process.env.LC_ALL
+        }
+
         const processHandle = spawn(candidate.command, candidate.args, {
           name: 'xterm-256color',
           cols: normalizedCols,
           rows: normalizedRows,
           cwd: process.cwd(),
-          env
+          env: spawnEnv
         })
 
         this.activeShell = candidate.command
         this.ptyProcess = processHandle
         this.bindTerminalProcess(processHandle)
+
+        console.debug(`Successfully spawned shell: ${candidate.command}`)
 
         return {
           pid: processHandle.pid,
@@ -100,13 +156,17 @@ class TerminalManager {
         }
       } catch (error) {
         lastError = error
+        errors.push({
+          shell: candidate.command,
+          error: error instanceof Error ? error.message : String(error)
+        })
+        console.debug(`Failed to spawn shell ${candidate.command}: ${errors[errors.length - 1].error}`)
       }
     }
 
+    const errorDetails = errors.map((e) => `${e.shell}: ${e.error}`).join('; ')
     throw new Error(
-      `Unable to start terminal shell. Last error: ${
-        lastError instanceof Error ? lastError.message : 'unknown'
-      }`
+      `Unable to start terminal shell. Tried: ${errorDetails || 'no candidates available'}`
     )
   }
 

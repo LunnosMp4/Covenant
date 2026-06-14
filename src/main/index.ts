@@ -113,6 +113,7 @@ const DEFAULT_CONFIG: AppConfig = {
   proxyUrl: '',
   launchOnStartup: true,
   terminalFont: 'Cascadia Mono, Consolas, "Courier New", monospace',
+  preferredShell: undefined,
   mcpServers: []
 }
 
@@ -1045,6 +1046,10 @@ function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined): AppC
         ? rawConfig.launchOnStartup
         : DEFAULT_CONFIG.launchOnStartup,
     terminalFont: normalizeTerminalFont(rawConfig?.terminalFont),
+    preferredShell:
+      typeof rawConfig?.preferredShell === 'string' && rawConfig.preferredShell.trim()
+        ? rawConfig.preferredShell.trim()
+        : DEFAULT_CONFIG.preferredShell,
     mcpServers: normalizeStoredMcpServers(rawConfig?.mcpServers)
   }
 }
@@ -1622,11 +1627,6 @@ function createWindow(): void {
     }
   })
 
-  // macOS vibrancy effect
-  if (isMac) {
-    mainWindow.setVibrancy('fullscreen-ui')
-  }
-
   // Keep the full window transparent. Renderer-level styling handles the frosted bar.
   if (isWindows) {
     try {
@@ -1636,6 +1636,11 @@ function createWindow(): void {
     }
 
     // Re-apply transparent paint color at runtime for Windows compositors.
+    mainWindow.setBackgroundColor('rgba(0, 0, 0, 0)')
+  }
+
+  // macOS: Don't use vibrancy as it overrides transparency. Use backgroundColor instead.
+  if (isMac) {
     mainWindow.setBackgroundColor('rgba(0, 0, 0, 0)')
   }
 
@@ -2021,7 +2026,8 @@ ipcMain.handle('terminal:start', (event, payload?: { cols?: unknown; rows?: unkn
 
   attachTerminalSubscriber(event.sender)
 
-  return terminalManager.start(cols, rows)
+  const config = readConfig()
+  return terminalManager.start(cols, rows, config.preferredShell)
 })
 
 ipcMain.handle('terminal:input', (event, rawInput: unknown) => {
@@ -2169,6 +2175,15 @@ ipcMain.handle('get-terminal-fonts', () => {
   } catch (error) {
     console.error('Failed to get terminal fonts:', error)
     return []
+  }
+})
+
+ipcMain.on('update-preferred-shell', (_event, preferredShell: string) => {
+  const nextPreferredShell = typeof preferredShell === 'string' && preferredShell.trim() ? preferredShell.trim() : undefined
+  updateConfig({ preferredShell: nextPreferredShell })
+
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.webContents.send('preferred-shell-updated', nextPreferredShell)
   }
 })
 

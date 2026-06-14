@@ -123,6 +123,7 @@ const api = {
     updateTheme: (gradientClass: string) => ipcRenderer.send('update-theme', gradientClass),
     updateStartupSetting: (launchOnStartup: boolean) => ipcRenderer.send('update-startup-setting', launchOnStartup),
     updateTerminalFont: (terminalFont: string) => ipcRenderer.send('update-terminal-font', terminalFont),
+    updatePreferredShell: (preferredShell: string) => ipcRenderer.send('update-preferred-shell', preferredShell),
     onThemeUpdated: (callback: (gradientClass: string) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, gradientClass: string) => {
         callback(gradientClass)
@@ -143,6 +144,17 @@ const api = {
 
       return () => {
         ipcRenderer.removeListener('terminal-font-updated', listener)
+      }
+    },
+    onPreferredShellUpdated: (callback: (preferredShell?: string) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, preferredShell?: string) => {
+        callback(preferredShell)
+      }
+
+      ipcRenderer.on('preferred-shell-updated', listener)
+
+      return () => {
+        ipcRenderer.removeListener('preferred-shell-updated', listener)
       }
     },
     getTerminalFonts: () => ipcRenderer.invoke('get-terminal-fonts') as Promise<string[]>
@@ -266,9 +278,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateTheme: api.config.updateTheme,
   updateStartupSetting: api.config.updateStartupSetting,
   updateTerminalFont: api.config.updateTerminalFont,
+  updatePreferredShell: api.config.updatePreferredShell,
   getTerminalFonts: api.config.getTerminalFonts,
   onThemeUpdated: api.config.onThemeUpdated,
   onTerminalFontUpdated: api.config.onTerminalFontUpdated,
+  onPreferredShellUpdated: api.config.onPreferredShellUpdated,
   askCovenant: api.chat.askCovenant,
   onToggleVisibility: api.window.onToggleVisibility
 })
