@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import AppFormModal from './components/AppFormModal'
 import ConfirmDeleteModal from './components/ConfirmDeleteModal'
+import CustomSelect from './components/CustomSelect'
 import McpServerFormModal from './components/McpServerFormModal'
 import McpServersTab from './components/McpServersTab'
 import PrepromptFormModal from './components/PrepromptFormModal'
@@ -15,12 +16,14 @@ import {
   THEME_OPTIONS,
   normalizeThemeGradient
 } from './constants/theme'
-import type { AppConfig, McpServer } from '../../shared/mcp'
+import type { AppConfig, ButtonVisibility, ReasoningEffort } from '../../shared/config'
+import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_REASONING_EFFORT, REASONING_EFFORT_OPTIONS, modelSupportsExtendedParams } from '../../shared/config'
+import type { McpServer } from '../../shared/mcp'
 import type { LauncherApp } from './types/launcher-app'
 import type { Preprompt } from './types/preprompt'
 import type { Workflow } from './types/workflow'
 
-type SettingsTab = 'general' | 'terminal' | 'module2' | 'module3' | 'module4' | 'mcp'
+type SettingsTab = 'general' | 'terminal' | 'appLauncher' | 'workflow' | 'preprompts' | 'mcp'
 
 const THEME_GRADIENT_SET = new Set<string>(THEME_OPTIONS.map((option) => option.gradientClass))
 
@@ -34,7 +37,7 @@ function SidebarGlyph({ tab }: { tab: SettingsTab }): JSX.Element {
     )
   }
 
-  if (tab === 'module2') {
+  if (tab === 'appLauncher') {
     return (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
         <rect x="3" y="3" width="7" height="7" rx="1.6" />
@@ -55,7 +58,7 @@ function SidebarGlyph({ tab }: { tab: SettingsTab }): JSX.Element {
     )
   }
 
-  if (tab === 'module4') {
+  if (tab === 'preprompts') {
     return (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
         <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -198,6 +201,12 @@ interface GeneralTabProps {
   onSelectTheme: (gradientClass: string) => void
   launchOnStartup: boolean
   onLaunchOnStartupChange: (value: boolean) => void
+  chatModel: string
+  onChatModelChange: (value: string) => void
+  buttonVisibility: ButtonVisibility
+  onButtonVisibilityChange: (value: ButtonVisibility) => void
+  reasoningEffort: ReasoningEffort
+  onReasoningEffortChange: (value: ReasoningEffort) => void
 }
 
 function GeneralTab({
@@ -213,7 +222,13 @@ function GeneralTab({
   selectedTheme,
   onSelectTheme,
   launchOnStartup,
-  onLaunchOnStartupChange
+  onLaunchOnStartupChange,
+  chatModel,
+  onChatModelChange,
+  buttonVisibility,
+  onButtonVisibilityChange,
+  reasoningEffort,
+  onReasoningEffortChange
 }: GeneralTabProps): JSX.Element {
   return (
     <div className="space-y-6">
@@ -330,6 +345,67 @@ function GeneralTab({
           label="Launch on startup"
           description="Covenant will open automatically when your system starts."
         />
+      </SectionCard>
+
+      <SectionCard
+        title="Chat Model"
+        description="Select which OpenAI model to use for AI conversations. Changes apply immediately."
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-neutral-300">
+              Model
+            </label>
+            <CustomSelect
+              options={CHAT_MODEL_OPTIONS.map((option) => ({
+                value: option.id,
+                label: option.label
+              }))}
+              value={chatModel || DEFAULT_CHAT_MODEL}
+              onChange={onChatModelChange}
+            />
+          </div>
+
+          <div>
+            <label className={`mb-2 block text-sm font-medium ${modelSupportsExtendedParams(chatModel || DEFAULT_CHAT_MODEL) ? 'text-neutral-300' : 'text-neutral-600'}`}>
+              Reasoning Effort
+            </label>
+            <CustomSelect
+              options={REASONING_EFFORT_OPTIONS.map((effort) => ({
+                value: effort,
+                label: effort.charAt(0).toUpperCase() + effort.slice(1)
+              }))}
+              value={reasoningEffort || DEFAULT_REASONING_EFFORT}
+              onChange={(value) => onReasoningEffortChange(value as ReasoningEffort)}
+              disabled={!modelSupportsExtendedParams(chatModel || DEFAULT_CHAT_MODEL)}
+            />
+            <p className={`mt-2 text-xs ${modelSupportsExtendedParams(chatModel || DEFAULT_CHAT_MODEL) ? 'text-neutral-500' : 'text-neutral-600'}`}>
+              {modelSupportsExtendedParams(chatModel || DEFAULT_CHAT_MODEL)
+                ? 'Controls how much compute the model spends reasoning.'
+                : 'Not supported by this model.'}
+            </p>
+          </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Bar Buttons"
+        description="Choose which buttons appear on the floating command bar. The Settings button is always visible."
+      >
+        <div className="space-y-4">
+          <MinimalistToggle
+            checked={buttonVisibility.appLauncher}
+            onChange={(checked) => onButtonVisibilityChange({ ...buttonVisibility, appLauncher: checked })}
+            label="App Launcher"
+            description="Show the App Launcher button to quickly open your favorite applications."
+          />
+          <MinimalistToggle
+            checked={buttonVisibility.workflow}
+            onChange={(checked) => onButtonVisibilityChange({ ...buttonVisibility, workflow: checked })}
+            label="Workflows"
+            description="Show the Workflows button to run saved scripts and automations."
+          />
+        </div>
       </SectionCard>
     </div>
   )
@@ -464,7 +540,7 @@ function AppLauncherTab({
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-neutral-100">App Launcher</h2>
-          <p className="mt-1 text-sm text-neutral-400">Configure shortcuts for apps launched by Module 2.</p>
+          <p className="mt-1 text-sm text-neutral-400">Configure shortcuts for apps launched by the App Launcher button.</p>
         </div>
         <button
           type="button"
@@ -549,7 +625,7 @@ function WorkflowsTab({
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-neutral-100">Workflows & Prompts</h2>
-          <p className="mt-1 text-sm text-neutral-400">Build reusable script and prompt actions for Module 3.</p>
+          <p className="mt-1 text-sm text-neutral-400">Build reusable script and prompt actions for the Workflows button.</p>
         </div>
         <button
           type="button"
@@ -625,7 +701,7 @@ function PrepromptsTab({ preprompts, isLoading, onAdd, onEdit, onDelete }: Prepr
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-neutral-100">Preprompts</h2>
-          <p className="mt-1 text-sm text-neutral-400">Reusable instruction presets for Module 4 prompt injection.</p>
+          <p className="mt-1 text-sm text-neutral-400">Reusable instruction presets for the System Prompt selector in the bar's Settings popup.</p>
         </div>
         <button
           type="button"
@@ -693,6 +769,9 @@ export default function Settings(): JSX.Element {
   const [preferredShell, setPreferredShell] = useState<string | undefined>(undefined)
   const [isSavingApiKey, setIsSavingApiKey] = useState(false)
   const [saveFeedbackMessage, setSaveFeedbackMessage] = useState('')
+  const [chatModel, setChatModel] = useState(DEFAULT_CHAT_MODEL)
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT)
+  const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true })
   const [mcpServers, setMcpServers] = useState<McpServer[]>([])
   const [isMcpServersLoading, setIsMcpServersLoading] = useState(false)
   const [mcpFeedbackMessage, setMcpFeedbackMessage] = useState('')
@@ -727,7 +806,7 @@ export default function Settings(): JSX.Element {
       if (!window.api?.config.getConfig) return
 
       try {
-        const config = (await window.api.config.getConfig()) as AppConfig
+        const config = await window.api.config.getConfig()
         if (!isMounted) return
 
         setApiKey(typeof config.apiKey === 'string' ? config.apiKey : '')
@@ -737,6 +816,13 @@ export default function Settings(): JSX.Element {
         setTerminalFont(normalizeTerminalFont(config.terminalFont))
         setPreferredShell(typeof config.preferredShell === 'string' ? config.preferredShell : undefined)
         setMcpServers(Array.isArray(config.mcpServers) ? config.mcpServers : [])
+        setChatModel(typeof config.chatModel === 'string' && config.chatModel.trim() ? config.chatModel : DEFAULT_CHAT_MODEL)
+        setReasoningEffort(
+          typeof config.reasoningEffort === 'string' && ['low', 'medium', 'high'].includes(config.reasoningEffort)
+            ? (config.reasoningEffort as ReasoningEffort)
+            : DEFAULT_REASONING_EFFORT
+        )
+        setButtonVisibility(config.buttonVisibility ?? { appLauncher: true, workflow: true })
       } catch {
         if (!isMounted) return
         setApiKey('')
@@ -746,13 +832,30 @@ export default function Settings(): JSX.Element {
         setTerminalFont(DEFAULT_TERMINAL_FONT)
         setPreferredShell(undefined)
         setMcpServers([])
+        setChatModel(DEFAULT_CHAT_MODEL)
+        setButtonVisibility({ appLauncher: true, workflow: true })
       }
     }
 
     void loadConfig()
 
+    const unsubChatModel = window.api?.config.onChatModelUpdated?.((newChatModel) => {
+      setChatModel(newChatModel)
+    })
+
+    const unsubReasoningEffort = window.api?.config.onReasoningEffortUpdated?.((newEffort) => {
+      setReasoningEffort(newEffort)
+    })
+
+    const unsubButtonVisibility = window.api?.config.onButtonVisibilityUpdated?.((newVis) => {
+      setButtonVisibility(newVis)
+    })
+
     return () => {
       isMounted = false
+      if (typeof unsubChatModel === 'function') unsubChatModel()
+      if (typeof unsubReasoningEffort === 'function') unsubReasoningEffort()
+      if (typeof unsubButtonVisibility === 'function') unsubButtonVisibility()
     }
   }, [])
 
@@ -1017,6 +1120,21 @@ export default function Settings(): JSX.Element {
     window.api?.config.updatePreferredShell?.(shell)
   }
 
+  const handleChatModelChange = (model: string): void => {
+    setChatModel(model)
+    window.api?.config.updateChatModel?.(model)
+  }
+
+  const handleReasoningEffortChange = (effort: ReasoningEffort): void => {
+    setReasoningEffort(effort)
+    window.api?.config.updateReasoningEffort?.(effort)
+  }
+
+  const handleButtonVisibilityChange = (visibility: ButtonVisibility): void => {
+    setButtonVisibility(visibility)
+    window.api?.config.updateButtonVisibility?.(visibility)
+  }
+
   const handleOpenAddApp = (): void => {
     setEditingApp(undefined)
     setAppsFeedbackMessage('')
@@ -1164,9 +1282,9 @@ export default function Settings(): JSX.Element {
   const pageTitle = useMemo(() => {
     if (activeTab === 'general') return 'General'
     if (activeTab === 'terminal') return 'Terminal'
-    if (activeTab === 'module2') return 'App Launcher'
-    if (activeTab === 'module3') return 'Workflows'
-    if (activeTab === 'module4') return 'Preprompts'
+    if (activeTab === 'appLauncher') return 'App Launcher'
+    if (activeTab === 'workflow') return 'Workflows'
+    if (activeTab === 'preprompts') return 'Preprompts'
     return 'MCP Servers'
   }, [activeTab])
 
@@ -1213,9 +1331,9 @@ export default function Settings(): JSX.Element {
               {[
                 { id: 'general' as const, label: 'General' },
                 { id: 'terminal' as const, label: 'Terminal' },
-                { id: 'module2' as const, label: 'App Launcher' },
-                { id: 'module3' as const, label: 'Workflows' },
-                { id: 'module4' as const, label: 'Preprompts' },
+                { id: 'appLauncher' as const, label: 'App Launcher' },
+                { id: 'workflow' as const, label: 'Workflows' },
+                { id: 'preprompts' as const, label: 'Preprompts' },
                 { id: 'mcp' as const, label: 'MCP Servers' }
               ].map((item) => {
                 const isActive = activeTab === item.id
@@ -1262,6 +1380,12 @@ export default function Settings(): JSX.Element {
                 onSelectTheme={handleThemeSelect}
                 launchOnStartup={launchOnStartup}
                 onLaunchOnStartupChange={handleLaunchOnStartupChange}
+                chatModel={chatModel}
+                onChatModelChange={handleChatModelChange}
+                buttonVisibility={buttonVisibility}
+                onButtonVisibilityChange={handleButtonVisibilityChange}
+                reasoningEffort={reasoningEffort}
+                onReasoningEffortChange={handleReasoningEffortChange}
               />
             )}
             {activeTab === 'terminal' && (
@@ -1272,7 +1396,7 @@ export default function Settings(): JSX.Element {
                 onPreferredShellChange={handlePreferredShellChange}
               />
             )}
-            {activeTab === 'module2' && (
+            {activeTab === 'appLauncher' && (
               <AppLauncherTab
                 apps={apps}
                 isLoading={isAppsLoading}
@@ -1282,7 +1406,7 @@ export default function Settings(): JSX.Element {
                 onDelete={(launcherApp) => setDeletingApp(launcherApp)}
               />
             )}
-            {activeTab === 'module3' && (
+            {activeTab === 'workflow' && (
               <WorkflowsTab
                 workflows={workflows}
                 isLoading={isWorkflowsLoading}
@@ -1292,7 +1416,7 @@ export default function Settings(): JSX.Element {
                 onDelete={(workflow) => setDeletingWorkflow(workflow)}
               />
             )}
-            {activeTab === 'module4' && (
+            {activeTab === 'preprompts' && (
               <PrepromptsTab
                 preprompts={preprompts}
                 isLoading={isPrepromptsLoading}

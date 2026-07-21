@@ -1,7 +1,8 @@
+import type { AppConfig, ButtonVisibility, ReasoningEffort } from '../../../shared/config'
+import type { McpServer } from '../../../shared/mcp'
 import type { Preprompt } from './preprompt'
 import type { LauncherApp } from './launcher-app'
 import type { Workflow, WorkflowLogPayload, WorkflowStatusUpdatePayload } from './workflow'
-import type { AppConfig, McpServer } from '../../../shared/mcp'
 
 type ChatRole = 'system' | 'user' | 'assistant'
 
@@ -57,7 +58,6 @@ interface CovenantAPI {
     openSettings: () => void
     closeSettings: () => void
     minimizeSettings: () => void
-    /** Subscribes to window show/hide events. Returns a cleanup function that removes the listener. */
     onToggleVisibility: (callback: (visible: boolean) => void) => () => void
   }
   config: {
@@ -71,11 +71,17 @@ interface CovenantAPI {
     updateTheme: (gradientClass: string) => void
     updateStartupSetting: (launchOnStartup: boolean) => void
     updateTerminalFont: (terminalFont: string) => void
+    updatePreferredShell: (preferredShell: string) => void
+    updateButtonVisibility: (buttonVisibility: Partial<ButtonVisibility>) => void
+    updateChatModel: (chatModel: string) => void
+    updateReasoningEffort: (reasoningEffort: ReasoningEffort) => void
     getTerminalFonts: () => Promise<string[]>
-    /** Subscribes to theme changes. Returns a cleanup function that removes the listener. */
     onThemeUpdated: (callback: (gradientClass: string) => void) => () => void
-    /** Subscribes to terminal font changes. Returns a cleanup function that removes the listener. */
     onTerminalFontUpdated: (callback: (terminalFont: string) => void) => () => void
+    onPreferredShellUpdated: (callback: (preferredShell?: string) => void) => () => void
+    onButtonVisibilityUpdated: (callback: (buttonVisibility: ButtonVisibility) => void) => () => void
+    onChatModelUpdated: (callback: (chatModel: string) => void) => () => void
+    onReasoningEffortUpdated: (callback: (reasoningEffort: ReasoningEffort) => void) => () => void
   }
   chat: {
     askCovenant: (messages: Array<{ role: ChatRole; content: string }>) => Promise<string>
@@ -108,9 +114,7 @@ interface CovenantAPI {
   getFileIcon: (filePath: string) => Promise<string>
   launchApp: (path: string, launchArguments: string) => Promise<{ success: boolean; error?: string }>
   executeWorkflow: (workflow: Partial<Workflow>) => Promise<{ success: boolean; error?: string }>
-  /** Subscribes to workflow status events. Returns a cleanup function that removes the listener. */
   onWorkflowStatusUpdate: (callback: (payload: WorkflowStatusUpdatePayload) => void) => () => void
-  /** Subscribes to workflow log events. Returns a cleanup function that removes the listener. */
   onWorkflowLog: (callback: (payload: WorkflowLogPayload) => void) => () => void
 }
 
@@ -132,9 +136,17 @@ declare global {
       updateTheme: (gradientClass: string) => void
       updateStartupSetting: (launchOnStartup: boolean) => void
       updateTerminalFont: (terminalFont: string) => void
+      updatePreferredShell: (preferredShell: string) => void
+      updateButtonVisibility: (buttonVisibility: Partial<ButtonVisibility>) => void
+      updateChatModel: (chatModel: string) => void
+      updateReasoningEffort: (reasoningEffort: ReasoningEffort) => void
       getTerminalFonts: () => Promise<string[]>
       onThemeUpdated: (callback: (gradientClass: string) => void) => () => void
       onTerminalFontUpdated: (callback: (terminalFont: string) => void) => () => void
+      onPreferredShellUpdated: (callback: (preferredShell?: string) => void) => () => void
+      onButtonVisibilityUpdated: (callback: (buttonVisibility: ButtonVisibility) => void) => () => void
+      onChatModelUpdated: (callback: (chatModel: string) => void) => () => void
+      onReasoningEffortUpdated: (callback: (reasoningEffort: ReasoningEffort) => void) => () => void
       askCovenant: (messages: Array<{ role: ChatRole; content: string }>) => Promise<string>
       onToggleVisibility: (callback: (visible: boolean) => void) => () => void
     }

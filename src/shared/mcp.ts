@@ -1,13 +1,3 @@
-export interface AppConfig {
-  apiKey: string
-  themeGradient: string
-  proxyUrl: string
-  launchOnStartup: boolean
-  terminalFont: string
-  preferredShell?: string
-  mcpServers: McpServer[]
-}
-
 export interface McpHeader {
   name: string
   value: string

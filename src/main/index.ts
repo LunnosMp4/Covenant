@@ -22,7 +22,14 @@ import OpenAI from 'openai'
 import { ProxyAgent } from 'undici'
 import { terminalManager, type TerminalExitPayload } from './terminalManager'
 import { getTerminalFonts } from './fontManager'
-import type { AppConfig, McpAuth, McpHeader, McpServer, McpTool } from '../shared/mcp'
+import type { AppConfig } from '../shared/config'
+import {
+  DEFAULT_BUTTON_VISIBILITY,
+  DEFAULT_CHAT_MODEL,
+  DEFAULT_REASONING_EFFORT,
+  modelSupportsExtendedParams
+} from '../shared/config'
+import type { McpAuth, McpHeader, McpServer, McpTool } from '../shared/mcp'
 
 // Expose V8's garbage collector so we can force a collection on window hide.
 // Must be set before app.whenReady() — top-level module scope satisfies this.
@@ -114,7 +121,10 @@ const DEFAULT_CONFIG: AppConfig = {
   launchOnStartup: true,
   terminalFont: 'Cascadia Mono, Consolas, "Courier New", monospace',
   preferredShell: undefined,
-  mcpServers: []
+  mcpServers: [],
+  buttonVisibility: { ...DEFAULT_BUTTON_VISIBILITY },
+  chatModel: DEFAULT_CHAT_MODEL,
+  reasoningEffort: DEFAULT_REASONING_EFFORT
 }
 
 const WORKFLOW_LANGUAGE_SET = new Set<WorkflowLanguage>([
@@ -1030,6 +1040,18 @@ function normalizeTerminalFont(rawFont: unknown): string {
   return terminalFonts.has(normalizedFont.toLowerCase()) ? normalizedFont : DEFAULT_CONFIG.terminalFont
 }
 
+function normalizeButtonVisibility(raw: unknown): AppConfig['buttonVisibility'] {
+  if (!raw || typeof raw !== 'object') {
+    return { ...DEFAULT_BUTTON_VISIBILITY }
+  }
+
+  const obj = raw as Record<string, unknown>
+  return {
+    appLauncher: typeof obj.appLauncher === 'boolean' ? obj.appLauncher : DEFAULT_BUTTON_VISIBILITY.appLauncher,
+    workflow: typeof obj.workflow === 'boolean' ? obj.workflow : DEFAULT_BUTTON_VISIBILITY.workflow
+  }
+}
+
 function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined): AppConfig {
   return {
     apiKey: typeof rawConfig?.apiKey === 'string' ? rawConfig.apiKey : DEFAULT_CONFIG.apiKey,
@@ -1050,7 +1072,16 @@ function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined): AppC
       typeof rawConfig?.preferredShell === 'string' && rawConfig.preferredShell.trim()
         ? rawConfig.preferredShell.trim()
         : DEFAULT_CONFIG.preferredShell,
-    mcpServers: normalizeStoredMcpServers(rawConfig?.mcpServers)
+    mcpServers: normalizeStoredMcpServers(rawConfig?.mcpServers),
+    buttonVisibility: normalizeButtonVisibility(rawConfig?.buttonVisibility),
+    chatModel:
+      typeof rawConfig?.chatModel === 'string' && rawConfig.chatModel.trim()
+        ? rawConfig.chatModel.trim()
+        : DEFAULT_CHAT_MODEL,
+    reasoningEffort:
+      typeof rawConfig?.reasoningEffort === 'string' && ['low', 'medium', 'high'].includes(rawConfig.reasoningEffort)
+        ? rawConfig.reasoningEffort as AppConfig['reasoningEffort']
+        : DEFAULT_REASONING_EFFORT
   }
 }
 
@@ -1512,10 +1543,27 @@ async function callMcpTool(entry: McpToolRegistryEntry, rawArguments: string | u
   return parseMcpToolResultContent(resultPayload)
 }
 
+function buildExtendedModelParams(model: string, reasoningEffort: string): Record<string, unknown> {
+  if (!modelSupportsExtendedParams(model)) {
+    return {}
+  }
+
+  const params: Record<string, unknown> = {
+    verbosity: 'medium'
+  }
+
+  if (['low', 'medium', 'high'].includes(reasoningEffort)) {
+    params.reasoning_effort = reasoningEffort
+  }
+
+  return params
+}
+
 async function completeChatWithMcp(
   client: OpenAI,
   sanitizedMessages: Array<{ role: ChatRole; content: string }>,
-  toolRegistry: McpToolRegistryEntry[]
+  toolRegistry: McpToolRegistryEntry[],
+  model: string
 ): Promise<string> {
   const openAiMessages: Array<Record<string, unknown>> = [
     {
@@ -1537,12 +1585,11 @@ async function completeChatWithMcp(
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const completion = await client.chat.completions.create({
-      model: 'gpt-5.4-nano',
+      model,
       messages: openAiMessages as any,
       tools: openAiTools as any,
       tool_choice: openAiTools.length > 0 ? 'auto' : undefined,
-      reasoning_effort: 'low',
-      verbosity: 'low'
+      ...buildExtendedModelParams(model, readConfig().reasoningEffort)
     })
 
     const message = completion.choices[0]?.message
@@ -2191,7 +2238,6 @@ ipcMain.on('update-startup-setting', (_event, launchOnStartup: boolean) => {
   const isEnabled = typeof launchOnStartup === 'boolean' ? launchOnStartup : DEFAULT_CONFIG.launchOnStartup
   updateConfig({ launchOnStartup: isEnabled })
   
-  // Update Electron's launch on startup setting
   if (isWindows || process.platform === 'darwin') {
     try {
       app.setLoginItemSettings({
@@ -2201,6 +2247,52 @@ ipcMain.on('update-startup-setting', (_event, launchOnStartup: boolean) => {
     } catch (error) {
       console.error('Failed to update login item settings:', error)
     }
+  }
+})
+
+ipcMain.on('update-button-visibility', (_event, buttonVisibility: Partial<AppConfig['buttonVisibility']>) => {
+  const current = readConfig().buttonVisibility
+  const nextButtonVisibility: AppConfig['buttonVisibility'] = {
+    appLauncher: typeof buttonVisibility?.appLauncher === 'boolean' ? buttonVisibility.appLauncher : current.appLauncher,
+    workflow: typeof buttonVisibility?.workflow === 'boolean' ? buttonVisibility.workflow : current.workflow
+  }
+  updateConfig({ buttonVisibility: nextButtonVisibility })
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('button-visibility-updated', nextButtonVisibility)
+  }
+
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.webContents.send('button-visibility-updated', nextButtonVisibility)
+  }
+})
+
+ipcMain.on('update-chat-model', (_event, chatModel: string) => {
+  const nextChatModel = typeof chatModel === 'string' && chatModel.trim() ? chatModel.trim() : DEFAULT_CHAT_MODEL
+  updateConfig({ chatModel: nextChatModel })
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('chat-model-updated', nextChatModel)
+  }
+
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.webContents.send('chat-model-updated', nextChatModel)
+  }
+})
+
+ipcMain.on('update-reasoning-effort', (_event, reasoningEffort: string) => {
+  const validEfforts = ['low', 'medium', 'high']
+  const nextReasoningEffort = typeof reasoningEffort === 'string' && validEfforts.includes(reasoningEffort)
+    ? reasoningEffort as AppConfig['reasoningEffort']
+    : DEFAULT_REASONING_EFFORT
+  updateConfig({ reasoningEffort: nextReasoningEffort })
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('reasoning-effort-updated', nextReasoningEffort)
+  }
+
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.webContents.send('reasoning-effort-updated', nextReasoningEffort)
   }
 })
 
@@ -2249,23 +2341,23 @@ ipcMain.handle('covenant:chat-stream', async (event, rawMessages: Array<{ role?:
   const toolRegistry = getActiveMcpToolRegistry()
 
   if (toolRegistry.length > 0) {
-    const responseText = await completeChatWithMcp(client, sanitizedMessages, toolRegistry)
+    const chatModel = storedConfig.chatModel || DEFAULT_CHAT_MODEL
+    const responseText = await completeChatWithMcp(client, sanitizedMessages, toolRegistry, chatModel)
 
     void (async () => {
       sendStreamEvent({ id: streamId, type: 'content', delta: responseText })
-      sendStreamEvent({ id: streamId, type: 'done', usage: undefined, model: 'gpt-5.4-nano' })
+      sendStreamEvent({ id: streamId, type: 'done', usage: undefined, model: chatModel })
     })()
 
     return { id: streamId }
   }
 
-  const model = 'gpt-5.4-nano'
+  const model = storedConfig.chatModel || DEFAULT_CHAT_MODEL
   const stream = await client.chat.completions.create({
     model,
     stream: true,
     stream_options: { include_usage: true },
-    reasoning_effort: 'low',
-    verbosity: 'low',
+    ...buildExtendedModelParams(model, storedConfig.reasoningEffort || DEFAULT_REASONING_EFFORT),
     messages: [
       {
         role: 'system',
@@ -2355,11 +2447,13 @@ ipcMain.handle('covenant:chat', async (_event, rawMessages: Array<{ role?: strin
   })
 
   const toolRegistry = getActiveMcpToolRegistry()
+  const chatModel = storedConfig.chatModel || DEFAULT_CHAT_MODEL
   if (toolRegistry.length > 0) {
-    return completeChatWithMcp(client, sanitizedMessages, toolRegistry)
+    return completeChatWithMcp(client, sanitizedMessages, toolRegistry, chatModel)
   }
   const completion = await client.chat.completions.create({
-    model: 'gpt-5.4-nano',
+    model: chatModel,
+    ...buildExtendedModelParams(chatModel, storedConfig.reasoningEffort || DEFAULT_REASONING_EFFORT),
     messages: [
       {
         role: 'system',

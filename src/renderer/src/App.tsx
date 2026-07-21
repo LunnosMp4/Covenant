@@ -18,6 +18,8 @@ import {
   getThemePalette,
   normalizeThemeGradient
 } from './constants/theme'
+import type { ButtonVisibility, ReasoningEffort } from '../../shared/config'
+import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_REASONING_EFFORT } from '../../shared/config'
 import type { LauncherApp, LauncherAppTarget } from './types/launcher-app'
 import type { Preprompt } from './types/preprompt'
 import type {
@@ -26,13 +28,6 @@ import type {
   WorkflowLogPayload,
   WorkflowStatusUpdatePayload
 } from './types/workflow'
-
-interface AppConfig {
-  apiKey: string
-  themeGradient: string
-  proxyUrl: string
-  terminalFont: string
-}
 
 type ChatRole = 'user' | 'assistant' | 'system'
 
@@ -137,10 +132,25 @@ const CHAT_MODEL_PRICING: Record<
     outputPerMillion: number
   }
 > = {
+  'gpt-4o-mini': {
+    inputPerMillion: 0.15,
+    cachedInputPerMillion: 0.08,
+    outputPerMillion: 0.6
+  },
   'gpt-5.4-nano': {
     inputPerMillion: 0.2,
     cachedInputPerMillion: 0.02,
     outputPerMillion: 1.25
+  },
+  'gpt-5.6-luna': {
+    inputPerMillion: 1,
+    cachedInputPerMillion: 0.10,
+    outputPerMillion: 6
+  },
+  'gpt-5.6-terra': {
+    inputPerMillion: 2.50,
+    cachedInputPerMillion: 0.25,
+    outputPerMillion: 15
   }
 }
 
@@ -248,6 +258,19 @@ function SpinnerIcon(): JSX.Element {
     >
       <circle cx="12" cy="12" r="9" className="opacity-30" />
       <path d="M21 12a9 9 0 0 0-9-9" />
+    </svg>
+  )
+}
+
+function SettingsIcon(): JSX.Element {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M22 6.5H16" stroke="currentColor" stroke-width="1.5" stroke-miterlimit="10" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M6 6.5H2" stroke="currentColor" stroke-width="1.5" stroke-miterlimit="10" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M10 10C11.933 10 13.5 8.433 13.5 6.5C13.5 4.567 11.933 3 10 3C8.067 3 6.5 4.567 6.5 6.5C6.5 8.433 8.067 10 10 10Z" stroke="currentColor" stroke-width="1.5" stroke-miterlimit="10" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M22 17.5H18" stroke="currentColor" stroke-width="1.5" stroke-miterlimit="10" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M8 17.5H2" stroke="currentColor" stroke-width="1.5" stroke-miterlimit="10" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M14 21C15.933 21 17.5 19.433 17.5 17.5C17.5 15.567 15.933 14 14 14C12.067 14 10.5 15.567 10.5 17.5C10.5 19.433 12.067 21 14 21Z" stroke="currentColor" stroke-width="1.5" stroke-miterlimit="10" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   )
 }
@@ -387,10 +410,13 @@ export default function App(): JSX.Element {
   >({})
   const [workflowLogsOpenById, setWorkflowLogsOpenById] = useState<Record<string, boolean>>({})
   const [activePopup, setActivePopup] = useState<ActivePopup | null>(null)
+  const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true })
+  const [chatModel, setChatModel] = useState<string>(DEFAULT_CHAT_MODEL)
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT)
   const inputRef = useRef<HTMLInputElement>(null)
   const popupRef = useRef<HTMLDivElement>(null)
   const moduleButtonsRef = useRef<HTMLDivElement>(null)
-  const module4ButtonRef = useRef<HTMLButtonElement>(null)
+  const settingsButtonRef = useRef<HTMLButtonElement>(null)
   const chatScrollRef = useRef<HTMLDivElement>(null)
   const historyMenuRef = useRef<HTMLDivElement>(null)
   const historyButtonRef = useRef<HTMLButtonElement>(null)
@@ -407,10 +433,19 @@ export default function App(): JSX.Element {
       if (!window.api?.config.getConfig) return
 
       try {
-        const config = (await window.api.config.getConfig()) as AppConfig
+        const config = await window.api.config.getConfig()
         if (isMounted) {
           setThemeGradient(normalizeThemeGradient(config.themeGradient))
           setTerminalFont(normalizeTerminalFont(config.terminalFont))
+          if (config.buttonVisibility) {
+            setButtonVisibility(config.buttonVisibility)
+          }
+          if (config.chatModel) {
+            setChatModel(config.chatModel)
+          }
+          if (config.reasoningEffort) {
+            setReasoningEffort(config.reasoningEffort)
+          }
         }
       } catch {
         if (isMounted) {
@@ -430,6 +465,18 @@ export default function App(): JSX.Element {
       setTerminalFont(normalizeTerminalFont(newTerminalFont))
     })
 
+    const unsubscribeButtonVisibilityListener = window.api?.config.onButtonVisibilityUpdated?.((newButtonVisibility) => {
+      setButtonVisibility(newButtonVisibility)
+    })
+
+    const unsubscribeChatModelListener = window.api?.config.onChatModelUpdated?.((newChatModel) => {
+      setChatModel(newChatModel)
+    })
+
+    const unsubscribeReasoningEffortListener = window.api?.config.onReasoningEffortUpdated?.((newReasoningEffort) => {
+      setReasoningEffort(newReasoningEffort)
+    })
+
     return () => {
       isMounted = false
       if (typeof unsubscribeThemeListener === 'function') {
@@ -437,6 +484,15 @@ export default function App(): JSX.Element {
       }
       if (typeof unsubscribeTerminalFontListener === 'function') {
         unsubscribeTerminalFontListener()
+      }
+      if (typeof unsubscribeButtonVisibilityListener === 'function') {
+        unsubscribeButtonVisibilityListener()
+      }
+      if (typeof unsubscribeChatModelListener === 'function') {
+        unsubscribeChatModelListener()
+      }
+      if (typeof unsubscribeReasoningEffortListener === 'function') {
+        unsubscribeReasoningEffortListener()
       }
     }
   }, [])
@@ -665,17 +721,17 @@ export default function App(): JSX.Element {
   }, [isHistoryOpen])
 
   useEffect(() => {
-    if (activePopup === 'module4') {
+    if (activePopup === 'settings') {
       void loadPreprompts()
       return
     }
 
-    if (activePopup === 'module2') {
+    if (activePopup === 'appLauncher') {
       void loadApps()
       return
     }
 
-    if (activePopup === 'module3') {
+    if (activePopup === 'workflow') {
       void loadWorkflows()
     }
   }, [activePopup, loadApps, loadPreprompts, loadWorkflows])
@@ -717,9 +773,9 @@ export default function App(): JSX.Element {
       const target = event.target as Node
       const clickedInsidePopup = popupRef.current?.contains(target)
       const clickedInsideModuleButtons = moduleButtonsRef.current?.contains(target)
-      const clickedInsideModule4Button = module4ButtonRef.current?.contains(target)
+      const clickedInsideSettingsButton = settingsButtonRef.current?.contains(target)
 
-      if (!clickedInsidePopup && !clickedInsideModuleButtons && !clickedInsideModule4Button) {
+      if (!clickedInsidePopup && !clickedInsideModuleButtons && !clickedInsideSettingsButton) {
         setActivePopup(null)
       }
     }
@@ -1086,7 +1142,7 @@ export default function App(): JSX.Element {
                 ? {
                     ...message,
                     content: response,
-                    model: 'gpt-5.4-nano'
+                    model: chatModel
                   }
                 : message
             )
@@ -1197,7 +1253,7 @@ export default function App(): JSX.Element {
 
   const handlePopupItemSelect = useCallback(
     (item: PopupItem) => {
-      if (activePopup === 'module4' && item.promptText) {
+      if (activePopup === 'settings' && item.promptText) {
         setCurrentSystemPrompt({
           id: item.id,
           title: item.title,
@@ -1205,7 +1261,7 @@ export default function App(): JSX.Element {
         })
 
         setTimeout(() => inputRef.current?.focus(), 40)
-      } else if (activePopup === 'module2') {
+      } else if (activePopup === 'appLauncher') {
         const launchTargets = normalizePopupLaunchTargets(item)
         if (launchTargets.length === 0) {
           return
@@ -1228,7 +1284,7 @@ export default function App(): JSX.Element {
             appendAssistantMessage(`Error: ${message}`)
           })
         }
-      } else if (activePopup === 'module3' && item.workflowData) {
+      } else if (activePopup === 'workflow' && item.workflowData) {
         if (!window.api?.executeWorkflow) {
           appendAssistantMessage('Workflow execution is only available in the Electron app.')
         } else {
@@ -1308,7 +1364,7 @@ export default function App(): JSX.Element {
         console.log(`${item.title} selected`)
       }
 
-      if (activePopup !== 'module3') {
+      if (activePopup !== 'workflow' && activePopup !== 'settings') {
         setActivePopup(null)
       } else {
         if (mode === 'ai') {
@@ -1429,57 +1485,6 @@ export default function App(): JSX.Element {
             className="relative flex flex-col w-[750px] max-w-full"
             style={themeStyles}
           >
-            <AnimatePresence mode="wait">
-              {mode === 'ai' && activePopup && isAppVisible && (
-                <ModulePopup
-                  key={activePopup}
-                  activePopup={activePopup}
-                  popupRef={popupRef}
-                  themeGradient={themeGradient}
-                  isAppVisible={isAppVisible}
-                  selectedModule4ItemId={selectedSystemPrompt?.id}
-                  onClearSelectedModule4Item={clearCurrentSystemPrompt}
-                  module2Items={apps.map((item) => {
-                    const targets = normalizeLauncherAppTargets(item)
-                    return {
-                      id: item.id,
-                      title: item.title,
-                      subtitle: formatTargetsSummary(targets),
-                      icon: 'grid',
-                      appLaunchTargets: targets
-                    }
-                  })}
-                  module3Items={workflows.map((item) => ({
-                    id: item.id,
-                    title: item.title,
-                    subtitle: item.language,
-                    icon: 'bolt',
-                    workflowData: item
-                  }))}
-                  workflowExecutionById={workflowExecutionById}
-                  workflowLogsOpenById={workflowLogsOpenById}
-                  onToggleWorkflowLogs={handleToggleWorkflowLogs}
-                  module4Items={preprompts.map((item) => ({
-                    id: item.id,
-                    title: item.title,
-                    subtitle: item.content,
-                    icon: 'doc',
-                    promptText: item.content
-                  }))}
-                  onAddNew={() => {
-                    setActivePopup(null)
-                    if (window.api?.window.openSettings) {
-                      window.api.window.openSettings()
-                    } else {
-                      console.log('Settings window is only available in the Electron app.')
-                    }
-                  }}
-                  onSelectItem={handlePopupItemSelect}
-                  anchorSide={activePopup === 'module4' ? 'left' : 'right'}
-                />
-              )}
-            </AnimatePresence>
-
             <AnimatePresence>
               {mode === 'ai' && isChatOpen && (
                 <motion.div
@@ -1642,7 +1647,7 @@ export default function App(): JSX.Element {
             </AnimatePresence>
 
             <motion.div
-              className={`flex items-center w-full rounded-2xl overflow-hidden p-2 bg-gradient-to-br ${themeGradient} border border-white/10 transition-opacity duration-100 ${
+              className={`relative flex items-center w-full rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10 transition-opacity duration-100 ${
                 mode === 'terminal' ? 'opacity-0 pointer-events-none' : 'opacity-100'
               }`}
               style={{
@@ -1650,18 +1655,84 @@ export default function App(): JSX.Element {
                 backdropFilter: 'blur(40px)'
               }}
             >
+            <AnimatePresence mode="wait">
+              {mode === 'ai' && activePopup && isAppVisible && (
+                <ModulePopup
+                  key={activePopup}
+                  activePopup={activePopup}
+                  popupRef={popupRef}
+                  themeGradient={themeGradient}
+                  isAppVisible={isAppVisible}
+                  selectedSettingsItemId={selectedSystemPrompt?.id}
+                  onClearSelectedSettingsItem={clearCurrentSystemPrompt}
+                  appLauncherItems={apps.map((item) => {
+                    const targets = normalizeLauncherAppTargets(item)
+                    return {
+                      id: item.id,
+                      title: item.title,
+                      subtitle: formatTargetsSummary(targets),
+                      icon: 'grid',
+                      appLaunchTargets: targets
+                    }
+                  })}
+                  workflowItems={workflows.map((item) => ({
+                    id: item.id,
+                    title: item.title,
+                    subtitle: item.language,
+                    icon: 'bolt',
+                    workflowData: item
+                  }))}
+                  workflowExecutionById={workflowExecutionById}
+                  workflowLogsOpenById={workflowLogsOpenById}
+                  onToggleWorkflowLogs={handleToggleWorkflowLogs}
+                  settingsItems={preprompts.map((item) => ({
+                    id: item.id,
+                    title: item.title,
+                    subtitle: item.content,
+                    icon: 'doc',
+                    promptText: item.content
+                  }))}
+                  onAddNew={() => {
+                    setActivePopup(null)
+                    if (window.api?.window.openSettings) {
+                      window.api.window.openSettings()
+                    } else {
+                      console.log('Settings window is only available in the Electron app.')
+                    }
+                  }}
+                  onSelectItem={handlePopupItemSelect}
+                  anchorSide={activePopup === 'settings' ? 'left' : 'right'}
+                  chatModel={chatModel}
+                  onSelectChatModel={(model) => {
+                    setChatModel(model)
+                    window.api?.config.updateChatModel?.(model)
+                  }}
+                  onOpenFullSettings={() => {
+                    setActivePopup(null)
+                    if (window.api?.window.openSettings) {
+                      window.api.window.openSettings()
+                    }
+                  }}
+                  reasoningEffort={reasoningEffort}
+                  onSelectReasoningEffort={(effort) => {
+                    setReasoningEffort(effort)
+                    window.api?.config.updateReasoningEffort?.(effort)
+                  }}
+                />
+              )}
+            </AnimatePresence>
 
             <button
-              ref={module4ButtonRef}
+              ref={settingsButtonRef}
               onClick={(e) => {
                 e.stopPropagation()
-                togglePopup('module4')
+                togglePopup('settings')
               }}
               className="flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all duration-150"
-              aria-label="Module 4"
-              aria-pressed={activePopup === 'module4'}
+              aria-label="Settings"
+              aria-pressed={activePopup === 'settings'}
             >
-              <BoltIcon />
+              <SettingsIcon />
             </button>
 
               <input
@@ -1688,29 +1759,33 @@ export default function App(): JSX.Element {
               </button>
 
               <div ref={moduleButtonsRef} className="flex items-center gap-1">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    togglePopup('module2')
-                  }}
-                  className="flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all duration-150"
-                  aria-label="Module 2"
-                  aria-pressed={activePopup === 'module2'}
-                >
-                  <GridIcon />
-                </button>
+                {buttonVisibility.appLauncher && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      togglePopup('appLauncher')
+                    }}
+                    className="flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all duration-150"
+                    aria-label="App Launcher"
+                    aria-pressed={activePopup === 'appLauncher'}
+                  >
+                    <GridIcon />
+                  </button>
+                )}
 
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    togglePopup('module3')
-                  }}
-                  className="flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all duration-150"
-                  aria-label="Module 3"
-                  aria-pressed={activePopup === 'module3'}
-                >
-                  <CodeIcon />
-                </button>
+                {buttonVisibility.workflow && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      togglePopup('workflow')
+                    }}
+                    className="flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all duration-150"
+                    aria-label="Workflows"
+                    aria-pressed={activePopup === 'workflow'}
+                  >
+                    <CodeIcon />
+                  </button>
+                )}
               </div>
             </motion.div>
           </motion.div>

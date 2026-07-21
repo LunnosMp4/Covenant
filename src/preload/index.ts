@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AppConfig, McpServer } from '../shared/mcp'
+import type { AppConfig } from '../shared/config'
+import type { ButtonVisibility } from '../shared/config'
+import type { McpServer } from '../shared/mcp'
 
 interface Preprompt {
   id: string
@@ -124,6 +126,11 @@ const api = {
     updateStartupSetting: (launchOnStartup: boolean) => ipcRenderer.send('update-startup-setting', launchOnStartup),
     updateTerminalFont: (terminalFont: string) => ipcRenderer.send('update-terminal-font', terminalFont),
     updatePreferredShell: (preferredShell: string) => ipcRenderer.send('update-preferred-shell', preferredShell),
+    updateButtonVisibility: (buttonVisibility: Partial<ButtonVisibility>) =>
+      ipcRenderer.send('update-button-visibility', buttonVisibility),
+    updateChatModel: (chatModel: string) => ipcRenderer.send('update-chat-model', chatModel),
+    updateReasoningEffort: (reasoningEffort: ReasoningEffort) =>
+      ipcRenderer.send('update-reasoning-effort', reasoningEffort),
     onThemeUpdated: (callback: (gradientClass: string) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, gradientClass: string) => {
         callback(gradientClass)
@@ -155,6 +162,39 @@ const api = {
 
       return () => {
         ipcRenderer.removeListener('preferred-shell-updated', listener)
+      }
+    },
+    onButtonVisibilityUpdated: (callback: (buttonVisibility: ButtonVisibility) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, buttonVisibility: ButtonVisibility) => {
+        callback(buttonVisibility)
+      }
+
+      ipcRenderer.on('button-visibility-updated', listener)
+
+      return () => {
+        ipcRenderer.removeListener('button-visibility-updated', listener)
+      }
+    },
+    onChatModelUpdated: (callback: (chatModel: string) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, chatModel: string) => {
+        callback(chatModel)
+      }
+
+      ipcRenderer.on('chat-model-updated', listener)
+
+      return () => {
+        ipcRenderer.removeListener('chat-model-updated', listener)
+      }
+    },
+    onReasoningEffortUpdated: (callback: (reasoningEffort: ReasoningEffort) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, reasoningEffort: ReasoningEffort) => {
+        callback(reasoningEffort)
+      }
+
+      ipcRenderer.on('reasoning-effort-updated', listener)
+
+      return () => {
+        ipcRenderer.removeListener('reasoning-effort-updated', listener)
       }
     },
     getTerminalFonts: () => ipcRenderer.invoke('get-terminal-fonts') as Promise<string[]>
@@ -262,7 +302,6 @@ const api = {
 
 contextBridge.exposeInMainWorld('api', api)
 
-// Backward compatibility for existing renderer usage.
 contextBridge.exposeInMainWorld('electronAPI', {
   hideWindow: api.window.hideWindow,
   openSettings: api.window.openSettings,
@@ -279,10 +318,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateStartupSetting: api.config.updateStartupSetting,
   updateTerminalFont: api.config.updateTerminalFont,
   updatePreferredShell: api.config.updatePreferredShell,
+  updateButtonVisibility: api.config.updateButtonVisibility,
+  updateChatModel: api.config.updateChatModel,
+  updateReasoningEffort: api.config.updateReasoningEffort,
   getTerminalFonts: api.config.getTerminalFonts,
   onThemeUpdated: api.config.onThemeUpdated,
   onTerminalFontUpdated: api.config.onTerminalFontUpdated,
   onPreferredShellUpdated: api.config.onPreferredShellUpdated,
+  onButtonVisibilityUpdated: api.config.onButtonVisibilityUpdated,
+  onChatModelUpdated: api.config.onChatModelUpdated,
+  onReasoningEffortUpdated: api.config.onReasoningEffortUpdated,
   askCovenant: api.chat.askCovenant,
   onToggleVisibility: api.window.onToggleVisibility
 })
