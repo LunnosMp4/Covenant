@@ -277,10 +277,19 @@ function SettingsIcon(): JSX.Element {
 
 function MenuIcon(): JSX.Element {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path d="M4 6h16" />
-      <path d="M4 12h16" />
-      <path d="M4 18h16" />
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <line x1="4" y1="6" x2="20" y2="6" />
+      <line x1="4" y1="12" x2="20" y2="12" />
+      <line x1="4" y1="18" x2="20" y2="18" />
+    </svg>
+  )
+}
+
+function PinIcon({ active }: { active: boolean }): JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 17v5" />
+      <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V5a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2z" />
     </svg>
   )
 }
@@ -413,6 +422,7 @@ export default function App(): JSX.Element {
   const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true })
   const [chatModel, setChatModel] = useState<string>(DEFAULT_CHAT_MODEL)
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT)
+  const [isPinned, setIsPinned] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const popupRef = useRef<HTMLDivElement>(null)
   const moduleButtonsRef = useRef<HTMLDivElement>(null)
@@ -513,6 +523,8 @@ export default function App(): JSX.Element {
           setVisible(true)
         } else {
           setVisible(false)
+          setIsPinned(false)
+          window.api?.window.setPinned?.(false)
           // Wait for the exit animation (~250 ms) before resetting state and
           // unmounting heavy components to free memory.
           hideDelayTimerRef.current = setTimeout(() => {
@@ -576,10 +588,20 @@ export default function App(): JSX.Element {
     setActivePopup(null)
   }, [])
 
+  const handleTogglePin = useCallback(() => {
+    setIsPinned((prev) => {
+      const next = !prev
+      window.api?.window.setPinned?.(next)
+      return next
+    })
+  }, [])
+
   const handleClose = useCallback(() => {
     setActivePopup(null)
     setMode('ai')
     setVisible(false)
+    setIsPinned(false)
+    window.api?.window.setPinned?.(false)
     setTimeout(() => {
       setQuery('')
       setIsLoading(false)
@@ -1496,11 +1518,26 @@ export default function App(): JSX.Element {
                   className={`mb-2 rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} p-4 chat-surface`}
                 >
                   <div className="relative flex items-center justify-between">
-                    <div>
-                      <p className="text-[11px] uppercase tracking-[0.24em] text-neutral-500">Conversation</p>
-                      <p className="text-sm font-medium text-neutral-200">
-                        {activeConversation?.title ?? DEFAULT_CONVERSATION_TITLE}
-                      </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleTogglePin}
+                        className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
+                          isPinned
+                            ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-400 hover:border-emerald-500/50 hover:bg-emerald-500/25'
+                            : 'border-white/10 text-neutral-400 hover:border-white/20 hover:bg-white/10 hover:text-neutral-200'
+                        }`}
+                        aria-label={isPinned ? 'Unpin window' : 'Pin window'}
+                        aria-pressed={isPinned}
+                      >
+                        <PinIcon active={isPinned} />
+                      </button>
+                      <div>
+                        <p className="text-[11px] uppercase tracking-[0.24em] text-neutral-500">Conversation</p>
+                        <p className="text-sm font-medium text-neutral-200">
+                          {activeConversation?.title ?? DEFAULT_CONVERSATION_TITLE}
+                        </p>
+                      </div>
                     </div>
                     <button
                       ref={historyButtonRef}

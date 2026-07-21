@@ -123,6 +123,7 @@ declare global {
     api?: CovenantAPI
     electronAPI?: {
       hideWindow: () => void
+      setPinned: (pinned: boolean) => void
       openSettings: () => void
       closeSettings: () => void
       minimizeSettings: () => void

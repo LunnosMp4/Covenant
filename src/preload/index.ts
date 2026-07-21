@@ -95,6 +95,7 @@ interface TerminalExitPayload {
 const api = {
   window: {
     hideWindow: () => ipcRenderer.send('hide-window'),
+    setPinned: (pinned: boolean) => ipcRenderer.send('set-pinned', pinned),
     openSettings: () => ipcRenderer.send('open-settings'),
     closeSettings: () => ipcRenderer.send('close-settings'),
     minimizeSettings: () => ipcRenderer.send('minimize-settings'),
@@ -304,6 +305,7 @@ contextBridge.exposeInMainWorld('api', api)
 
 contextBridge.exposeInMainWorld('electronAPI', {
   hideWindow: api.window.hideWindow,
+  setPinned: api.window.setPinned,
   openSettings: api.window.openSettings,
   closeSettings: api.window.closeSettings,
   minimizeSettings: api.window.minimizeSettings,

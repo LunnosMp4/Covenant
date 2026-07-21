@@ -39,6 +39,7 @@ let mainWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let isVisible = false
+let isPinned = false
 
 const isMac = process.platform === 'darwin'
 const isWindows = process.platform === 'win32'
@@ -1703,7 +1704,7 @@ function createWindow(): void {
   })
 
   mainWindow.on('blur', () => {
-    if (isVisible) {
+    if (isVisible && !isPinned) {
       hideWindow()
     }
   })
@@ -1777,6 +1778,7 @@ function hideWindow(): void {
   if (!mainWindow) return
   mainWindow.webContents.send('toggle-visibility', false)
   isVisible = false
+  isPinned = false
 
   // Give the exit animation time to play before hiding, then enter sleep mode.
   setTimeout(() => {
@@ -1951,9 +1953,14 @@ app.on('will-quit', () => {
 // IPC: renderer can request hide (after close animation)
 ipcMain.on('hide-window', () => {
   isVisible = false
+  isPinned = false
   if (mainWindow) {
     mainWindow.hide()
   }
+})
+
+ipcMain.on('set-pinned', (_event, pinned: boolean) => {
+  isPinned = typeof pinned === 'boolean' ? pinned : false
 })
 
 ipcMain.on('open-settings', () => {
