@@ -12,6 +12,7 @@ import 'prismjs/components/prism-powershell'
 import 'prismjs/components/prism-python'
 import ModulePopup, { type ActivePopup, type PopupItem } from './components/ModulePopup'
 import TerminalView from './components/TerminalView'
+import VoiceWaveform from './components/VoiceWaveform'
 import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from './constants/terminalFonts'
 import {
   DEFAULT_THEME_GRADIENT,
@@ -294,6 +295,24 @@ function PinIcon({ active }: { active: boolean }): JSX.Element {
   )
 }
 
+function MicIcon(): JSX.Element {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+      <line x1="12" y1="19" x2="12" y2="22" />
+    </svg>
+  )
+}
+
+function StopIcon(): JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="6" y="6" width="12" height="12" rx="2" />
+    </svg>
+  )
+}
+
 function createConversationTitle(prompt: string): string {
   const trimmed = prompt.trim()
   if (!trimmed) return DEFAULT_CONVERSATION_TITLE
@@ -423,6 +442,10 @@ export default function App(): JSX.Element {
   const [chatModel, setChatModel] = useState<string>(DEFAULT_CHAT_MODEL)
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT)
   const [isPinned, setIsPinned] = useState(false)
+  const [voiceState, setVoiceState] = useState<'idle' | 'recording' | 'transcribing' | 'error'>('idle')
+  const micStreamRef = useRef<MediaStream | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
   const popupRef = useRef<HTMLDivElement>(null)
   const moduleButtonsRef = useRef<HTMLDivElement>(null)
@@ -1413,6 +1436,57 @@ export default function App(): JSX.Element {
     [activePopup, handleClose, handleSubmit]
   )
 
+  const toggleRecording = useCallback(async () => {
+    if (voiceState === 'transcribing') return
+
+    if (voiceState === 'recording') {
+      mediaRecorderRef.current?.stop()
+      micStreamRef.current?.getTracks().forEach((t) => t.stop())
+      micStreamRef.current = null
+      return
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      micStreamRef.current = stream
+      audioChunksRef.current = []
+
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
+      mediaRecorderRef.current = recorder
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data)
+      }
+
+      recorder.onstop = () => {
+        setVoiceState('transcribing')
+        micStreamRef.current?.getTracks().forEach((t) => t.stop())
+        micStreamRef.current = null
+
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+        blob.arrayBuffer().then(async (buffer) => {
+          try {
+            const text = await window.api!.voice.transcribe(buffer)
+            if (text.trim()) {
+              setQuery((prev) => (prev ? prev + ' ' + text.trim() : text.trim()))
+              setTimeout(() => inputRef.current?.focus(), 50)
+            }
+            setVoiceState('idle')
+          } catch {
+            setVoiceState('error')
+            setTimeout(() => setVoiceState('idle'), 400)
+          }
+        })
+      }
+
+      recorder.start(250)
+      setVoiceState('recording')
+    } catch {
+      setVoiceState('error')
+      setTimeout(() => setVoiceState('idle'), 400)
+    }
+  }, [voiceState])
+
   const handleOverlayClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (e.target !== e.currentTarget) return
@@ -1433,6 +1507,20 @@ export default function App(): JSX.Element {
 
   const handleRootKeyDownCapture = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (
+        mode === 'ai' &&
+        event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey &&
+        (event.key === 'm' || event.key === 'M')
+      ) {
+        event.preventDefault()
+        event.stopPropagation()
+        void toggleRecording()
+        return
+      }
+
       const hasChatHistory = Boolean(activeConversation?.messages.length || conversations.length)
       if (
         mode === 'ai' &&
@@ -1462,7 +1550,7 @@ export default function App(): JSX.Element {
         switchToAiMode()
       }
     },
-    [activeConversation, activePopup, conversations, mode, switchToAiMode, toggleMode]
+    [activeConversation, activePopup, conversations, mode, switchToAiMode, toggleMode, toggleRecording]
   )
 
   const chatMessages = activeConversation
@@ -1772,19 +1860,42 @@ export default function App(): JSX.Element {
               <SettingsIcon />
             </button>
 
-              <input
-                ref={inputRef}
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="What can I help you with today?"
-                className="flex-1 bg-transparent text-lg text-neutral-100 placeholder:text-neutral-500 border-none focus:outline-none focus:ring-0 px-4 py-3"
-                style={{ caretColor: 'var(--chat-accent)' }}
-                spellCheck={false}
-                autoComplete="off"
-                autoCorrect="off"
-              />
+            {voiceState === 'recording' && micStreamRef.current ? (
+                <VoiceWaveform stream={micStreamRef.current} />
+              ) : (
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="What can I help you with today?"
+                  className="flex-1 bg-transparent text-lg text-neutral-100 placeholder:text-neutral-500 border-none focus:outline-none focus:ring-0 px-4 py-3"
+                  style={{ caretColor: 'var(--chat-accent)' }}
+                  spellCheck={false}
+                  autoComplete="off"
+                  autoCorrect="off"
+                />
+              )}
+
+              <button
+                onClick={(e) => { e.stopPropagation(); void toggleRecording() }}
+                className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-150 border ${
+                  voiceState === 'error'
+                    ? 'bg-red-500/60 border-red-400/50 text-red-200'
+                    : voiceState === 'recording'
+                      ? 'bg-red-500/80 border-red-400/50 text-white animate-pulse'
+                      : voiceState === 'transcribing'
+                        ? 'bg-neutral-700/60 border-white/8 text-neutral-300 animate-pulse'
+                        : 'bg-neutral-700/60 hover:bg-neutral-600/80 border-white/8 text-neutral-300 hover:text-white'
+                }`}
+                aria-label={voiceState === 'recording' ? 'Stop recording' : 'Start voice recording'}
+                disabled={voiceState === 'transcribing'}
+              >
+                {voiceState === 'recording' ? <StopIcon /> : voiceState === 'transcribing' ? <SpinnerIcon /> : <MicIcon />}
+              </button>
+
+              <div className="w-1" />
 
               <button
                 onClick={() => void handleSubmit()}

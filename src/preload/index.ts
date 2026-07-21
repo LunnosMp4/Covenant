@@ -252,6 +252,10 @@ const api = {
       }
     }
   },
+  voice: {
+    transcribe: (audioBuffer: ArrayBuffer) =>
+      ipcRenderer.invoke('voice:transcribe', audioBuffer) as Promise<string>
+  },
   store: {
     getPreprompts: () => ipcRenderer.invoke('get-preprompts') as Promise<Preprompt[]>,
     savePreprompt: (preprompt: Partial<Preprompt>) =>
@@ -331,5 +335,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onChatModelUpdated: api.config.onChatModelUpdated,
   onReasoningEffortUpdated: api.config.onReasoningEffortUpdated,
   askCovenant: api.chat.askCovenant,
+  transcribe: api.voice.transcribe,
   onToggleVisibility: api.window.onToggleVisibility
 })

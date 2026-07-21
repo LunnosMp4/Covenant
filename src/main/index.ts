@@ -2473,3 +2473,32 @@ ipcMain.handle('covenant:chat', async (_event, rawMessages: Array<{ role?: strin
 
   return completion.choices[0]?.message?.content?.trim() || 'No response from model.'
 })
+
+ipcMain.handle('voice:transcribe', async (_event, audioBuffer: ArrayBuffer) => {
+  const storedConfig = readConfig()
+  const apiKey = storedConfig.apiKey || process.env.OPENAI_API_KEY
+  if (!apiKey) {
+    throw new Error('OpenAI API key is missing. Add it in Settings > General or set OPENAI_API_KEY.')
+  }
+
+  const proxyUrl = resolveOpenAIProxyUrl(storedConfig.proxyUrl)
+  const openAIProxyAgent = proxyUrl ? new ProxyAgent(proxyUrl) : undefined
+
+  const client = new OpenAI({
+    apiKey,
+    fetchOptions: openAIProxyAgent
+      ? {
+          dispatcher: openAIProxyAgent
+        }
+      : undefined
+  })
+
+  const file = new File([Buffer.from(audioBuffer)], 'audio.webm', { type: 'audio/webm' })
+  const transcription = await client.audio.transcriptions.create({
+    model: 'gpt-4o-mini-transcribe',
+    file,
+    response_format: 'text'
+  })
+
+  return typeof transcription === 'string' ? transcription : (transcription as unknown as { text: string }).text
+})
