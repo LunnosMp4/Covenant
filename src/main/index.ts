@@ -1653,6 +1653,7 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: WINDOW_WIDTH,
     height: WINDOW_HEIGHT,
+    icon: join(__dirname, 'assets', 'tray-icon.png'),
     x,
     y,
     show: false,
