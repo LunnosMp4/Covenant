@@ -329,6 +329,17 @@ function MenuIcon(): JSX.Element {
   )
 }
 
+function ExpandIcon(): JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <polyline points="15 3 21 3 21 9" />
+      <polyline points="9 21 3 21 3 15" />
+      <line x1="21" y1="3" x2="14" y2="10" />
+      <line x1="3" y1="21" x2="10" y2="14" />
+    </svg>
+  )
+}
+
 function PinIcon({ active }: { active: boolean }): JSX.Element {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -464,6 +475,7 @@ export default function App(): JSX.Element {
   const [selectedSystemPrompt, setSelectedSystemPrompt] = useState<SelectedSystemPrompt | null>(null)
   const [isChatOpen, setIsChatOpen] = useState(false)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(false)
   const [mode, setMode] = useState<AppMode>('ai')
   const [hasInitializedTerminal, setHasInitializedTerminal] = useState(false)
   const [themeGradient, setThemeGradient] = useState<string>(DEFAULT_THEME_GRADIENT)
@@ -629,6 +641,7 @@ export default function App(): JSX.Element {
           hideDelayTimerRef.current = setTimeout(() => {
             hideDelayTimerRef.current = null
             clearInput()
+            setIsExpanded(false)
             setIsLoading(false)
             setIsChatOpen(false)
             setIsHistoryOpen(false)
@@ -703,6 +716,7 @@ export default function App(): JSX.Element {
     window.api?.window.setPinned?.(false)
     setTimeout(() => {
       clearInput()
+      setIsExpanded(false)
       setIsLoading(false)
       setIsChatOpen(false)
       setIsHistoryOpen(false)
@@ -1780,6 +1794,23 @@ export default function App(): JSX.Element {
                       >
                         <MenuIcon />
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !isExpanded
+                          setIsExpanded(next)
+                          window.api?.window.setExpanded?.(next)
+                        }}
+                        className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
+                          isExpanded
+                            ? 'border-white/20 bg-white/10 text-neutral-200'
+                            : 'border-white/10 text-neutral-400 hover:border-white/20 hover:bg-white/10 hover:text-neutral-200'
+                        }`}
+                        aria-label={isExpanded ? 'Collapse window' : 'Expand window'}
+                        aria-pressed={isExpanded}
+                      >
+                        <ExpandIcon />
+                      </button>
                     </div>
 
                     <AnimatePresence>
@@ -1828,8 +1859,8 @@ export default function App(): JSX.Element {
                   <div
                     ref={chatScrollRef}
                     onScroll={handleChatScroll}
-                    className="mt-3 h-56 overflow-y-auto chat-scrollbar space-y-3 pr-2"
-                    style={{ height: CHAT_SCROLL_HEIGHT }}
+                    className="mt-3 overflow-y-auto chat-scrollbar space-y-3 pr-2"
+                    style={{ height: isExpanded ? 'calc(100vh - 210px)' : CHAT_SCROLL_HEIGHT, minHeight: CHAT_SCROLL_HEIGHT }}
                   >
                     {chatMessages.length === 0 ? (
                       <p className="text-xs text-neutral-500">No messages yet.</p>

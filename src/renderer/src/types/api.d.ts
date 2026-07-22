@@ -58,6 +58,7 @@ interface CovenantAPI {
     openSettings: () => void
     closeSettings: () => void
     minimizeSettings: () => void
+    setExpanded: (expanded: boolean) => void
     onToggleVisibility: (callback: (visible: boolean) => void) => () => void
   }
   config: {
@@ -127,6 +128,7 @@ declare global {
     electronAPI?: {
       hideWindow: () => void
       setPinned: (pinned: boolean) => void
+      setExpanded: (expanded: boolean) => void
       openSettings: () => void
       closeSettings: () => void
       minimizeSettings: () => void
@@ -153,7 +155,7 @@ declare global {
       onReasoningEffortUpdated: (callback: (reasoningEffort: ReasoningEffort) => void) => () => void
       askCovenant: (messages: Array<{ role: ChatRole; content: string }>) => Promise<string>
       transcribe: (audioBuffer: ArrayBuffer) => Promise<string>
-    onToggleVisibility: (callback: (payload: { visible: boolean; pastedText?: string | null }) => void) => () => void
+    onToggleVisibility: (callback: (visible: boolean) => void) => () => void
     }
   }
 }
