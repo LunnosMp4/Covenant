@@ -1933,7 +1933,8 @@ app.whenReady().then(() => {
     try {
       app.setLoginItemSettings({
         openAtLogin: config.launchOnStartup,
-        openAsHidden: true
+        openAsHidden: true,
+        path: process.execPath
       })
     } catch (error) {
       console.error('Failed to set login item settings on app ready:', error)
