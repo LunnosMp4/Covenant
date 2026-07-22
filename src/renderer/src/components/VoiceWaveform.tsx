@@ -5,7 +5,7 @@ interface VoiceWaveformProps {
   barCount?: number
 }
 
-export default function VoiceWaveform({ stream, barCount = 32 }: VoiceWaveformProps): JSX.Element {
+export default function VoiceWaveform({ stream, barCount = 64 }: VoiceWaveformProps): JSX.Element {
   const canvasRef = useRef<HTMLDivElement>(null)
   const animFrameRef = useRef<number>(0)
   const analyserRef = useRef<AnalyserNode | null>(null)
@@ -35,12 +35,15 @@ export default function VoiceWaveform({ stream, barCount = 32 }: VoiceWaveformPr
     const dataArray = new Uint8Array(bufferLength)
 
     const bars = canvasRef.current!.children as HTMLCollectionOf<HTMLDivElement>
-    const binStep = bufferLength / barCount
+
+    // We only compute values for half the bars, then mirror them.
+    const halfCount = Math.ceil(barCount / 2)
+    const binStep = bufferLength / halfCount
 
     const update = () => {
       analyser.getByteFrequencyData(dataArray)
 
-      for (let i = 0; i < barCount; i++) {
+      for (let i = 0; i < halfCount; i++) {
         const binStart = Math.floor(i * binStep)
         const binEnd = Math.floor((i + 1) * binStep)
         let sum = 0
@@ -52,13 +55,28 @@ export default function VoiceWaveform({ stream, barCount = 32 }: VoiceWaveformPr
         const avg = count > 0 ? sum / count : 0
         const normalized = avg / 255
 
-        const prev = heightsRef.current![i]
-        const smoothed = prev * 0.6 + normalized * 0.4
-        heightsRef.current![i] = smoothed
+        // Center of the waveform corresponds to i = 0 (strongest bin).
+        // Index goes outward from the middle in both directions.
+        const centerIndex = Math.floor(barCount / 2)
+        const rightIndex = centerIndex + i
+        const leftIndex = centerIndex - i
 
-        const heightPx = Math.max(3, smoothed * 28)
-        if (bars[i]) {
-          bars[i].style.height = `${heightPx}px`
+        // Smooth + apply for the right side
+        const prevR = heightsRef.current![rightIndex]
+        const smoothedR = prevR * 0.6 + normalized * 0.4
+        heightsRef.current![rightIndex] = smoothedR
+        const heightPxR = Math.max(3, smoothedR * 28)
+        if (bars[rightIndex]) {
+          bars[rightIndex].style.height = `${heightPxR}px`
+        }
+
+        // Smooth + apply for the left side (mirror)
+        if (leftIndex !== rightIndex && bars[leftIndex]) {
+          const prevL = heightsRef.current![leftIndex]
+          const smoothedL = prevL * 0.6 + normalized * 0.4
+          heightsRef.current![leftIndex] = smoothedL
+          const heightPxL = Math.max(3, smoothedL * 28)
+          bars[leftIndex].style.height = `${heightPxL}px`
         }
       }
 
