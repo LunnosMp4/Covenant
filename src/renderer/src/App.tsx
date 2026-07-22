@@ -12,6 +12,7 @@ import 'prismjs/components/prism-powershell'
 import 'prismjs/components/prism-python'
 import ModulePopup, { type ActivePopup, type PopupItem } from './components/ModulePopup'
 import TerminalView from './components/TerminalView'
+import VoiceWaveform from './components/VoiceWaveform'
 import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from './constants/terminalFonts'
 import {
   DEFAULT_THEME_GRADIENT,
@@ -199,6 +200,49 @@ function formatUsageSummary(message: ChatMessage): string | undefined {
   return parts.join(' · ')
 }
 
+function computeContextStats(
+  messages: ChatMessage[],
+  currentModel: string
+): { totalTokens: number; maxTokens: number; totalCost: number; messageCount: number; totalInputTokens: number; totalOutputTokens: number } {
+  let totalInputTokens = 0
+  let totalOutputTokens = 0
+  let totalTokens = 0
+  let totalCost = 0
+
+  for (const msg of messages) {
+    const usage = msg.usage
+    if (!usage) continue
+
+    const promptTokens = usage.promptTokens ?? 0
+    const cachedPromptTokens = Math.min(usage.cachedPromptTokens ?? 0, promptTokens)
+    const completionTokens = usage.completionTokens ?? 0
+
+    totalInputTokens += promptTokens
+    totalOutputTokens += completionTokens
+    totalTokens += usage.totalTokens ?? promptTokens + completionTokens
+
+    const pricing = msg.model ? CHAT_MODEL_PRICING[msg.model.trim()] : undefined
+    if (pricing) {
+      const inputTokens = promptTokens - cachedPromptTokens
+      const inputCost = (inputTokens * pricing.inputPerMillion) / 1_000_000
+      const cachedInputCost = (cachedPromptTokens * pricing.cachedInputPerMillion) / 1_000_000
+      const outputCost = (completionTokens * pricing.outputPerMillion) / 1_000_000
+      totalCost += inputCost + cachedInputCost + outputCost
+    }
+  }
+
+  const maxTokens = CHAT_MODEL_OPTIONS.find((m) => m.id === currentModel)?.maxContextTokens ?? 0
+
+  return {
+    totalTokens,
+    maxTokens,
+    totalCost,
+    messageCount: messages.length,
+    totalInputTokens,
+    totalOutputTokens
+  }
+}
+
 function SendIcon(): JSX.Element {
   return (
     <svg
@@ -285,11 +329,40 @@ function MenuIcon(): JSX.Element {
   )
 }
 
+function ExpandIcon(): JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <polyline points="15 3 21 3 21 9" />
+      <polyline points="9 21 3 21 3 15" />
+      <line x1="21" y1="3" x2="14" y2="10" />
+      <line x1="3" y1="21" x2="10" y2="14" />
+    </svg>
+  )
+}
+
 function PinIcon({ active }: { active: boolean }): JSX.Element {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M12 17v5" />
       <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V5a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2z" />
+    </svg>
+  )
+}
+
+function MicIcon(): JSX.Element {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+      <line x1="12" y1="19" x2="12" y2="22" />
+    </svg>
+  )
+}
+
+function StopIcon(): JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="6" y="6" width="12" height="12" rx="2" />
     </svg>
   )
 }
@@ -402,6 +475,7 @@ export default function App(): JSX.Element {
   const [selectedSystemPrompt, setSelectedSystemPrompt] = useState<SelectedSystemPrompt | null>(null)
   const [isChatOpen, setIsChatOpen] = useState(false)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(false)
   const [mode, setMode] = useState<AppMode>('ai')
   const [hasInitializedTerminal, setHasInitializedTerminal] = useState(false)
   const [themeGradient, setThemeGradient] = useState<string>(DEFAULT_THEME_GRADIENT)
@@ -423,7 +497,13 @@ export default function App(): JSX.Element {
   const [chatModel, setChatModel] = useState<string>(DEFAULT_CHAT_MODEL)
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT)
   const [isPinned, setIsPinned] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const [voiceState, setVoiceState] = useState<'idle' | 'recording' | 'transcribing' | 'error'>('idle')
+  const micStreamRef = useRef<MediaStream | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const inputRef = useRef<HTMLDivElement>(null)
+  const pasteBlocksRef = useRef<Map<string, string>>(new Map())
+  const isComposingRef = useRef(false)
   const popupRef = useRef<HTMLDivElement>(null)
   const moduleButtonsRef = useRef<HTMLDivElement>(null)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
@@ -435,6 +515,37 @@ export default function App(): JSX.Element {
   const streamBufferRef = useRef<{ content: string; reasoning: string } | null>(null)
   // Ref for the hide-delay timer so it can be cancelled on rapid show/hide.
   const hideDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function getFullPrompt(): string {
+    const div = inputRef.current
+    if (!div) return ''
+    let result = ''
+    for (const node of div.childNodes) {
+      if (node instanceof HTMLElement && node.hasAttribute('data-paste-id')) {
+        const id = node.getAttribute('data-paste-id')!
+        result += pasteBlocksRef.current.get(id) ?? node.textContent ?? ''
+      } else {
+        result += node.textContent ?? ''
+      }
+    }
+    return result
+  }
+
+  function clearInput(): void {
+    const div = inputRef.current
+    if (div) {
+      div.textContent = ''
+    }
+    pasteBlocksRef.current.clear()
+    setQuery('')
+  }
+
+  function updateQueryFromDiv(): void {
+    const div = inputRef.current
+    if (div) {
+      setQuery(div.textContent ?? '')
+    }
+  }
 
   useEffect(() => {
     let isMounted = true
@@ -529,7 +640,8 @@ export default function App(): JSX.Element {
           // unmounting heavy components to free memory.
           hideDelayTimerRef.current = setTimeout(() => {
             hideDelayTimerRef.current = null
-            setQuery('')
+            clearInput()
+            setIsExpanded(false)
             setIsLoading(false)
             setIsChatOpen(false)
             setIsHistoryOpen(false)
@@ -603,7 +715,8 @@ export default function App(): JSX.Element {
     setIsPinned(false)
     window.api?.window.setPinned?.(false)
     setTimeout(() => {
-      setQuery('')
+      clearInput()
+      setIsExpanded(false)
       setIsLoading(false)
       setIsChatOpen(false)
       setIsHistoryOpen(false)
@@ -1068,7 +1181,7 @@ export default function App(): JSX.Element {
   ])
 
   const handleSubmit = useCallback(async () => {
-    const rawPrompt = query.trim()
+    const rawPrompt = getFullPrompt().trim()
     if (!rawPrompt || isLoading) return
 
     const now = Date.now()
@@ -1106,7 +1219,7 @@ export default function App(): JSX.Element {
     setIsLoading(true)
     setIsChatOpen(true)
     setIsHistoryOpen(false)
-    setQuery('')
+    clearInput()
     setActiveConversation(userConversation)
     upsertConversation(userConversation)
     persistConversation(userConversation)
@@ -1398,7 +1511,7 @@ export default function App(): JSX.Element {
   )
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
       if (e.key === 'Escape') {
         if (activePopup) {
           setActivePopup(null)
@@ -1407,11 +1520,88 @@ export default function App(): JSX.Element {
 
         handleClose()
       } else if (e.key === 'Enter') {
+        if (isComposingRef.current) return
+        e.preventDefault()
         void handleSubmit()
+      } else if (e.key === 'Backspace' || e.key === 'Delete') {
+        const selection = window.getSelection()
+        if (!selection || selection.rangeCount === 0) return
+        const range = selection.getRangeAt(0)
+        if (!range.collapsed) return
+
+        const node = e.key === 'Backspace'
+          ? (range.startOffset === 0 ? range.startContainer.previousSibling : null)
+          : range.startContainer.nextSibling
+
+        if (node instanceof HTMLElement && node.hasAttribute('data-paste-id')) {
+          e.preventDefault()
+          const id = node.getAttribute('data-paste-id')!
+          pasteBlocksRef.current.delete(id)
+          node.remove()
+          if (inputRef.current) {
+            setQuery(inputRef.current.textContent ?? '')
+          }
+        }
       }
     },
     [activePopup, handleClose, handleSubmit]
   )
+
+  const toggleRecording = useCallback(async () => {
+    if (voiceState === 'transcribing') return
+
+    if (voiceState === 'recording') {
+      mediaRecorderRef.current?.stop()
+      micStreamRef.current?.getTracks().forEach((t) => t.stop())
+      micStreamRef.current = null
+      return
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      micStreamRef.current = stream
+      audioChunksRef.current = []
+
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
+      mediaRecorderRef.current = recorder
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data)
+      }
+
+      recorder.onstop = () => {
+        setVoiceState('transcribing')
+        micStreamRef.current?.getTracks().forEach((t) => t.stop())
+        micStreamRef.current = null
+
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+        blob.arrayBuffer().then(async (buffer) => {
+          try {
+            const text = await window.api!.voice.transcribe(buffer)
+            if (text.trim()) {
+              const div = inputRef.current
+              if (div) {
+                const separator = div.textContent ? ' ' : ''
+                div.appendChild(document.createTextNode(separator + text.trim()))
+                setQuery(div.textContent ?? '')
+              }
+              setTimeout(() => inputRef.current?.focus(), 50)
+            }
+            setVoiceState('idle')
+          } catch {
+            setVoiceState('error')
+            setTimeout(() => setVoiceState('idle'), 400)
+          }
+        })
+      }
+
+      recorder.start(250)
+      setVoiceState('recording')
+    } catch {
+      setVoiceState('error')
+      setTimeout(() => setVoiceState('idle'), 400)
+    }
+  }, [voiceState])
 
   const handleOverlayClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -1433,6 +1623,20 @@ export default function App(): JSX.Element {
 
   const handleRootKeyDownCapture = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (
+        mode === 'ai' &&
+        event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey &&
+        (event.key === 'm' || event.key === 'M')
+      ) {
+        event.preventDefault()
+        event.stopPropagation()
+        void toggleRecording()
+        return
+      }
+
       const hasChatHistory = Boolean(activeConversation?.messages.length || conversations.length)
       if (
         mode === 'ai' &&
@@ -1462,7 +1666,7 @@ export default function App(): JSX.Element {
         switchToAiMode()
       }
     },
-    [activeConversation, activePopup, conversations, mode, switchToAiMode, toggleMode]
+    [activeConversation, activePopup, conversations, mode, switchToAiMode, toggleMode, toggleRecording]
   )
 
   const chatMessages = activeConversation
@@ -1539,15 +1743,75 @@ export default function App(): JSX.Element {
                         </p>
                       </div>
                     </div>
-                    <button
-                      ref={historyButtonRef}
-                      type="button"
-                      onClick={() => setIsHistoryOpen((open) => !open)}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-neutral-300 transition-colors hover:border-white/20 hover:bg-white/10"
-                      aria-label="Open conversation history"
-                    >
-                      <MenuIcon />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      {(() => {
+                        const stats = activeConversation ? computeContextStats(activeConversation.messages, chatModel) : null
+                        if (!stats || stats.maxTokens <= 0) return null
+                        const radius = 11
+                        const circumference = 2 * Math.PI * radius
+                        const fillPercent = Math.min(stats.totalTokens / stats.maxTokens, 1)
+                        const dashOffset = circumference * (1 - fillPercent)
+                        let progressColor = 'rgba(255,255,255,0.5)'
+                        if (fillPercent > 0.95) progressColor = 'rgba(239,68,68,0.8)'
+                        else if (fillPercent > 0.8) progressColor = 'rgba(245,158,11,0.8)'
+                        return (
+                          <div className="relative group">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 cursor-default">
+                              <svg width="20" height="20" viewBox="0 0 28 28" className="-rotate-90">
+                                <circle cx="14" cy="14" r={radius} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="2" />
+                                <circle cx="14" cy="14" r={radius} fill="none" stroke={progressColor} strokeWidth="2"
+                                  strokeDasharray={circumference} strokeDashoffset={dashOffset}
+                                  strokeLinecap="round" />
+                              </svg>
+                            </div>
+                            <div className="absolute right-0 top-full mt-1 z-50 min-w-[240px] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150">
+                              <div className="rounded-xl border border-white/10 bg-neutral-900 p-3 shadow-lg">
+                                <div className="mb-2">
+                                  <div className="mb-1 flex items-center justify-between text-[11px] text-neutral-400">
+                                    <span>{formatTokenCount(stats.totalTokens)} / {formatTokenCount(stats.maxTokens)} tokens used</span>
+                                    <span>{Math.round(fillPercent * 100)}%</span>
+                                  </div>
+                                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                                    <div className="h-full rounded-full bg-white/40 transition-all" style={{ width: `${Math.round(fillPercent * 100)}%` }} />
+                                  </div>
+                                </div>
+                                <div className="space-y-0.5 text-[11px] text-neutral-400">
+                                  <p className="font-medium text-neutral-300">{CHAT_MODEL_OPTIONS.find(m => m.id === chatModel)?.label ?? chatModel}</p>
+                                  <p>Cost: {formatCurrency(stats.totalCost)}</p>
+                                  <p>{stats.messageCount} messages &middot; {'>'}{formatTokenCount(stats.totalInputTokens)}tk &middot; {formatTokenCount(stats.totalOutputTokens)}tk</p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })()}
+                      <button
+                        ref={historyButtonRef}
+                        type="button"
+                        onClick={() => setIsHistoryOpen((open) => !open)}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-neutral-300 transition-colors hover:border-white/20 hover:bg-white/10"
+                        aria-label="Open conversation history"
+                      >
+                        <MenuIcon />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !isExpanded
+                          setIsExpanded(next)
+                          window.api?.window.setExpanded?.(next)
+                        }}
+                        className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
+                          isExpanded
+                            ? 'border-white/20 bg-white/10 text-neutral-200'
+                            : 'border-white/10 text-neutral-400 hover:border-white/20 hover:bg-white/10 hover:text-neutral-200'
+                        }`}
+                        aria-label={isExpanded ? 'Collapse window' : 'Expand window'}
+                        aria-pressed={isExpanded}
+                      >
+                        <ExpandIcon />
+                      </button>
+                    </div>
 
                     <AnimatePresence>
                       {isHistoryOpen && (
@@ -1595,8 +1859,8 @@ export default function App(): JSX.Element {
                   <div
                     ref={chatScrollRef}
                     onScroll={handleChatScroll}
-                    className="mt-3 h-56 overflow-y-auto chat-scrollbar space-y-3 pr-2"
-                    style={{ height: CHAT_SCROLL_HEIGHT }}
+                    className="mt-3 overflow-y-auto chat-scrollbar space-y-3 pr-2"
+                    style={{ height: isExpanded ? 'calc(100vh - 210px)' : CHAT_SCROLL_HEIGHT, minHeight: CHAT_SCROLL_HEIGHT }}
                   >
                     {chatMessages.length === 0 ? (
                       <p className="text-xs text-neutral-500">No messages yet.</p>
@@ -1772,19 +2036,70 @@ export default function App(): JSX.Element {
               <SettingsIcon />
             </button>
 
-              <input
-                ref={inputRef}
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="What can I help you with today?"
-                className="flex-1 bg-transparent text-lg text-neutral-100 placeholder:text-neutral-500 border-none focus:outline-none focus:ring-0 px-4 py-3"
-                style={{ caretColor: 'var(--chat-accent)' }}
-                spellCheck={false}
-                autoComplete="off"
-                autoCorrect="off"
-              />
+            {voiceState === 'recording' && micStreamRef.current ? (
+                <VoiceWaveform stream={micStreamRef.current} />
+              ) : (
+                <div
+                  ref={inputRef}
+                  contentEditable
+                  suppressContentEditableWarning
+                  onInput={() => { const d = inputRef.current; if (d) setQuery(d.textContent ?? '') }}
+                  onPaste={(e) => {
+                    const text = e.clipboardData.getData('text/plain')
+                    if (!text) return
+                    const lines = text.split('\n').length
+                    if (lines <= 5 && text.length <= 300) return
+                    e.preventDefault()
+                    const id = crypto.randomUUID()
+                    pasteBlocksRef.current.set(id, text)
+                    const chip = document.createElement('span')
+                    chip.setAttribute('contenteditable', 'false')
+                    chip.setAttribute('data-paste-id', id)
+                    chip.className = 'inline-block bg-white/10 rounded-md px-2 py-0.5 text-sm border border-white/10 select-none cursor-default align-middle'
+                    chip.textContent = `[Pasted ~${lines} lines]`
+                    const selection = window.getSelection()
+                    if (selection && selection.rangeCount > 0) {
+                      const range = selection.getRangeAt(0)
+                      range.deleteContents()
+                      range.insertNode(chip)
+                      const space = document.createTextNode('\u00A0')
+                      chip.after(space)
+                      range.setStartAfter(space)
+                      range.collapse(true)
+                      selection.removeAllRanges()
+                      selection.addRange(range)
+                    }
+                    const d = inputRef.current
+                    if (d) setQuery(d.textContent ?? '')
+                  }}
+                  onKeyDown={handleKeyDown}
+                  onCompositionStart={() => { isComposingRef.current = true }}
+                  onCompositionEnd={() => { isComposingRef.current = false }}
+                  data-placeholder="What can I help you with today?"
+                  className="flex-1 bg-transparent text-lg text-neutral-100 placeholder:text-neutral-500 border-none focus:outline-none focus:ring-0 px-4 py-3 whitespace-pre-wrap empty:before:content-[attr(data-placeholder)] empty:before:text-neutral-500"
+                  style={{ caretColor: 'var(--chat-accent)' }}
+                  spellCheck={false}
+                />
+              )}
+
+              <button
+                onClick={(e) => { e.stopPropagation(); void toggleRecording() }}
+                className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-150 border ${
+                  voiceState === 'error'
+                    ? 'bg-red-500/60 border-red-400/50 text-red-200'
+                    : voiceState === 'recording'
+                      ? 'bg-red-500/80 border-red-400/50 text-white animate-pulse'
+                      : voiceState === 'transcribing'
+                        ? 'bg-neutral-700/60 border-white/8 text-neutral-300 animate-pulse'
+                        : 'bg-neutral-700/60 hover:bg-neutral-600/80 border-white/8 text-neutral-300 hover:text-white'
+                }`}
+                aria-label={voiceState === 'recording' ? 'Stop recording' : 'Start voice recording'}
+                disabled={voiceState === 'transcribing'}
+              >
+                {voiceState === 'recording' ? <StopIcon /> : voiceState === 'transcribing' ? <SpinnerIcon /> : <MicIcon />}
+              </button>
+
+              <div className="w-1" />
 
               <button
                 onClick={() => void handleSubmit()}

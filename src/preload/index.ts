@@ -96,6 +96,7 @@ const api = {
   window: {
     hideWindow: () => ipcRenderer.send('hide-window'),
     setPinned: (pinned: boolean) => ipcRenderer.send('set-pinned', pinned),
+    setExpanded: (expanded: boolean) => ipcRenderer.send('set-window-expanded', expanded),
     openSettings: () => ipcRenderer.send('open-settings'),
     closeSettings: () => ipcRenderer.send('close-settings'),
     minimizeSettings: () => ipcRenderer.send('minimize-settings'),
@@ -252,6 +253,10 @@ const api = {
       }
     }
   },
+  voice: {
+    transcribe: (audioBuffer: ArrayBuffer) =>
+      ipcRenderer.invoke('voice:transcribe', audioBuffer) as Promise<string>
+  },
   store: {
     getPreprompts: () => ipcRenderer.invoke('get-preprompts') as Promise<Preprompt[]>,
     savePreprompt: (preprompt: Partial<Preprompt>) =>
@@ -306,6 +311,7 @@ contextBridge.exposeInMainWorld('api', api)
 contextBridge.exposeInMainWorld('electronAPI', {
   hideWindow: api.window.hideWindow,
   setPinned: api.window.setPinned,
+  setExpanded: api.window.setExpanded,
   openSettings: api.window.openSettings,
   closeSettings: api.window.closeSettings,
   minimizeSettings: api.window.minimizeSettings,
@@ -331,5 +337,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onChatModelUpdated: api.config.onChatModelUpdated,
   onReasoningEffortUpdated: api.config.onReasoningEffortUpdated,
   askCovenant: api.chat.askCovenant,
+  transcribe: api.voice.transcribe,
   onToggleVisibility: api.window.onToggleVisibility
 })

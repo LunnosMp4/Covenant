@@ -40,6 +40,7 @@ let settingsWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let isVisible = false
 let isPinned = false
+let isWindowExpanded = false
 
 const isMac = process.platform === 'darwin'
 const isWindows = process.platform === 'win32'
@@ -1766,7 +1767,7 @@ function showWindow(): void {
   if (!mainWindow) return
 
   const { x, y } = getWindowPosition()
-  mainWindow.setPosition(x, y, false)
+  mainWindow.setBounds({ x, y, width: WINDOW_WIDTH, height: WINDOW_HEIGHT })
 
   mainWindow.show()
   mainWindow.focus()
@@ -1779,6 +1780,7 @@ function hideWindow(): void {
   mainWindow.webContents.send('toggle-visibility', false)
   isVisible = false
   isPinned = false
+  isWindowExpanded = false
 
   // Give the exit animation time to play before hiding, then enter sleep mode.
   setTimeout(() => {
@@ -1812,6 +1814,26 @@ function scheduleSleepModeCleanup(win: BrowserWindow): void {
   } catch {
     // Ignore if GC is unavailable in this build.
   }
+}
+
+function getExpandedHeight(): number {
+  if (!mainWindow) return 0
+  const bounds = mainWindow.getBounds()
+  const display = screen.getDisplayNearestPoint({ x: bounds.x, y: bounds.y })
+  return Math.round(display.workArea.height * 0.8)
+}
+
+function applyWindowHeight(height: number): void {
+  if (!mainWindow) return
+  const bounds = mainWindow.getBounds()
+  const bottomY = bounds.y + bounds.height
+  const newY = bottomY - height
+  mainWindow.setBounds({
+    x: bounds.x,
+    y: Math.max(newY, 0),
+    width: WINDOW_WIDTH,
+    height
+  })
 }
 
 function toggleWindow(): void {
@@ -1961,6 +1983,12 @@ ipcMain.on('hide-window', () => {
 
 ipcMain.on('set-pinned', (_event, pinned: boolean) => {
   isPinned = typeof pinned === 'boolean' ? pinned : false
+})
+
+ipcMain.on('set-window-expanded', (_event, expanded: boolean) => {
+  isWindowExpanded = expanded
+  const height = expanded ? getExpandedHeight() : WINDOW_HEIGHT
+  applyWindowHeight(height)
 })
 
 ipcMain.on('open-settings', () => {
@@ -2472,4 +2500,33 @@ ipcMain.handle('covenant:chat', async (_event, rawMessages: Array<{ role?: strin
   })
 
   return completion.choices[0]?.message?.content?.trim() || 'No response from model.'
+})
+
+ipcMain.handle('voice:transcribe', async (_event, audioBuffer: ArrayBuffer) => {
+  const storedConfig = readConfig()
+  const apiKey = storedConfig.apiKey || process.env.OPENAI_API_KEY
+  if (!apiKey) {
+    throw new Error('OpenAI API key is missing. Add it in Settings > General or set OPENAI_API_KEY.')
+  }
+
+  const proxyUrl = resolveOpenAIProxyUrl(storedConfig.proxyUrl)
+  const openAIProxyAgent = proxyUrl ? new ProxyAgent(proxyUrl) : undefined
+
+  const client = new OpenAI({
+    apiKey,
+    fetchOptions: openAIProxyAgent
+      ? {
+          dispatcher: openAIProxyAgent
+        }
+      : undefined
+  })
+
+  const file = new File([Buffer.from(audioBuffer)], 'audio.webm', { type: 'audio/webm' })
+  const transcription = await client.audio.transcriptions.create({
+    model: 'gpt-4o-mini-transcribe',
+    file,
+    response_format: 'text'
+  })
+
+  return typeof transcription === 'string' ? transcription : (transcription as unknown as { text: string }).text
 })

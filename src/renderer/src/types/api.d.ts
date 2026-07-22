@@ -58,6 +58,7 @@ interface CovenantAPI {
     openSettings: () => void
     closeSettings: () => void
     minimizeSettings: () => void
+    setExpanded: (expanded: boolean) => void
     onToggleVisibility: (callback: (visible: boolean) => void) => () => void
   }
   config: {
@@ -99,6 +100,9 @@ interface CovenantAPI {
     onData: (callback: (chunk: string) => void) => () => void
     onExit: (callback: (payload: TerminalExitPayload) => void) => () => void
   }
+  voice: {
+    transcribe: (audioBuffer: ArrayBuffer) => Promise<string>
+  }
   store: {
     getPreprompts: () => Promise<Preprompt[]>
     savePreprompt: (preprompt: Partial<Preprompt>) => Promise<Preprompt[]>
@@ -124,6 +128,7 @@ declare global {
     electronAPI?: {
       hideWindow: () => void
       setPinned: (pinned: boolean) => void
+      setExpanded: (expanded: boolean) => void
       openSettings: () => void
       closeSettings: () => void
       minimizeSettings: () => void
@@ -149,7 +154,8 @@ declare global {
       onChatModelUpdated: (callback: (chatModel: string) => void) => () => void
       onReasoningEffortUpdated: (callback: (reasoningEffort: ReasoningEffort) => void) => () => void
       askCovenant: (messages: Array<{ role: ChatRole; content: string }>) => Promise<string>
-      onToggleVisibility: (callback: (visible: boolean) => void) => () => void
+      transcribe: (audioBuffer: ArrayBuffer) => Promise<string>
+    onToggleVisibility: (callback: (visible: boolean) => void) => () => void
     }
   }
 }
