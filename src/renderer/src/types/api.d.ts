@@ -153,7 +153,7 @@ declare global {
       onReasoningEffortUpdated: (callback: (reasoningEffort: ReasoningEffort) => void) => () => void
       askCovenant: (messages: Array<{ role: ChatRole; content: string }>) => Promise<string>
       transcribe: (audioBuffer: ArrayBuffer) => Promise<string>
-      onToggleVisibility: (callback: (visible: boolean) => void) => () => void
+    onToggleVisibility: (callback: (payload: { visible: boolean; pastedText?: string | null }) => void) => () => void
     }
   }
 }

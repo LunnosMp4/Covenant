@@ -11,13 +11,14 @@ export interface ChatModelOption {
   id: string
   label: string
   supportsExtendedParams: boolean
+  maxContextTokens: number
 }
 
 export const CHAT_MODEL_OPTIONS: ChatModelOption[] = [
-  { id: 'gpt-4o-mini', label: 'GPT-4o Mini', supportsExtendedParams: false },
-  { id: 'gpt-5.4-nano', label: 'GPT-5.4 Nano', supportsExtendedParams: true },
-  { id: 'gpt-5.6-luna', label: 'GPT-5.6 Luna', supportsExtendedParams: true },
-  { id: 'gpt-5.6-terra', label: 'GPT-5.6 Terra', supportsExtendedParams: true }
+  { id: 'gpt-4o-mini', label: 'GPT-4o Mini', supportsExtendedParams: false, maxContextTokens: 128000 },
+  { id: 'gpt-5.4-nano', label: 'GPT-5.4 Nano', supportsExtendedParams: true, maxContextTokens: 400000 },
+  { id: 'gpt-5.6-luna', label: 'GPT-5.6 Luna', supportsExtendedParams: true, maxContextTokens: 1050000 },
+  { id: 'gpt-5.6-terra', label: 'GPT-5.6 Terra', supportsExtendedParams: true, maxContextTokens: 1050000 }
 ]
 
 export const REASONING_EFFORT_OPTIONS: ReasoningEffort[] = ['low', 'medium', 'high']
