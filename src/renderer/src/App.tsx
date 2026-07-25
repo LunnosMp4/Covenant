@@ -1971,7 +1971,12 @@ export default function App(): JSX.Element {
                         const isStreaming =
                           isAssistant && isLoading && activeStreamMessageId === message.id
                         const reasoningText = message.reasoning?.trim() ?? ''
-                        const showThinking = isAssistant && (isStreaming || reasoningText.length > 0)
+                        const hasReasoningContent =
+                          reasoningText.length > 0 ||
+                          (message.reasoningTitle != null && message.reasoningTitle.trim().length > 0)
+                        const showThinking =
+                          isAssistant &&
+                          (hasReasoningContent || (isStreaming && Boolean(thinkingOpenById[message.id])))
                         const isThinkingOpen = Boolean(thinkingOpenById[message.id])
                         const modelLabel = message.model?.trim()
                         const usageLabel = formatUsageSummary(message)
@@ -2008,16 +2013,34 @@ export default function App(): JSX.Element {
                                       })
                                     }}
                                   >
-                                    <span className="chat-thinking-indicator">
-                                      {isStreaming ? <SpinnerIcon /> : null}
-                                    </span>
-                                    <span>
+                                    <span
+                                      className={
+                                        isStreaming
+                                          ? 'chat-thinking-title chat-thinking-title--streaming'
+                                          : 'chat-thinking-title'
+                                      }
+                                    >
                                       {message.reasoningTitle?.trim()
-                                        ? `**${message.reasoningTitle.trim()}**`
-                                        : isStreaming ? 'Thinking\u2026' : 'Thinking\u2026'}
+                                        ? message.reasoningTitle.trim()
+                                        : 'Reasoning\u2026'}
                                     </span>
-                                    <span className="chat-thinking-caret">
-                                      {isThinkingOpen ? '\u25BC' : '\u25B6'}
+                                    <span
+                                      className={
+                                        `chat-thinking-chevron${isThinkingOpen ? ' chat-thinking-chevron--open' : ''}`
+                                      }
+                                    >
+                                      <svg
+                                        width="10"
+                                        height="10"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2.5"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                      >
+                                        <path d="m9 18 6-6-6-6" />
+                                      </svg>
                                     </span>
                                   </button>
 
@@ -2025,17 +2048,11 @@ export default function App(): JSX.Element {
                                     <div className="chat-thinking-body">
                                       {reasoningText ? (
                                         <p className="chat-thinking-text whitespace-pre-wrap">
+                                          {reasoningText}
                                           {isStreaming ? (
-                                            <>
-                                              {reasoningText}
-                                              <span className="chat-thinking-cursor">|</span>
-                                            </>
-                                          ) : (
-                                            reasoningText
-                                          )}
+                                            <span className="chat-thinking-cursor">|</span>
+                                          ) : null}
                                         </p>
-                                      ) : isStreaming ? (
-                                        <p className="chat-thinking-empty">Reasoning is streaming...</p>
                                       ) : (
                                         <p className="chat-thinking-empty">Reasoning not available.</p>
                                       )}

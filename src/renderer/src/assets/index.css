@@ -110,42 +110,73 @@ body[data-window='settings'] *::-webkit-scrollbar {
 
 .chat-thinking {
   margin-bottom: 10px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.35);
 }
 
 .chat-thinking-toggle {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 6px 10px;
+  gap: 6px;
   font-size: 12px;
   color: var(--chat-meta-text);
   background: transparent;
   border: none;
   cursor: pointer;
+  padding: 0;
 }
 
-.chat-thinking-indicator {
+.chat-thinking-toggle:hover .chat-thinking-title {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.chat-thinking-title {
+  color: var(--chat-meta-text);
+  transition: color 0.15s;
+}
+
+.chat-thinking-title--streaming {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.2) 25%,
+    rgba(255, 255, 255, 0.5) 50%,
+    rgba(255, 255, 255, 0.2) 75%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.chat-thinking-chevron {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
-  color: var(--chat-accent);
+  color: var(--chat-meta-text);
+  opacity: 0.6;
+  transition: transform 0.2s ease;
+  transform: rotate(0deg);
 }
 
-.chat-thinking-caret {
-  margin-left: auto;
-  font-size: 12px;
+.chat-thinking-chevron--open {
+  transform: rotate(90deg);
 }
 
 .chat-thinking-body {
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 8px 10px;
+  border-left: 2px solid rgba(255, 255, 255, 0.12);
+  padding-left: 14px;
+  margin-top: 6px;
+  margin-left: 2px;
   font-size: 12px;
+  line-height: 1.5;
   color: var(--chat-meta-text);
 }
 
