@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { AppConfig } from '../shared/config'
-import type { ButtonVisibility } from '../shared/config'
+import type { ButtonVisibility, ReasoningEffort } from '../shared/config'
 import type { McpServer } from '../shared/mcp'
 
 interface Preprompt {
@@ -17,8 +17,10 @@ interface ChatMessage {
   content: string
   createdAt: number
   reasoning?: string
+  reasoningTitle?: string
   usage?: ChatUsage
   model?: string
+  sources?: Source[]
 }
 
 interface ChatUsage {
@@ -26,15 +28,30 @@ interface ChatUsage {
   cachedPromptTokens?: number
   completionTokens?: number
   totalTokens?: number
+  reasoningTokens?: number
+}
+
+interface Source {
+  title: string
+  url: string
 }
 
 interface ChatStreamEvent {
   id: string
   type: 'content' | 'reasoning' | 'done' | 'error'
+    | 'reasoning-start' | 'reasoning-title' | 'reasoning-delta' | 'reasoning-end'
+    | 'tool-start' | 'sources'
   delta?: string
   usage?: ChatUsage
   error?: string
   model?: string
+  itemId?: string
+  title?: string
+  toolType?: string
+  toolName?: string
+  actionType?: string
+  query?: string
+  sources?: Source[]
 }
 
 interface ChatConversation {
@@ -133,6 +150,10 @@ const api = {
     updateChatModel: (chatModel: string) => ipcRenderer.send('update-chat-model', chatModel),
     updateReasoningEffort: (reasoningEffort: ReasoningEffort) =>
       ipcRenderer.send('update-reasoning-effort', reasoningEffort),
+    updateWebSearch: (enableWebSearch: boolean) =>
+      ipcRenderer.send('update-web-search', enableWebSearch),
+    updateAutoCollapseReasoning: (autoCollapseReasoning: boolean) =>
+      ipcRenderer.send('update-auto-collapse-reasoning', autoCollapseReasoning),
     onThemeUpdated: (callback: (gradientClass: string) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, gradientClass: string) => {
         callback(gradientClass)
@@ -197,6 +218,28 @@ const api = {
 
       return () => {
         ipcRenderer.removeListener('reasoning-effort-updated', listener)
+      }
+    },
+    onWebSearchUpdated: (callback: (enableWebSearch: boolean) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, enableWebSearch: boolean) => {
+        callback(enableWebSearch)
+      }
+
+      ipcRenderer.on('web-search-updated', listener)
+
+      return () => {
+        ipcRenderer.removeListener('web-search-updated', listener)
+      }
+    },
+    onAutoCollapseReasoningUpdated: (callback: (autoCollapseReasoning: boolean) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, autoCollapseReasoning: boolean) => {
+        callback(autoCollapseReasoning)
+      }
+
+      ipcRenderer.on('auto-collapse-reasoning-updated', listener)
+
+      return () => {
+        ipcRenderer.removeListener('auto-collapse-reasoning-updated', listener)
       }
     },
     getTerminalFonts: () => ipcRenderer.invoke('get-terminal-fonts') as Promise<string[]>
@@ -329,6 +372,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateButtonVisibility: api.config.updateButtonVisibility,
   updateChatModel: api.config.updateChatModel,
   updateReasoningEffort: api.config.updateReasoningEffort,
+  updateWebSearch: api.config.updateWebSearch,
+  updateAutoCollapseReasoning: api.config.updateAutoCollapseReasoning,
   getTerminalFonts: api.config.getTerminalFonts,
   onThemeUpdated: api.config.onThemeUpdated,
   onTerminalFontUpdated: api.config.onTerminalFontUpdated,

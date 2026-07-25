@@ -25,6 +25,8 @@ export const REASONING_EFFORT_OPTIONS: ReasoningEffort[] = ['low', 'medium', 'hi
 
 export const DEFAULT_CHAT_MODEL = 'gpt-5.4-nano'
 export const DEFAULT_REASONING_EFFORT: ReasoningEffort = 'low'
+export const DEFAULT_ENABLE_WEB_SEARCH = true
+export const DEFAULT_AUTO_COLLAPSE_REASONING = true
 
 export const DEFAULT_BUTTON_VISIBILITY: ButtonVisibility = {
   appLauncher: true,
@@ -39,6 +41,19 @@ export function modelSupportsExtendedParams(modelId: string): boolean {
   return getModelCapabilities(modelId)?.supportsExtendedParams ?? false
 }
 
+const REASONING_MODEL_PREFIXES = ['gpt-5', 'o1', 'o3', 'o4']
+
+export function modelDoesReasoning(modelId: string): boolean {
+  const lower = modelId.toLowerCase()
+  return REASONING_MODEL_PREFIXES.some((prefix) => lower.startsWith(prefix))
+}
+
+export function modelSupportsWebSearch(modelId: string): boolean {
+  const lower = modelId.toLowerCase()
+  return REASONING_MODEL_PREFIXES.some((prefix) => lower.startsWith(prefix)) ||
+    lower.startsWith('gpt-4o')
+}
+
 export interface AppConfig {
   apiKey: string
   themeGradient: string
@@ -50,4 +65,6 @@ export interface AppConfig {
   buttonVisibility: ButtonVisibility
   chatModel: string
   reasoningEffort: ReasoningEffort
+  enableWebSearch: boolean
+  autoCollapseReasoning: boolean
 }

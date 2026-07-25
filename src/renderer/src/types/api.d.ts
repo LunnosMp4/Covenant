@@ -12,8 +12,10 @@ interface ChatMessage {
   content: string
   createdAt: number
   reasoning?: string
+  reasoningTitle?: string
   usage?: ChatUsage
   model?: string
+  sources?: Source[]
 }
 
 interface ChatUsage {
@@ -21,15 +23,30 @@ interface ChatUsage {
   cachedPromptTokens?: number
   completionTokens?: number
   totalTokens?: number
+  reasoningTokens?: number
+}
+
+interface Source {
+  title: string
+  url: string
 }
 
 interface ChatStreamEvent {
   id: string
   type: 'content' | 'reasoning' | 'done' | 'error'
+    | 'reasoning-start' | 'reasoning-title' | 'reasoning-delta' | 'reasoning-end'
+    | 'tool-start' | 'sources'
   delta?: string
   usage?: ChatUsage
   error?: string
   model?: string
+  itemId?: string
+  title?: string
+  toolType?: string
+  toolName?: string
+  actionType?: string
+  query?: string
+  sources?: Source[]
 }
 
 interface ChatConversation {
@@ -76,6 +93,8 @@ interface CovenantAPI {
     updateButtonVisibility: (buttonVisibility: Partial<ButtonVisibility>) => void
     updateChatModel: (chatModel: string) => void
     updateReasoningEffort: (reasoningEffort: ReasoningEffort) => void
+    updateWebSearch: (enableWebSearch: boolean) => void
+    updateAutoCollapseReasoning: (autoCollapseReasoning: boolean) => void
     getTerminalFonts: () => Promise<string[]>
     onThemeUpdated: (callback: (gradientClass: string) => void) => () => void
     onTerminalFontUpdated: (callback: (terminalFont: string) => void) => () => void
@@ -83,6 +102,8 @@ interface CovenantAPI {
     onButtonVisibilityUpdated: (callback: (buttonVisibility: ButtonVisibility) => void) => () => void
     onChatModelUpdated: (callback: (chatModel: string) => void) => () => void
     onReasoningEffortUpdated: (callback: (reasoningEffort: ReasoningEffort) => void) => () => void
+    onWebSearchUpdated: (callback: (enableWebSearch: boolean) => void) => () => void
+    onAutoCollapseReasoningUpdated: (callback: (autoCollapseReasoning: boolean) => void) => () => void
   }
   chat: {
     askCovenant: (messages: Array<{ role: ChatRole; content: string }>) => Promise<string>
@@ -146,6 +167,8 @@ declare global {
       updateButtonVisibility: (buttonVisibility: Partial<ButtonVisibility>) => void
       updateChatModel: (chatModel: string) => void
       updateReasoningEffort: (reasoningEffort: ReasoningEffort) => void
+      updateWebSearch: (enableWebSearch: boolean) => void
+      updateAutoCollapseReasoning: (autoCollapseReasoning: boolean) => void
       getTerminalFonts: () => Promise<string[]>
       onThemeUpdated: (callback: (gradientClass: string) => void) => () => void
       onTerminalFontUpdated: (callback: (terminalFont: string) => void) => () => void

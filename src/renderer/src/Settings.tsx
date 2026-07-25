@@ -17,7 +17,7 @@ import {
   normalizeThemeGradient
 } from './constants/theme'
 import type { AppConfig, ButtonVisibility, ReasoningEffort } from '../../shared/config'
-import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_REASONING_EFFORT, REASONING_EFFORT_OPTIONS, modelSupportsExtendedParams } from '../../shared/config'
+import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_REASONING_EFFORT, REASONING_EFFORT_OPTIONS, modelSupportsExtendedParams, modelSupportsWebSearch } from '../../shared/config'
 import type { McpServer } from '../../shared/mcp'
 import type { LauncherApp } from './types/launcher-app'
 import type { Preprompt } from './types/preprompt'
@@ -113,28 +113,33 @@ function MinimalistToggle({
   checked,
   onChange,
   label,
-  description
+  description,
+  disabled
 }: {
   checked: boolean
   onChange: (checked: boolean) => void
   label: string
   description?: string
+  disabled?: boolean
 }): JSX.Element {
   return (
     <div className="flex items-start justify-between gap-4">
       <div className="flex-1">
-        <label className="text-sm font-medium text-neutral-100">{label}</label>
+        <label className={`text-sm font-medium ${disabled ? 'text-neutral-600' : 'text-neutral-100'}`}>{label}</label>
         {description ? (
-          <p className="mt-1 text-xs text-neutral-400">{description}</p>
+          <p className={`mt-1 text-xs ${disabled ? 'text-neutral-700' : 'text-neutral-400'}`}>{description}</p>
         ) : null}
       </div>
       <button
         type="button"
+        disabled={disabled}
         onClick={() => onChange(!checked)}
         className={`relative inline-flex h-7 w-12 flex-shrink-0 rounded-full border border-neutral-700 transition-all ${
-          checked
-            ? 'border-neutral-600 bg-neutral-700 shadow-lg shadow-neutral-600/20'
-            : 'border-neutral-700 bg-neutral-800'
+          disabled
+            ? 'opacity-40 cursor-not-allowed'
+            : checked
+              ? 'border-neutral-600 bg-neutral-700 shadow-lg shadow-neutral-600/20'
+              : 'border-neutral-700 bg-neutral-800'
         }`}
         role="switch"
         aria-checked={checked}
@@ -207,6 +212,10 @@ interface GeneralTabProps {
   onButtonVisibilityChange: (value: ButtonVisibility) => void
   reasoningEffort: ReasoningEffort
   onReasoningEffortChange: (value: ReasoningEffort) => void
+  enableWebSearch: boolean
+  onWebSearchChange: (value: boolean) => void
+  autoCollapseReasoning: boolean
+  onAutoCollapseReasoningChange: (value: boolean) => void
 }
 
 function GeneralTab({
@@ -228,7 +237,11 @@ function GeneralTab({
   buttonVisibility,
   onButtonVisibilityChange,
   reasoningEffort,
-  onReasoningEffortChange
+  onReasoningEffortChange,
+  enableWebSearch,
+  onWebSearchChange,
+  autoCollapseReasoning,
+  onAutoCollapseReasoningChange
 }: GeneralTabProps): JSX.Element {
   return (
     <div className="space-y-6">
@@ -385,6 +398,21 @@ function GeneralTab({
                 : 'Not supported by this model.'}
             </p>
           </div>
+
+          <MinimalistToggle
+            checked={enableWebSearch}
+            onChange={onWebSearchChange}
+            label="Web Search"
+            description="Allow the model to search the web for up-to-date information. Requires Responses API support."
+            disabled={!modelSupportsWebSearch(chatModel || DEFAULT_CHAT_MODEL)}
+          />
+
+          <MinimalistToggle
+            checked={autoCollapseReasoning}
+            onChange={onAutoCollapseReasoningChange}
+            label="Auto-collapse Reasoning"
+            description="Automatically collapse the reasoning panel after the response completes."
+          />
         </div>
       </SectionCard>
 
@@ -771,6 +799,8 @@ export default function Settings(): JSX.Element {
   const [saveFeedbackMessage, setSaveFeedbackMessage] = useState('')
   const [chatModel, setChatModel] = useState(DEFAULT_CHAT_MODEL)
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT)
+  const [enableWebSearch, setEnableWebSearch] = useState(true)
+  const [autoCollapseReasoning, setAutoCollapseReasoning] = useState(true)
   const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true })
   const [mcpServers, setMcpServers] = useState<McpServer[]>([])
   const [isMcpServersLoading, setIsMcpServersLoading] = useState(false)
@@ -822,6 +852,8 @@ export default function Settings(): JSX.Element {
             ? (config.reasoningEffort as ReasoningEffort)
             : DEFAULT_REASONING_EFFORT
         )
+        setEnableWebSearch(typeof config.enableWebSearch === 'boolean' ? config.enableWebSearch : true)
+        setAutoCollapseReasoning(typeof config.autoCollapseReasoning === 'boolean' ? config.autoCollapseReasoning : true)
         setButtonVisibility(config.buttonVisibility ?? { appLauncher: true, workflow: true })
       } catch {
         if (!isMounted) return
@@ -1130,6 +1162,16 @@ export default function Settings(): JSX.Element {
     window.api?.config.updateReasoningEffort?.(effort)
   }
 
+  const handleWebSearchChange = (enabled: boolean): void => {
+    setEnableWebSearch(enabled)
+    window.api?.config.updateWebSearch?.(enabled)
+  }
+
+  const handleAutoCollapseReasoningChange = (enabled: boolean): void => {
+    setAutoCollapseReasoning(enabled)
+    window.api?.config.updateAutoCollapseReasoning?.(enabled)
+  }
+
   const handleButtonVisibilityChange = (visibility: ButtonVisibility): void => {
     setButtonVisibility(visibility)
     window.api?.config.updateButtonVisibility?.(visibility)
@@ -1386,6 +1428,10 @@ export default function Settings(): JSX.Element {
                 onButtonVisibilityChange={handleButtonVisibilityChange}
                 reasoningEffort={reasoningEffort}
                 onReasoningEffortChange={handleReasoningEffortChange}
+                enableWebSearch={enableWebSearch}
+                onWebSearchChange={handleWebSearchChange}
+                autoCollapseReasoning={autoCollapseReasoning}
+                onAutoCollapseReasoningChange={handleAutoCollapseReasoningChange}
               />
             )}
             {activeTab === 'terminal' && (

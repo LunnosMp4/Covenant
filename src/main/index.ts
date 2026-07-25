@@ -24,10 +24,14 @@ import { terminalManager, type TerminalExitPayload } from './terminalManager'
 import { getTerminalFonts } from './fontManager'
 import type { AppConfig } from '../shared/config'
 import {
+  DEFAULT_AUTO_COLLAPSE_REASONING,
   DEFAULT_BUTTON_VISIBILITY,
   DEFAULT_CHAT_MODEL,
+  DEFAULT_ENABLE_WEB_SEARCH,
   DEFAULT_REASONING_EFFORT,
-  modelSupportsExtendedParams
+  modelDoesReasoning,
+  modelSupportsExtendedParams,
+  modelSupportsWebSearch
 } from '../shared/config'
 import type { McpAuth, McpHeader, McpServer, McpTool } from '../shared/mcp'
 
@@ -74,6 +78,7 @@ interface ChatUsage {
   cachedPromptTokens?: number
   completionTokens?: number
   totalTokens?: number
+  reasoningTokens?: number
 }
 
 interface ChatConversation {
@@ -126,7 +131,9 @@ const DEFAULT_CONFIG: AppConfig = {
   mcpServers: [],
   buttonVisibility: { ...DEFAULT_BUTTON_VISIBILITY },
   chatModel: DEFAULT_CHAT_MODEL,
-  reasoningEffort: DEFAULT_REASONING_EFFORT
+  reasoningEffort: DEFAULT_REASONING_EFFORT,
+  enableWebSearch: DEFAULT_ENABLE_WEB_SEARCH,
+  autoCollapseReasoning: DEFAULT_AUTO_COLLAPSE_REASONING
 }
 
 const WORKFLOW_LANGUAGE_SET = new Set<WorkflowLanguage>([
@@ -1083,7 +1090,15 @@ function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined): AppC
     reasoningEffort:
       typeof rawConfig?.reasoningEffort === 'string' && ['low', 'medium', 'high'].includes(rawConfig.reasoningEffort)
         ? rawConfig.reasoningEffort as AppConfig['reasoningEffort']
-        : DEFAULT_REASONING_EFFORT
+        : DEFAULT_REASONING_EFFORT,
+    enableWebSearch:
+      typeof rawConfig?.enableWebSearch === 'boolean'
+        ? rawConfig.enableWebSearch
+        : DEFAULT_ENABLE_WEB_SEARCH,
+    autoCollapseReasoning:
+      typeof rawConfig?.autoCollapseReasoning === 'boolean'
+        ? rawConfig.autoCollapseReasoning
+        : DEFAULT_AUTO_COLLAPSE_REASONING
   }
 }
 
@@ -2333,6 +2348,32 @@ ipcMain.on('update-reasoning-effort', (_event, reasoningEffort: string) => {
   }
 })
 
+ipcMain.on('update-web-search', (_event, enableWebSearch: boolean) => {
+  const nextWebSearch = typeof enableWebSearch === 'boolean' ? enableWebSearch : DEFAULT_ENABLE_WEB_SEARCH
+  updateConfig({ enableWebSearch: nextWebSearch })
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('web-search-updated', nextWebSearch)
+  }
+
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.webContents.send('web-search-updated', nextWebSearch)
+  }
+})
+
+ipcMain.on('update-auto-collapse-reasoning', (_event, autoCollapseReasoning: boolean) => {
+  const nextAutoCollapse = typeof autoCollapseReasoning === 'boolean' ? autoCollapseReasoning : DEFAULT_AUTO_COLLAPSE_REASONING
+  updateConfig({ autoCollapseReasoning: nextAutoCollapse })
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('auto-collapse-reasoning-updated', nextAutoCollapse)
+  }
+
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.webContents.send('auto-collapse-reasoning-updated', nextAutoCollapse)
+  }
+})
+
 ipcMain.handle('covenant:chat-stream', async (event, rawMessages: Array<{ role?: string; content?: string }>) => {
   const sanitizedMessages = Array.isArray(rawMessages)
     ? rawMessages
@@ -2390,55 +2431,191 @@ ipcMain.handle('covenant:chat-stream', async (event, rawMessages: Array<{ role?:
   }
 
   const model = storedConfig.chatModel || DEFAULT_CHAT_MODEL
-  const stream = await client.chat.completions.create({
+  const enableWebSearch = storedConfig.enableWebSearch ?? DEFAULT_ENABLE_WEB_SEARCH
+  const autoCollapseReasoning = storedConfig.autoCollapseReasoning ?? DEFAULT_AUTO_COLLAPSE_REASONING
+  const doesReasoning = modelDoesReasoning(model)
+  const doesWebSearch = enableWebSearch && modelSupportsWebSearch(model)
+
+  const input = sanitizedMessages.map((message) => ({
+    role: message.role === 'assistant' ? 'assistant' as const
+      : message.role === 'system' ? 'developer' as const
+      : message.role as string,
+    content: message.content
+  }))
+
+  const params: Record<string, unknown> = {
     model,
-    stream: true,
-    stream_options: { include_usage: true },
-    ...buildExtendedModelParams(model, storedConfig.reasoningEffort || DEFAULT_REASONING_EFFORT),
-    messages: [
-      {
-        role: 'system',
-        content:
-          "You are Covenant, a helpful, concise AI assistant integrated into a user's operating system. Keep your answers brief and to the point."
-      },
-      ...sanitizedMessages
-    ]
-  })
+    input: input as unknown[],
+    instructions:
+      "You are Covenant, a helpful, concise AI assistant integrated into a user's operating system. Keep your answers brief and to the point.",
+    stream: true
+  }
+
+  if (doesReasoning) {
+    params.reasoning = {
+      effort: storedConfig.reasoningEffort || DEFAULT_REASONING_EFFORT,
+      summary: 'auto'
+    }
+  } else {
+    params.temperature = 0.7
+  }
+
+  if (doesWebSearch) {
+    params.tools = [{ type: 'web_search' }]
+  }
+
+  const stream = client.responses.stream(params as any)
 
   void (async () => {
-    let finalUsage: ChatUsage | undefined
+    const reasoningBufferMap = new Map<string, string>()
+    const reasoningTitleParsed = new Set<string>()
+    const reasoningTitleById = new Map<string, string>()
 
     try {
-      for await (const chunk of stream) {
-        const choice = chunk.choices?.[0]
-        const delta = choice?.delta?.content
-        const reasoning =
-          (choice?.delta as { reasoning?: string; thinking?: string })?.reasoning ??
-          (choice?.delta as { reasoning?: string; thinking?: string })?.thinking
+      for await (const streamEvent of stream) {
+        switch (streamEvent.type) {
+          case 'response.output_item.added': {
+            const item = streamEvent.item as unknown as Record<string, unknown>
+            if (item.type === 'reasoning') {
+              reasoningBufferMap.set(item.id as string, '')
+              sendStreamEvent({ id: streamId, type: 'reasoning-start', itemId: item.id })
+            } else if (item.type === 'web_search_call') {
+              const action = item.action as Record<string, unknown> | undefined
+              const query = Array.isArray(action?.queries) && action.queries.length > 0
+                ? String(action.queries[0])
+                : typeof action?.query === 'string' ? action.query : ''
+              sendStreamEvent({
+                id: streamId,
+                type: 'tool-start',
+                toolType: 'web_search',
+                toolName: 'Web Search',
+                actionType: typeof action?.type === 'string' ? action.type : 'search',
+                query
+              })
+            }
+            break
+          }
 
-        if (typeof delta === 'string' && delta.length > 0) {
-          sendStreamEvent({ id: streamId, type: 'content', delta })
-        }
+          case 'response.reasoning_summary_text.delta': {
+            const deltaStr = typeof streamEvent.delta === 'string' ? streamEvent.delta : ''
+            const itemId = streamEvent.item_id
+            if (!deltaStr || !itemId) break
 
-        if (typeof reasoning === 'string' && reasoning.length > 0) {
-          sendStreamEvent({ id: streamId, type: 'reasoning', delta: reasoning })
-        }
+            const buffer = (reasoningBufferMap.get(itemId) || '') + deltaStr
+            reasoningBufferMap.set(itemId, buffer)
 
-        if (chunk.usage) {
-          const promptTokensDetails = chunk.usage.prompt_tokens_details as
-            | { cached_tokens?: number }
-            | undefined
+            if (!reasoningTitleParsed.has(itemId)) {
+              const match = /^\*\*([^*\n]+)\*\*\n\n([\s\S]*)$/.exec(buffer)
+              if (match) {
+                reasoningTitleParsed.add(itemId)
+                reasoningTitleById.set(itemId, match[1])
+                sendStreamEvent({ id: streamId, type: 'reasoning-title', itemId, title: match[1] })
+                if (match[2]) {
+                  sendStreamEvent({ id: streamId, type: 'reasoning-delta', itemId, delta: match[2] })
+                }
+                break
+              }
+            }
 
-          finalUsage = {
-            promptTokens: chunk.usage.prompt_tokens,
-            cachedPromptTokens: promptTokensDetails?.cached_tokens,
-            completionTokens: chunk.usage.completion_tokens,
-            totalTokens: chunk.usage.total_tokens
+            if (reasoningTitleParsed.has(itemId)) {
+              sendStreamEvent({ id: streamId, type: 'reasoning-delta', itemId, delta: deltaStr })
+            }
+            break
+          }
+
+          case 'response.output_item.done': {
+            const doneItem = streamEvent.item as unknown as Record<string, unknown>
+            if (doneItem.type === 'reasoning') {
+              const itemId = doneItem.id as string
+              if (!reasoningTitleParsed.has(itemId)) {
+                const buffer = reasoningBufferMap.get(itemId) || ''
+                const match = /^\*\*([^*\n]+)\*\*\n\n([\s\S]*)$/.exec(buffer)
+                const fallbackTitle = match ? match[1] : 'Thinking...'
+                reasoningTitleParsed.add(itemId)
+                reasoningTitleById.set(itemId, fallbackTitle)
+                sendStreamEvent({ id: streamId, type: 'reasoning-title', itemId, title: fallbackTitle })
+                if (match && match[2]) {
+                  sendStreamEvent({ id: streamId, type: 'reasoning-delta', itemId, delta: match[2] })
+                } else if (!match && buffer) {
+                  sendStreamEvent({ id: streamId, type: 'reasoning-delta', itemId, delta: buffer })
+                }
+              }
+              sendStreamEvent({
+                id: streamId,
+                type: 'reasoning-end',
+                itemId,
+                title: reasoningTitleById.get(itemId) || 'Thinking...'
+              })
+            } else if (doneItem.type === 'web_search_call') {
+              const action = (doneItem as Record<string, unknown>).action as Record<string, unknown> | undefined
+              const rawSources: Array<Record<string, unknown>> = []
+              if (Array.isArray(action?.sources)) {
+                rawSources.push(...action.sources as Array<Record<string, unknown>>)
+              } else if (Array.isArray((action as Record<string, unknown> | undefined)?.['results'])) {
+                const rawResults = (action as Record<string, unknown>)['results'] as Array<Record<string, unknown>>
+                for (const entry of rawResults) {
+                  if (Array.isArray(entry.results)) {
+                    rawSources.push(...entry.results as Array<Record<string, unknown>>)
+                  } else if (Array.isArray(entry.sources)) {
+                    rawSources.push(...entry.sources as Array<Record<string, unknown>>)
+                  }
+                }
+              }
+
+              const sources = rawSources
+                .map((src) => ({
+                  title: (typeof src.title === 'string' ? src.title : '')
+                    || (typeof src.name === 'string' ? src.name : '')
+                    || '',
+                  url: (typeof src.url === 'string' ? src.url : '')
+                    || (typeof src.link === 'string' ? src.link : '')
+                    || (typeof src.href === 'string' ? src.href : '')
+                    || ''
+                }))
+                .filter((src) => src.url.length > 0)
+
+              if (sources.length > 0) {
+                const query = Array.isArray(action?.queries) && action.queries.length > 0
+                  ? String(action.queries[0])
+                  : typeof action?.query === 'string' ? action.query : ''
+
+                sendStreamEvent({
+                  id: streamId,
+                  type: 'sources',
+                  sources,
+                  query
+                })
+              }
+            }
+            break
+          }
+
+          case 'response.output_text.delta': {
+            const textDelta = typeof streamEvent.delta === 'string' ? streamEvent.delta : ''
+            if (textDelta) {
+              sendStreamEvent({ id: streamId, type: 'content', delta: textDelta })
+            }
+            break
+          }
+
+          case 'response.completed': {
+            const response = streamEvent.response
+            const usage = response?.usage
+            const finalUsage: ChatUsage | undefined = usage
+              ? {
+                  promptTokens: (usage as unknown as Record<string, number>).input_tokens,
+                  cachedPromptTokens: ((usage as unknown as Record<string, unknown>).input_tokens_details as Record<string, number> | undefined)?.cached_tokens,
+                  completionTokens: (usage as unknown as Record<string, number>).output_tokens,
+                  totalTokens: (usage as unknown as Record<string, number>).total_tokens,
+                  reasoningTokens: ((usage as unknown as Record<string, unknown>).output_tokens_details as Record<string, number> | undefined)?.reasoning_tokens
+                }
+              : undefined
+
+            sendStreamEvent({ id: streamId, type: 'done', usage: finalUsage, model })
+            break
           }
         }
       }
-
-      sendStreamEvent({ id: streamId, type: 'done', usage: finalUsage, model })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to fetch AI response.'
       sendStreamEvent({ id: streamId, type: 'error', error: message })
@@ -2488,20 +2665,33 @@ ipcMain.handle('covenant:chat', async (_event, rawMessages: Array<{ role?: strin
   if (toolRegistry.length > 0) {
     return completeChatWithMcp(client, sanitizedMessages, toolRegistry, chatModel)
   }
-  const completion = await client.chat.completions.create({
-    model: chatModel,
-    ...buildExtendedModelParams(chatModel, storedConfig.reasoningEffort || DEFAULT_REASONING_EFFORT),
-    messages: [
-      {
-        role: 'system',
-        content:
-          "You are Covenant, a helpful, concise AI assistant integrated into a user's operating system. Keep your answers brief and to the point."
-      },
-      ...sanitizedMessages
-    ]
-  })
 
-  return completion.choices[0]?.message?.content?.trim() || 'No response from model.'
+  const input = sanitizedMessages.map((message) => ({
+    role: message.role === 'assistant' ? 'assistant' as const
+      : message.role === 'system' ? 'developer' as const
+      : message.role as string,
+    content: message.content
+  }))
+
+  const params: Record<string, unknown> = {
+    model: chatModel,
+    input: input as unknown[],
+    instructions:
+      "You are Covenant, a helpful, concise AI assistant integrated into a user's operating system. Keep your answers brief and to the point."
+  }
+
+  const doesReasoning = modelDoesReasoning(chatModel)
+  if (doesReasoning) {
+    params.reasoning = {
+      effort: storedConfig.reasoningEffort || DEFAULT_REASONING_EFFORT,
+      summary: 'auto'
+    }
+  } else {
+    params.temperature = 0.7
+  }
+
+  const response = await client.responses.create(params as any)
+  return (response as any).output_text?.trim() || 'No response from model.'
 })
 
 ipcMain.handle('voice:transcribe', async (_event, audioBuffer: ArrayBuffer) => {

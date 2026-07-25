@@ -38,8 +38,10 @@ interface ChatMessage {
   content: string
   createdAt: number
   reasoning?: string
+  reasoningTitle?: string
   usage?: ChatUsage
   model?: string
+  sources?: Source[]
 }
 
 interface ChatUsage {
@@ -47,6 +49,12 @@ interface ChatUsage {
   cachedPromptTokens?: number
   completionTokens?: number
   totalTokens?: number
+  reasoningTokens?: number
+}
+
+interface Source {
+  title: string
+  url: string
 }
 
 interface ChatConversation {
@@ -67,10 +75,19 @@ interface SelectedSystemPrompt {
 interface ChatStreamEvent {
   id: string
   type: 'content' | 'reasoning' | 'done' | 'error'
+    | 'reasoning-start' | 'reasoning-title' | 'reasoning-delta' | 'reasoning-end'
+    | 'tool-start' | 'sources'
   delta?: string
   usage?: ChatUsage
   error?: string
   model?: string
+  itemId?: string
+  title?: string
+  toolType?: string
+  toolName?: string
+  actionType?: string
+  query?: string
+  sources?: Source[]
 }
 
 type AppMode = 'ai' | 'terminal'
@@ -198,6 +215,24 @@ function formatUsageSummary(message: ChatMessage): string | undefined {
   }
 
   return parts.join(' · ')
+}
+
+function getFaviconUrl(url: string): string {
+  try {
+    const parsed = new URL(url)
+    return `https://www.google.com/s2/favicons?domain=${parsed.hostname}&sz=16`
+  } catch {
+    return ''
+  }
+}
+
+function formatSourceUrl(url: string): string {
+  try {
+    const parsed = new URL(url)
+    return parsed.hostname.replace(/^www\./, '') + parsed.pathname.replace(/\/$/, '')
+  } catch {
+    return url
+  }
 }
 
 function computeContextStats(
@@ -496,7 +531,10 @@ export default function App(): JSX.Element {
   const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true })
   const [chatModel, setChatModel] = useState<string>(DEFAULT_CHAT_MODEL)
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT)
+  const [enableWebSearch, setEnableWebSearch] = useState(true)
+  const [autoCollapseReasoning, setAutoCollapseReasoning] = useState(true)
   const [isPinned, setIsPinned] = useState(false)
+  const [sourcesPanelMessageId, setSourcesPanelMessageId] = useState<string | null>(null)
   const [voiceState, setVoiceState] = useState<'idle' | 'recording' | 'transcribing' | 'error'>('idle')
   const micStreamRef = useRef<MediaStream | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -513,6 +551,7 @@ export default function App(): JSX.Element {
   const successResetTimersRef = useRef<Record<string, number>>({})
   const activeConversationRef = useRef<ChatConversation | null>(null)
   const streamBufferRef = useRef<{ content: string; reasoning: string } | null>(null)
+  const reasoningAutoCloseTimersRef = useRef<Record<string, number>>({})
   // Ref for the hide-delay timer so it can be cancelled on rapid show/hide.
   const hideDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -567,6 +606,12 @@ export default function App(): JSX.Element {
           if (config.reasoningEffort) {
             setReasoningEffort(config.reasoningEffort)
           }
+          if (typeof config.enableWebSearch === 'boolean') {
+            setEnableWebSearch(config.enableWebSearch)
+          }
+          if (typeof config.autoCollapseReasoning === 'boolean') {
+            setAutoCollapseReasoning(config.autoCollapseReasoning)
+          }
         }
       } catch {
         if (isMounted) {
@@ -598,6 +643,14 @@ export default function App(): JSX.Element {
       setReasoningEffort(newReasoningEffort)
     })
 
+    const unsubscribeWebSearchListener = window.api?.config.onWebSearchUpdated?.((newWebSearch) => {
+      setEnableWebSearch(newWebSearch)
+    })
+
+    const unsubscribeAutoCollapseReasoningListener = window.api?.config.onAutoCollapseReasoningUpdated?.((newAutoCollapse) => {
+      setAutoCollapseReasoning(newAutoCollapse)
+    })
+
     return () => {
       isMounted = false
       if (typeof unsubscribeThemeListener === 'function') {
@@ -614,6 +667,12 @@ export default function App(): JSX.Element {
       }
       if (typeof unsubscribeReasoningEffortListener === 'function') {
         unsubscribeReasoningEffortListener()
+      }
+      if (typeof unsubscribeWebSearchListener === 'function') {
+        unsubscribeWebSearchListener()
+      }
+      if (typeof unsubscribeAutoCollapseReasoningListener === 'function') {
+        unsubscribeAutoCollapseReasoningListener()
       }
     }
   }, [])
@@ -1090,7 +1149,23 @@ export default function App(): JSX.Element {
         return
       }
 
-      if (event.type === 'reasoning' && event.delta) {
+      if (event.type === 'reasoning-start') {
+        setThinkingOpenById((previous) => ({
+          ...previous,
+          [messageId]: true
+        }))
+        return
+      }
+
+      if (event.type === 'reasoning-title' && event.title) {
+        updateConversationMessage(conversationId, messageId, (message) => ({
+          ...message,
+          reasoningTitle: event.title
+        }))
+        return
+      }
+
+      if (event.type === 'reasoning-delta' && event.delta) {
         streamBufferRef.current = {
           content: streamBufferRef.current?.content ?? '',
           reasoning: `${streamBufferRef.current?.reasoning ?? ''}${event.delta}`
@@ -1100,6 +1175,24 @@ export default function App(): JSX.Element {
           ...message,
           reasoning: `${message.reasoning ?? ''}${event.delta}`
         }))
+        return
+      }
+
+      if (event.type === 'reasoning-end') {
+        return
+      }
+
+      if (event.type === 'sources' && event.sources && event.sources.length > 0) {
+        updateConversationMessage(conversationId, messageId, (message) => ({
+          ...message,
+          sources: event.sources
+        }))
+        return
+      }
+
+      if (event.type === 'tool-start') {
+        // Timeline step for tool calls is tracked via the stream events;
+        // no persistent state change needed on the message for now.
         return
       }
 
@@ -1158,10 +1251,17 @@ export default function App(): JSX.Element {
         setActiveStreamId(null)
         setActiveStreamMessageId(null)
         setActiveStreamConversationId(null)
-        setThinkingOpenById((previous) => ({
-          ...previous,
-          [messageId]: false
-        }))
+
+        if (autoCollapseReasoning) {
+          const timerId = window.setTimeout(() => {
+            setThinkingOpenById((previous) => ({
+              ...previous,
+              [messageId]: false
+            }))
+          }, 900)
+          reasoningAutoCloseTimersRef.current[messageId] = timerId
+        }
+
         streamBufferRef.current = null
       }
     })
@@ -1889,45 +1989,139 @@ export default function App(): JSX.Element {
                                   : 'chat-message--assistant'
                               }`}
                             >
-                              {showThinking && (
+                               {showThinking && (
                                 <div className="chat-thinking">
                                   <button
                                     type="button"
                                     className="chat-thinking-toggle"
-                                    onClick={() =>
-                                      setThinkingOpenById((previous) => ({
-                                        ...previous,
-                                        [message.id]: !isThinkingOpen
-                                      }))
-                                    }
+                                    onClick={() => {
+                                      setThinkingOpenById((previous) => {
+                                        const timerId = reasoningAutoCloseTimersRef.current[message.id]
+                                        if (timerId !== undefined) {
+                                          window.clearTimeout(timerId)
+                                          delete reasoningAutoCloseTimersRef.current[message.id]
+                                        }
+                                        return {
+                                          ...previous,
+                                          [message.id]: !isThinkingOpen
+                                        }
+                                      })
+                                    }}
                                   >
                                     <span className="chat-thinking-indicator">
                                       {isStreaming ? <SpinnerIcon /> : null}
                                     </span>
-                                    <span>Thinking...</span>
+                                    <span>
+                                      {message.reasoningTitle?.trim()
+                                        ? `**${message.reasoningTitle.trim()}**`
+                                        : isStreaming ? 'Thinking\u2026' : 'Thinking\u2026'}
+                                    </span>
                                     <span className="chat-thinking-caret">
-                                      {isThinkingOpen ? 'v' : '>'}
+                                      {isThinkingOpen ? '\u25BC' : '\u25B6'}
                                     </span>
                                   </button>
 
                                   {isThinkingOpen && (
                                     <div className="chat-thinking-body">
                                       {reasoningText ? (
-                                        <p className="whitespace-pre-wrap">{reasoningText}</p>
-                                      ) : (
-                                        <p className="chat-thinking-empty">
-                                          {isStreaming
-                                            ? 'Reasoning is streaming...'
-                                            : 'Reasoning not available.'}
+                                        <p className="chat-thinking-text whitespace-pre-wrap">
+                                          {isStreaming ? (
+                                            <>
+                                              {reasoningText}
+                                              <span className="chat-thinking-cursor">|</span>
+                                            </>
+                                          ) : (
+                                            reasoningText
+                                          )}
                                         </p>
+                                      ) : isStreaming ? (
+                                        <p className="chat-thinking-empty">Reasoning is streaming...</p>
+                                      ) : (
+                                        <p className="chat-thinking-empty">Reasoning not available.</p>
                                       )}
                                     </div>
                                   )}
                                 </div>
                               )}
 
-                              {isAssistant ? (
-                                <AssistantMarkdown content={message.content} />
+                               {isAssistant ? (
+                                <>
+                                  {message.sources && message.sources.length > 0 ? (
+                                    <div className="chat-sources-wrapper">
+                                      <button
+                                        type="button"
+                                        className="chat-sources-toggle"
+                                        onClick={() =>
+                                          setSourcesPanelMessageId(
+                                            sourcesPanelMessageId === message.id ? null : message.id
+                                          )
+                                        }
+                                      >
+                                        <svg
+                                          width="12"
+                                          height="12"
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth="2"
+                                          aria-hidden
+                                        >
+                                          <circle cx="11" cy="11" r="8" />
+                                          <path d="m21 21-4.35-4.35" />
+                                        </svg>
+                                        <span>Sources</span>
+                                        <span className="chat-sources-count">{message.sources.length}</span>
+                                      </button>
+
+                                      {sourcesPanelMessageId === message.id && (
+                                        <div className="chat-sources-panel">
+                                          <div className="chat-sources-panel-header">
+                                            <span className="font-medium">Sources</span>
+                                            <button
+                                              type="button"
+                                              className="chat-sources-panel-close"
+                                              onClick={() => setSourcesPanelMessageId(null)}
+                                              aria-label="Close sources"
+                                            >
+                                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                <path d="M18 6 6 18M6 6l12 12" />
+                                              </svg>
+                                            </button>
+                                          </div>
+                                          <div className="chat-sources-panel-list">
+                                            {message.sources.map((source, idx) => (
+                                              <a
+                                                key={`${source.url}-${idx}`}
+                                                href={source.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="chat-source-item"
+                                              >
+                                                <img
+                                                  src={getFaviconUrl(source.url)}
+                                                  alt=""
+                                                  className="chat-source-favicon"
+                                                  onError={(e) => {
+                                                    (e.currentTarget as HTMLImageElement).style.display = 'none'
+                                                  }}
+                                                />
+                                                <div className="chat-source-text">
+                                                  <span className="chat-source-title">
+                                                    {source.title || formatSourceUrl(source.url)}
+                                                  </span>
+                                                  <span className="chat-source-url">
+                                                    {formatSourceUrl(source.url)}
+                                                  </span>
+                                                </div>
+                                              </a>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : null}
+                                  <AssistantMarkdown content={message.content} />
+                                </>
                               ) : (
                                 message.content
                               )}
