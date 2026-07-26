@@ -1,6 +1,6 @@
 {
   "name": "covenant",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "description": "A next-generation command bar app for Windows and macOS",
   "main": "out/main/index.js",
   "scripts": {
