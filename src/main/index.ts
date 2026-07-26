@@ -218,8 +218,8 @@ function emitTerminalEvent(channel: 'terminal:data' | 'terminal:exit', payload: 
   })
 }
 
-terminalManager.onData((chunk) => {
-  emitTerminalEvent('terminal:data', chunk)
+terminalManager.onData((sessionId, chunk) => {
+  emitTerminalEvent('terminal:data', { sessionId, chunk })
 })
 
 terminalManager.onExit((payload: TerminalExitPayload) => {
@@ -1997,7 +1997,7 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
 
-  terminalManager.dispose()
+  terminalManager.disposeAll()
   
   // Cleanup tray
   if (tray) {
@@ -2143,23 +2143,42 @@ ipcMain.handle('terminal:start', (event, payload?: { cols?: unknown; rows?: unkn
   attachTerminalSubscriber(event.sender)
 
   const config = readConfig()
-  return terminalManager.start(cols, rows, config.preferredShell)
+
+  try {
+    return terminalManager.createSession(cols, rows, config.preferredShell)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown terminal error'
+    console.error('Terminal start failed:', message)
+    return {
+      sessionId: '',
+      pid: -1,
+      shell: '',
+      created: false,
+      error: message
+    }
+  }
 })
 
-ipcMain.handle('terminal:input', (event, rawInput: unknown) => {
+ipcMain.handle('terminal:input', (event, payload?: { sessionId?: unknown; input?: unknown }) => {
   assertMainWindowSender(event.sender)
 
-  const input = sanitizeTerminalInput(rawInput)
+  const sessionId = typeof payload?.sessionId === 'string' && payload.sessionId.length > 0 ? payload.sessionId : ''
+  if (!sessionId) return { success: false }
+
+  const input = sanitizeTerminalInput(payload?.input)
   if (!input) {
     return { success: false }
   }
 
-  terminalManager.write(input)
+  terminalManager.write(sessionId, input)
   return { success: true }
 })
 
-ipcMain.handle('terminal:resize', (event, payload?: { cols?: unknown; rows?: unknown }) => {
+ipcMain.handle('terminal:resize', (event, payload?: { sessionId?: unknown; cols?: unknown; rows?: unknown }) => {
   assertMainWindowSender(event.sender)
+
+  const sessionId = typeof payload?.sessionId === 'string' && payload.sessionId.length > 0 ? payload.sessionId : ''
+  if (!sessionId) return { success: false }
 
   const cols = sanitizeTerminalDimension(
     payload?.cols,
@@ -2174,14 +2193,17 @@ ipcMain.handle('terminal:resize', (event, payload?: { cols?: unknown; rows?: unk
     MAX_TERMINAL_ROWS
   )
 
-  terminalManager.resize(cols, rows)
+  terminalManager.resize(sessionId, cols, rows)
   return { success: true }
 })
 
-ipcMain.handle('terminal:kill', (event) => {
+ipcMain.handle('terminal:kill', (event, payload?: { sessionId?: unknown }) => {
   assertMainWindowSender(event.sender)
 
-  terminalManager.kill()
+  const sessionId = typeof payload?.sessionId === 'string' && payload.sessionId.length > 0 ? payload.sessionId : ''
+  if (!sessionId) return { success: false }
+
+  terminalManager.kill(sessionId)
   return { success: true }
 })
 

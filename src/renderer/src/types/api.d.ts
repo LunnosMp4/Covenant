@@ -70,12 +70,15 @@ interface ChatConversation {
 }
 
 interface TerminalStartResult {
+  sessionId: string
   pid: number
   shell: string
   created: boolean
+  error?: string
 }
 
 interface TerminalExitPayload {
+  sessionId: string
   exitCode: number
   signal?: number
 }
@@ -128,10 +131,10 @@ interface CovenantAPI {
   }
   terminal: {
     startTerminal: (size?: { cols?: number; rows?: number }) => Promise<TerminalStartResult>
-    sendInput: (data: string) => Promise<{ success: boolean }>
-    resize: (cols: number, rows: number) => Promise<{ success: boolean }>
-    killTerminal: () => Promise<{ success: boolean }>
-    onData: (callback: (chunk: string) => void) => () => void
+    sendInput: (sessionId: string, data: string) => Promise<{ success: boolean }>
+    resize: (sessionId: string, cols: number, rows: number) => Promise<{ success: boolean }>
+    killTerminal: (sessionId: string) => Promise<{ success: boolean }>
+    onData: (callback: (sessionId: string, chunk: string) => void) => () => void
     onExit: (callback: (payload: TerminalExitPayload) => void) => () => void
   }
   voice: {

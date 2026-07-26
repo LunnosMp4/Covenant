@@ -1,5 +1,6 @@
 import { spawn, type IPty } from 'node-pty'
 import { existsSync } from 'fs'
+import { randomUUID } from 'crypto'
 
 const DEFAULT_COLS = 120
 const DEFAULT_ROWS = 30
@@ -14,18 +15,29 @@ interface ShellCandidate {
 }
 
 export interface TerminalStartResult {
+  sessionId: string
   pid: number
   shell: string
   created: boolean
+  error?: string
 }
 
 export interface TerminalExitPayload {
+  sessionId: string
   exitCode: number
   signal?: number
 }
 
-type DataListener = (data: string) => void
+type DataListener = (sessionId: string, data: string) => void
 type ExitListener = (payload: TerminalExitPayload) => void
+
+interface PtySession {
+  id: string
+  pty: IPty
+  shell: string
+  dataListeners: Set<DataListener>
+  exitListeners: Set<ExitListener>
+}
 
 function clampDimension(value: number | undefined, fallback: number, min: number, max: number): number {
   if (!Number.isFinite(value)) {
@@ -46,11 +58,19 @@ function validateShellPath(command: string): boolean {
 
 function getShellCandidates(preferredShell?: string): ShellCandidate[] {
   if (process.platform === 'win32') {
-    return [
+    const candidates: ShellCandidate[] = []
+
+    if (preferredShell && validateShellPath(preferredShell)) {
+      candidates.push({ command: preferredShell, args: ['-NoLogo'] })
+    }
+
+    candidates.push(
       { command: 'pwsh.exe', args: ['-NoLogo'] },
       { command: 'powershell.exe', args: ['-NoLogo'] },
       { command: 'cmd.exe', args: [] }
-    ]
+    )
+
+    return candidates
   }
 
   // macOS and Linux
@@ -61,7 +81,7 @@ function getShellCandidates(preferredShell?: string): ShellCandidate[] {
     candidates.push({ command: preferredShell, args: [] })
   }
 
-  // For macOS, prioritize zsh → bash
+  // For macOS, prioritize zsh -> bash
   if (process.platform === 'darwin') {
     if (!preferredShell || preferredShell !== '/bin/zsh') {
       if (validateShellPath('/bin/zsh')) {
@@ -92,70 +112,75 @@ function getShellCandidates(preferredShell?: string): ShellCandidate[] {
   return candidates
 }
 
+function extractShellName(shellPath: string): string {
+  const parts = shellPath.replace(/\\/g, '/').split('/')
+  const last = parts[parts.length - 1] || shellPath
+  return last.replace('.exe', '').replace('.Exe', '')
+}
+
 class TerminalManager {
-  private ptyProcess: IPty | null = null
+  private readonly sessionMap = new Map<string, PtySession>()
 
-  private activeShell = ''
+  private readonly globalDataListeners = new Set<DataListener>()
 
-  private readonly dataListeners = new Set<DataListener>()
+  private readonly globalExitListeners = new Set<ExitListener>()
 
-  private readonly exitListeners = new Set<ExitListener>()
-
-  start(cols?: number, rows?: number, preferredShell?: string): TerminalStartResult {
+  createSession(cols?: number, rows?: number, preferredShell?: string): TerminalStartResult {
     const normalizedCols = clampDimension(cols, DEFAULT_COLS, MIN_COLS, MAX_COLS)
     const normalizedRows = clampDimension(rows, DEFAULT_ROWS, MIN_ROWS, MAX_ROWS)
 
-    if (this.ptyProcess) {
-      this.resize(normalizedCols, normalizedRows)
-      return {
-        pid: this.ptyProcess.pid,
-        shell: this.activeShell,
-        created: false
-      }
-    }
-
     const shellCandidates = getShellCandidates(preferredShell)
-    let lastError: unknown
     const errors: Array<{ shell: string; error: string }> = []
 
     for (const candidate of shellCandidates) {
       try {
-        // Create a minimal environment with only essential variables for shell spawn
-        // Using a minimal env helps avoid posix_spawnp failures on macOS
-        const spawnEnv: Record<string, string> = {
-          PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
-          HOME: process.env.HOME || '/tmp',
-          SHELL: candidate.command,
-          TERM: 'xterm-256color',
-          LANG: process.env.LANG || 'en_US.UTF-8'
-        }
+        const isWin = process.platform === 'win32'
 
-        // Only add LC_ALL if it exists
-        if (process.env.LC_ALL) {
-          spawnEnv.LC_ALL = process.env.LC_ALL
-        }
+        const spawnEnv: Record<string, string> = isWin
+          ? ({ ...(process.env as Record<string, string>) })
+          : {
+              PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+              HOME: process.env.HOME || '/tmp',
+              SHELL: candidate.command,
+              TERM: 'xterm-256color',
+              LANG: process.env.LANG || 'en_US.UTF-8',
+              ...(process.env.LC_ALL ? { LC_ALL: process.env.LC_ALL } : {})
+            }
+
+        const spawnCwd = isWin
+          ? (process.env.USERPROFILE || process.cwd())
+          : process.cwd()
 
         const processHandle = spawn(candidate.command, candidate.args, {
           name: 'xterm-256color',
           cols: normalizedCols,
           rows: normalizedRows,
-          cwd: process.cwd(),
-          env: spawnEnv
+          cwd: spawnCwd,
+          env: spawnEnv,
+          ...(isWin ? { useConpty: true } : {})
         })
 
-        this.activeShell = candidate.command
-        this.ptyProcess = processHandle
-        this.bindTerminalProcess(processHandle)
+        const sessionId = randomUUID()
+        const session: PtySession = {
+          id: sessionId,
+          pty: processHandle,
+          shell: candidate.command,
+          dataListeners: new Set(),
+          exitListeners: new Set()
+        }
 
-        console.debug(`Successfully spawned shell: ${candidate.command}`)
+        this.bindSession(session)
+        this.sessionMap.set(sessionId, session)
+
+        console.debug(`Successfully spawned shell "${candidate.command}" (session: ${sessionId})`)
 
         return {
+          sessionId,
           pid: processHandle.pid,
-          shell: this.activeShell,
+          shell: candidate.command,
           created: true
         }
       } catch (error) {
-        lastError = error
         errors.push({
           shell: candidate.command,
           error: error instanceof Error ? error.message : String(error)
@@ -170,66 +195,105 @@ class TerminalManager {
     )
   }
 
-  write(data: string): void {
-    if (!this.ptyProcess || !data) {
-      return
-    }
-
-    this.ptyProcess.write(data)
+  write(sessionId: string, data: string): void {
+    if (!data) return
+    const session = this.sessionMap.get(sessionId)
+    if (!session) return
+    session.pty.write(data)
   }
 
-  resize(cols: number, rows: number): void {
-    if (!this.ptyProcess) {
-      return
-    }
+  resize(sessionId: string, cols: number, rows: number): void {
+    const session = this.sessionMap.get(sessionId)
+    if (!session) return
 
     const normalizedCols = clampDimension(cols, DEFAULT_COLS, MIN_COLS, MAX_COLS)
     const normalizedRows = clampDimension(rows, DEFAULT_ROWS, MIN_ROWS, MAX_ROWS)
-    this.ptyProcess.resize(normalizedCols, normalizedRows)
+    session.pty.resize(normalizedCols, normalizedRows)
   }
 
-  kill(): void {
-    this.ptyProcess?.kill()
+  kill(sessionId: string): void {
+    const session = this.sessionMap.get(sessionId)
+    if (!session) return
+    session.pty.kill()
   }
 
-  dispose(): void {
-    this.kill()
-    this.dataListeners.clear()
-    this.exitListeners.clear()
+  getShellName(sessionId: string): string {
+    const session = this.sessionMap.get(sessionId)
+    if (!session) return ''
+    return extractShellName(session.shell)
+  }
+
+  getSessionCount(): number {
+    return this.sessionMap.size
+  }
+
+  hasSession(sessionId: string): boolean {
+    return this.sessionMap.has(sessionId)
+  }
+
+  disposeAll(): void {
+    for (const session of this.sessionMap.values()) {
+      try {
+        session.pty.kill()
+      } catch {
+        // Ignore errors during bulk cleanup.
+      }
+      session.dataListeners.clear()
+      session.exitListeners.clear()
+    }
+    this.sessionMap.clear()
+    this.globalDataListeners.clear()
+    this.globalExitListeners.clear()
   }
 
   onData(listener: DataListener): () => void {
-    this.dataListeners.add(listener)
+    this.globalDataListeners.add(listener)
+    for (const session of this.sessionMap.values()) {
+      session.dataListeners.add(listener)
+    }
 
     return () => {
-      this.dataListeners.delete(listener)
+      this.globalDataListeners.delete(listener)
+      for (const session of this.sessionMap.values()) {
+        session.dataListeners.delete(listener)
+      }
     }
   }
 
   onExit(listener: ExitListener): () => void {
-    this.exitListeners.add(listener)
+    this.globalExitListeners.add(listener)
+    for (const session of this.sessionMap.values()) {
+      session.exitListeners.add(listener)
+    }
 
     return () => {
-      this.exitListeners.delete(listener)
+      this.globalExitListeners.delete(listener)
+      for (const session of this.sessionMap.values()) {
+        session.exitListeners.delete(listener)
+      }
     }
   }
 
-  private bindTerminalProcess(processHandle: IPty): void {
-    processHandle.onData((chunk) => {
-      this.dataListeners.forEach((listener) => {
-        listener(chunk)
+  private bindSession(session: PtySession): void {
+    const { pty, id: sessionId } = session
+
+    pty.onData((chunk) => {
+      this.globalDataListeners.forEach((listener) => {
+        listener(sessionId, chunk)
       })
     })
 
-    processHandle.onExit(({ exitCode, signal }) => {
-      if (this.ptyProcess === processHandle) {
-        this.ptyProcess = null
-        this.activeShell = ''
-      }
+    pty.onExit(({ exitCode, signal }) => {
+      this.sessionMap.delete(sessionId)
 
-      this.exitListeners.forEach((listener) => {
-        listener({ exitCode, signal })
+      const payload: TerminalExitPayload = { sessionId, exitCode, signal }
+
+      this.globalExitListeners.forEach((listener) => {
+        listener(payload)
       })
+
+      session.dataListeners.clear()
+      session.exitListeners.clear()
     })
   }
 }

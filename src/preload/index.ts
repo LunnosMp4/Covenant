@@ -104,12 +104,15 @@ interface WorkflowLogPayload {
 }
 
 interface TerminalStartResult {
+  sessionId: string
   pid: number
   shell: string
   created: boolean
+  error?: string
 }
 
 interface TerminalExitPayload {
+  sessionId: string
   exitCode: number
   signal?: number
 }
@@ -282,14 +285,15 @@ const api = {
   terminal: {
     startTerminal: (size?: { cols?: number; rows?: number }) =>
       ipcRenderer.invoke('terminal:start', size) as Promise<TerminalStartResult>,
-    sendInput: (data: string) =>
-      ipcRenderer.invoke('terminal:input', data) as Promise<{ success: boolean }>,
-    resize: (cols: number, rows: number) =>
-      ipcRenderer.invoke('terminal:resize', { cols, rows }) as Promise<{ success: boolean }>,
-    killTerminal: () => ipcRenderer.invoke('terminal:kill') as Promise<{ success: boolean }>,
-    onData: (callback: (chunk: string) => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, chunk: string) => {
-        callback(chunk)
+    sendInput: (sessionId: string, data: string) =>
+      ipcRenderer.invoke('terminal:input', { sessionId, input: data }) as Promise<{ success: boolean }>,
+    resize: (sessionId: string, cols: number, rows: number) =>
+      ipcRenderer.invoke('terminal:resize', { sessionId, cols, rows }) as Promise<{ success: boolean }>,
+    killTerminal: (sessionId: string) =>
+      ipcRenderer.invoke('terminal:kill', { sessionId }) as Promise<{ success: boolean }>,
+    onData: (callback: (sessionId: string, chunk: string) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: { sessionId: string; chunk: string }) => {
+        callback(payload.sessionId, payload.chunk)
       }
 
       ipcRenderer.on('terminal:data', listener)

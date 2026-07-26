@@ -789,6 +789,14 @@ export default function App(): JSX.Element {
     })
   }, [])
 
+  const handleToggleExpand = useCallback(() => {
+    setIsExpanded((prev) => {
+      const next = !prev
+      window.api?.window.setExpanded?.(next)
+      return next
+    })
+  }, [])
+
   const handleClose = useCallback(() => {
     setActivePopup(null)
     setMode('ai')
@@ -1965,11 +1973,7 @@ export default function App(): JSX.Element {
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          const next = !isExpanded
-                          setIsExpanded(next)
-                          window.api?.window.setExpanded?.(next)
-                        }}
+                        onClick={handleToggleExpand}
                         className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
                           isExpanded
                             ? 'border-white/20 bg-white/10 text-neutral-200'
@@ -2523,7 +2527,7 @@ export default function App(): JSX.Element {
       {(hasInitializedTerminal || mode === 'terminal') && (
         <motion.div
           key="terminal-container"
-          className="absolute inset-x-0 bottom-5 z-20 h-[360px] pointer-events-auto flex justify-center"
+          className="absolute inset-x-0 bottom-5 z-20 pointer-events-auto flex justify-center"
           initial={false}
           animate={
             mode === 'terminal'
@@ -2538,6 +2542,7 @@ export default function App(): JSX.Element {
             duration: 0.2
           }}
           style={{
+            height: isExpanded ? 'calc(100vh - 160px)' : '400px',
             pointerEvents: mode === 'terminal' && visible ? 'auto' : 'none',
             transformOrigin: 'bottom center'
           }}
@@ -2551,7 +2556,14 @@ export default function App(): JSX.Element {
             }}
           >
             <div className="min-h-0 flex-1">
-              <TerminalView active={mode === 'terminal' && visible && isAppVisible} fontFamily={terminalFont} />
+              <TerminalView
+                active={mode === 'terminal' && visible && isAppVisible}
+                fontFamily={terminalFont}
+                isExpanded={isExpanded}
+                isPinned={isPinned}
+                onTogglePin={handleTogglePin}
+                onToggleExpand={handleToggleExpand}
+              />
             </div>
           </div>
         </motion.div>
