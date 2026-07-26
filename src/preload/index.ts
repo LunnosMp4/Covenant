@@ -11,6 +11,10 @@ interface Preprompt {
 
 type ChatRole = 'system' | 'user' | 'assistant'
 
+type InputImageContent = { type: 'input_image'; image_url: string }
+type InputTextContent = { type: 'input_text'; text: string }
+type InputContent = InputTextContent | InputImageContent
+
 interface ChatMessage {
   id: string
   role: ChatRole
@@ -21,6 +25,7 @@ interface ChatMessage {
   usage?: ChatUsage
   model?: string
   sources?: Source[]
+  images?: { base64: string; fileName: string; mimeType: string }[]
 }
 
 interface ChatUsage {
@@ -254,9 +259,9 @@ const api = {
     getTerminalFonts: () => ipcRenderer.invoke('get-terminal-fonts') as Promise<string[]>
   },
   chat: {
-    askCovenant: (messages: Array<{ role: ChatRole; content: string }>) =>
+    askCovenant: (messages: Array<{ role: ChatRole; content: string | InputContent[] }>) =>
       ipcRenderer.invoke('covenant:chat', messages) as Promise<string>,
-    askCovenantStream: (messages: Array<{ role: ChatRole; content: string }>) =>
+    askCovenantStream: (messages: Array<{ role: ChatRole; content: string | InputContent[] }>) =>
       ipcRenderer.invoke('covenant:chat-stream', messages) as Promise<{ id: string }>,
     onStreamEvent: (callback: (event: ChatStreamEvent) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, payload: ChatStreamEvent) => {

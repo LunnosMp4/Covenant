@@ -33,6 +33,10 @@ import type {
 
 type ChatRole = 'user' | 'assistant' | 'system'
 
+type InputImageContent = { type: 'input_image'; image_url: string }
+type InputTextContent = { type: 'input_text'; text: string }
+type InputContent = InputTextContent | InputImageContent
+
 interface ChatMessage {
   id: string
   role: ChatRole
@@ -43,6 +47,7 @@ interface ChatMessage {
   usage?: ChatUsage
   model?: string
   sources?: Source[]
+  images?: { base64: string; fileName: string; mimeType: string }[]
 }
 
 interface ChatUsage {
@@ -395,6 +400,35 @@ function StopIcon(): JSX.Element {
   )
 }
 
+function ImageIcon(): JSX.Element {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <polyline points="21 15 16 10 5 21" />
+    </svg>
+  )
+}
+
+function XIcon(): JSX.Element {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden>
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  )
+}
+
+interface AttachedImage {
+  id: string
+  base64: string
+  fileName: string
+  mimeType: string
+}
+
+const SUPPORTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
+const MAX_ATTACHED_IMAGES = 10
+
 function createConversationTitle(prompt: string): string {
   const trimmed = prompt.trim()
   if (!trimmed) return DEFAULT_CONVERSATION_TITLE
@@ -513,6 +547,8 @@ export default function App(): JSX.Element {
   >({})
   const [workflowLogsOpenById, setWorkflowLogsOpenById] = useState<Record<string, boolean>>({})
   const [activePopup, setActivePopup] = useState<ActivePopup | null>(null)
+  const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
+  const [showImagePanel, setShowImagePanel] = useState(false)
   const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true })
   const [chatModel, setChatModel] = useState<string>(DEFAULT_CHAT_MODEL)
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT)
@@ -530,6 +566,8 @@ export default function App(): JSX.Element {
   const popupRef = useRef<HTMLDivElement>(null)
   const moduleButtonsRef = useRef<HTMLDivElement>(null)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
+  const imagePanelRef = useRef<HTMLDivElement>(null)
+  const imageButtonRef = useRef<HTMLButtonElement>(null)
   const chatScrollRef = useRef<HTMLDivElement>(null)
   const historyMenuRef = useRef<HTMLDivElement>(null)
   const historyButtonRef = useRef<HTMLButtonElement>(null)
@@ -565,6 +603,8 @@ export default function App(): JSX.Element {
       div.textContent = ''
     }
     pasteBlocksRef.current.clear()
+    setAttachedImages([])
+    setShowImagePanel(false)
     setQuery('')
   }
 
@@ -973,10 +1013,33 @@ export default function App(): JSX.Element {
   }, [activePopup])
 
   useEffect(() => {
+    if (!showImagePanel) return
+
+    const handleClickOutsideImagePanel = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (imagePanelRef.current?.contains(target)) return
+      if (imageButtonRef.current?.contains(target)) return
+      setShowImagePanel(false)
+    }
+
+    document.addEventListener('mousedown', handleClickOutsideImagePanel)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutsideImagePanel)
+    }
+  }, [showImagePanel])
+
+  useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && activePopup) {
-        event.preventDefault()
-        setActivePopup(null)
+      if (event.key === 'Escape') {
+        if (showImagePanel) {
+          event.preventDefault()
+          setShowImagePanel(false)
+          return
+        }
+        if (activePopup) {
+          event.preventDefault()
+          setActivePopup(null)
+        }
       }
     }
 
@@ -984,7 +1047,7 @@ export default function App(): JSX.Element {
     return () => {
       window.removeEventListener('keydown', handleEscape)
     }
-  }, [activePopup])
+  }, [activePopup, showImagePanel])
 
   useEffect(() => {
     const clearSuccessTimer = (workflowId: string): void => {
@@ -1292,7 +1355,10 @@ export default function App(): JSX.Element {
       id: createId('msg_'),
       role: 'user',
       content: rawPrompt,
-      createdAt: now
+      createdAt: now,
+      images: attachedImages.length > 0
+        ? attachedImages.map(i => ({ base64: i.base64, fileName: i.fileName, mimeType: i.mimeType }))
+        : undefined
     }
 
     const userConversation: ChatConversation = {
@@ -1317,13 +1383,18 @@ export default function App(): JSX.Element {
         throw new Error('OpenAI chat is only available in the Electron app.')
       }
 
-      const requestMessages = [
+      const requestMessages: Array<{ role: ChatRole; content: string | InputContent[] }> = [
         ...(userConversation.systemPrompt
           ? [{ role: 'system' as const, content: userConversation.systemPrompt }]
           : []),
         ...userConversation.messages.map((message) => ({
           role: message.role,
-          content: message.content
+          content: message.images && message.images.length > 0
+            ? [
+                ...(message.content ? [{ type: 'input_text' as const, text: message.content }] : []),
+                ...message.images.map(img => ({ type: 'input_image' as const, image_url: img.base64 }))
+              ]
+            : message.content
         }))
       ]
 
@@ -1407,7 +1478,8 @@ export default function App(): JSX.Element {
     activeConversation,
     selectedSystemPrompt,
     upsertConversation,
-    persistConversation
+    persistConversation,
+    attachedImages
   ])
 
   const setCurrentSystemPrompt = useCallback(
@@ -1596,6 +1668,11 @@ export default function App(): JSX.Element {
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       if (e.key === 'Escape') {
+        if (showImagePanel) {
+          setShowImagePanel(false)
+          return
+        }
+
         if (activePopup) {
           setActivePopup(null)
           return
@@ -1627,7 +1704,7 @@ export default function App(): JSX.Element {
         }
       }
     },
-    [activePopup, handleClose, handleSubmit]
+    [activePopup, showImagePanel, handleClose, handleSubmit]
   )
 
   const toggleRecording = useCallback(async () => {
@@ -2132,7 +2209,19 @@ export default function App(): JSX.Element {
                                   <AssistantMarkdown content={message.content} />
                                 </>
                               ) : (
-                                message.content
+                                <>
+                                  {message.content}
+                                  {message.images && message.images.length > 0 && (
+                                    <div className="chat-message-meta flex items-center gap-1 mt-0.5">
+                                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                        <circle cx="8.5" cy="8.5" r="1.5" />
+                                        <polyline points="21 15 16 10 5 21" />
+                                      </svg>
+                                      <span>{message.images.length} image{message.images.length !== 1 ? 's' : ''}</span>
+                                    </div>
+                                  )}
+                                </>
                               )}
 
                               {isAssistant && metaLabel ? (
@@ -2230,6 +2319,39 @@ export default function App(): JSX.Element {
               )}
             </AnimatePresence>
 
+            <AnimatePresence>
+              {showImagePanel && attachedImages.length > 0 && (
+                <motion.div
+                  ref={imagePanelRef}
+                  initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                  transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                  className="absolute bottom-full right-0 z-30 mb-3 w-[280px] rounded-2xl border border-white/10 bg-gradient-to-br from-neutral-900 to-neutral-950 p-3 shadow-xl shadow-black/40"
+                  style={{ WebkitBackdropFilter: 'blur(30px)', backdropFilter: 'blur(30px)' }}
+                >
+                  <p className="px-2 pb-2 text-xs uppercase tracking-[0.12em] text-neutral-500">
+                    Attachments ({attachedImages.length})
+                  </p>
+                  <div className="space-y-1.5 max-h-[240px] overflow-y-auto chat-scrollbar">
+                    {attachedImages.map(img => (
+                      <div key={img.id} className="flex items-center gap-3 rounded-xl p-2 border border-white/5 bg-white/[0.03]">
+                        <img src={img.base64} className="h-10 w-10 rounded-lg object-cover border border-white/10 flex-shrink-0" alt={img.fileName} />
+                        <span className="flex-1 text-sm text-neutral-300 truncate">{img.fileName}</span>
+                        <button
+                          onClick={() => setAttachedImages(prev => prev.filter(i => i.id !== img.id))}
+                          className="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-md text-neutral-500 hover:text-neutral-200 hover:bg-white/10 transition-colors"
+                          aria-label={`Remove ${img.fileName}`}
+                        >
+                          <XIcon />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <button
               ref={settingsButtonRef}
               onClick={(e) => {
@@ -2252,6 +2374,32 @@ export default function App(): JSX.Element {
                   suppressContentEditableWarning
                   onInput={() => { const d = inputRef.current; if (d) setQuery(d.textContent ?? '') }}
                   onPaste={(e) => {
+                    const items = e.clipboardData.items
+                    let hasImage = false
+
+                    for (let i = 0; i < items.length; i++) {
+                      const item = items[i]
+                      if (!SUPPORTED_IMAGE_TYPES.includes(item.type)) continue
+                      e.preventDefault()
+                      hasImage = true
+                      if (attachedImages.length >= MAX_ATTACHED_IMAGES) continue
+                      const blob = item.getAsFile()
+                      if (!blob) continue
+                      const reader = new FileReader()
+                      const mimeType = item.type
+                      const fileName = blob.name || 'Pasted image'
+                      reader.onload = () => {
+                        const base64 = reader.result as string
+                        setAttachedImages(prev => {
+                          if (prev.length >= MAX_ATTACHED_IMAGES) return prev
+                          return [...prev, { id: crypto.randomUUID(), base64, fileName, mimeType }]
+                        })
+                      }
+                      reader.readAsDataURL(blob)
+                    }
+
+                    if (hasImage) return
+
                     const text = e.clipboardData.getData('text/plain')
                     if (!text) return
                     const lines = text.split('\n').length
@@ -2316,6 +2464,27 @@ export default function App(): JSX.Element {
               >
                 {isLoading ? <SpinnerIcon /> : <SendIcon />}
               </button>
+
+              {attachedImages.length > 0 && (
+                <button
+                  ref={imageButtonRef}
+                  onClick={(e) => { e.stopPropagation(); setShowImagePanel(v => !v) }}
+                  className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-150 border ${
+                    showImagePanel
+                      ? 'border-white/20 bg-white/10 text-neutral-200'
+                      : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border-transparent hover:border-white/10'
+                  }`}
+                  aria-label={`${attachedImages.length} image(s) attached`}
+                  aria-pressed={showImagePanel}
+                >
+                  <div className="relative">
+                    <ImageIcon />
+                    <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-500 text-[8px] font-bold text-white leading-none">
+                      {attachedImages.length}
+                    </span>
+                  </div>
+                </button>
+              )}
 
               <div ref={moduleButtonsRef} className="flex items-center gap-1">
                 {buttonVisibility.appLauncher && (

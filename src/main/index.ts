@@ -1576,9 +1576,19 @@ function buildExtendedModelParams(model: string, reasoningEffort: string): Recor
   return params
 }
 
+type SanitizedMessage = { role: ChatRole; content: string | Array<{ type: string; text?: string; image_url?: string }> }
+
+function extractMessageText(content: string | Array<{ type: string; text?: string; image_url?: string }>): string {
+  if (typeof content === 'string') return content
+  return content
+    .filter((part) => part.type === 'input_text' && typeof part.text === 'string')
+    .map((part) => part.text!)
+    .join('\n')
+}
+
 async function completeChatWithMcp(
   client: OpenAI,
-  sanitizedMessages: Array<{ role: ChatRole; content: string }>,
+  sanitizedMessages: SanitizedMessage[],
   toolRegistry: McpToolRegistryEntry[],
   model: string
 ): Promise<string> {
@@ -1588,7 +1598,10 @@ async function completeChatWithMcp(
       content:
         "You are Covenant, a helpful, concise AI assistant integrated into a user's operating system. Keep your answers brief and to the point."
     },
-    ...sanitizedMessages
+    ...sanitizedMessages.map((m) => ({
+      role: m.role,
+      content: extractMessageText(m.content)
+    }))
   ]
 
   const openAiTools = toolRegistry.map((entry) => ({
@@ -2378,17 +2391,25 @@ ipcMain.on('update-auto-collapse-reasoning', (_event, autoCollapseReasoning: boo
   }
 })
 
-ipcMain.handle('covenant:chat-stream', async (event, rawMessages: Array<{ role?: string; content?: string }>) => {
+ipcMain.handle('covenant:chat-stream', async (event, rawMessages: Array<{ role?: string; content?: string | Array<{ type: string; text?: string; image_url?: string }> }>) => {
   const sanitizedMessages = Array.isArray(rawMessages)
     ? rawMessages
         .map((message) => {
           const role = typeof message.role === 'string' ? message.role.trim() : ''
           if (!CHAT_ROLE_SET.has(role as ChatRole)) return null
-          const content = typeof message.content === 'string' ? message.content.trim() : ''
-          if (!content) return null
-          return { role: role as ChatRole, content }
+          const content = message.content
+          if (content == null) return null
+          if (typeof content === 'string') {
+            const trimmed = content.trim()
+            if (!trimmed) return null
+            return { role: role as ChatRole, content: trimmed }
+          }
+          if (Array.isArray(content) && content.length > 0) {
+            return { role: role as ChatRole, content }
+          }
+          return null
         })
-        .filter((message): message is { role: ChatRole; content: string } => Boolean(message))
+        .filter((message) => message != null) as SanitizedMessage[]
     : []
 
   if (sanitizedMessages.length === 0) {
@@ -2629,17 +2650,25 @@ ipcMain.handle('covenant:chat-stream', async (event, rawMessages: Array<{ role?:
   return { id: streamId }
 })
 
-ipcMain.handle('covenant:chat', async (_event, rawMessages: Array<{ role?: string; content?: string }>) => {
+ipcMain.handle('covenant:chat', async (_event, rawMessages: Array<{ role?: string; content?: string | Array<{ type: string; text?: string; image_url?: string }> }>) => {
   const sanitizedMessages = Array.isArray(rawMessages)
     ? rawMessages
         .map((message) => {
           const role = typeof message.role === 'string' ? message.role.trim() : ''
           if (!CHAT_ROLE_SET.has(role as ChatRole)) return null
-          const content = typeof message.content === 'string' ? message.content.trim() : ''
-          if (!content) return null
-          return { role: role as ChatRole, content }
+          const content = message.content
+          if (content == null) return null
+          if (typeof content === 'string') {
+            const trimmed = content.trim()
+            if (!trimmed) return null
+            return { role: role as ChatRole, content: trimmed }
+          }
+          if (Array.isArray(content) && content.length > 0) {
+            return { role: role as ChatRole, content }
+          }
+          return null
         })
-        .filter((message): message is { role: ChatRole; content: string } => Boolean(message))
+        .filter((message) => message != null) as SanitizedMessage[]
     : []
 
   if (sanitizedMessages.length === 0) {

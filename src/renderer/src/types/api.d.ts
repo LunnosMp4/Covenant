@@ -6,6 +6,16 @@ import type { Workflow, WorkflowLogPayload, WorkflowStatusUpdatePayload } from '
 
 type ChatRole = 'system' | 'user' | 'assistant'
 
+type InputImageContent = { type: 'input_image'; image_url: string }
+type InputTextContent = { type: 'input_text'; text: string }
+type InputContent = InputTextContent | InputImageContent
+
+interface ChatMessageImage {
+  base64: string
+  fileName: string
+  mimeType: string
+}
+
 interface ChatMessage {
   id: string
   role: ChatRole
@@ -16,6 +26,7 @@ interface ChatMessage {
   usage?: ChatUsage
   model?: string
   sources?: Source[]
+  images?: ChatMessageImage[]
 }
 
 interface ChatUsage {
@@ -108,8 +119,8 @@ interface CovenantAPI {
     onAutoCollapseReasoningUpdated: (callback: (autoCollapseReasoning: boolean) => void) => () => void
   }
   chat: {
-    askCovenant: (messages: Array<{ role: ChatRole; content: string }>) => Promise<string>
-    askCovenantStream: (messages: Array<{ role: ChatRole; content: string }>) => Promise<{ id: string }>
+    askCovenant: (messages: Array<{ role: ChatRole; content: string | InputContent[] }>) => Promise<string>
+    askCovenantStream: (messages: Array<{ role: ChatRole; content: string | InputContent[] }>) => Promise<{ id: string }>
     onStreamEvent: (callback: (event: ChatStreamEvent) => void) => () => void
     getConversations: () => Promise<ChatConversation[]>
     getConversation: (id: string) => Promise<ChatConversation | null>
@@ -178,7 +189,7 @@ declare global {
       onButtonVisibilityUpdated: (callback: (buttonVisibility: ButtonVisibility) => void) => () => void
       onChatModelUpdated: (callback: (chatModel: string) => void) => () => void
       onReasoningEffortUpdated: (callback: (reasoningEffort: ReasoningEffort) => void) => () => void
-      askCovenant: (messages: Array<{ role: ChatRole; content: string }>) => Promise<string>
+      askCovenant: (messages: Array<{ role: ChatRole; content: string | InputContent[] }>) => Promise<string>
       transcribe: (audioBuffer: ArrayBuffer) => Promise<string>
     onToggleVisibility: (callback: (visible: boolean) => void) => () => void
     }
