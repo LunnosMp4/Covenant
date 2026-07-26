@@ -2283,7 +2283,7 @@ export default function App(): JSX.Element {
                   onCompositionStart={() => { isComposingRef.current = true }}
                   onCompositionEnd={() => { isComposingRef.current = false }}
                   data-placeholder="What can I help you with today?"
-                  className="flex-1 bg-transparent text-lg text-neutral-100 placeholder:text-neutral-500 border-none focus:outline-none focus:ring-0 px-4 py-3 whitespace-pre-wrap empty:before:content-[attr(data-placeholder)] empty:before:text-neutral-500"
+                  className="flex-1 bg-transparent text-lg text-neutral-100 placeholder:text-neutral-500 border-none focus:outline-none focus:ring-0 px-4 py-3 whitespace-pre overflow-hidden empty:before:content-[attr(data-placeholder)] empty:before:text-neutral-500"
                   style={{ caretColor: 'var(--chat-accent)' }}
                   spellCheck={false}
                 />

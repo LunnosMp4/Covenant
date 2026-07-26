@@ -97,22 +97,24 @@ export default function VoiceWaveform({ stream, barCount = 64 }: VoiceWaveformPr
   }, [initAudio, barCount])
 
   return (
-    <div
-      ref={canvasRef}
-      className="flex-1 flex items-center justify-center gap-[3px] px-4 py-3"
-    >
-      {Array.from({ length: barCount }, (_, i) => (
-        <div
-          key={i}
-          className="rounded-full bg-white/70"
-          style={{
-            width: '3px',
-            height: '3px',
-            minHeight: '3px',
-            transition: 'height 50ms ease-out'
-          }}
-        />
-      ))}
+    <div className="flex-1 flex items-center justify-center overflow-hidden px-4" style={{ minHeight: '52px' }}>
+      <div
+        ref={canvasRef}
+        className="flex items-center justify-center gap-[3px]"
+      >
+        {Array.from({ length: barCount }, (_, i) => (
+          <div
+            key={i}
+            className="rounded-full bg-white/70"
+            style={{
+              width: '3px',
+              height: '3px',
+              minHeight: '3px',
+              transition: 'height 50ms ease-out'
+            }}
+          />
+        ))}
+      </div>
     </div>
   )
 }
