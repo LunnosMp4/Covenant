@@ -72,10 +72,12 @@ interface TerminalExitPayload {
 interface CovenantAPI {
   window: {
     hideWindow: () => void
-    openSettings: () => void
+    setPinned: (pinned: boolean) => void
+    openSettings: (tab?: string) => void
     closeSettings: () => void
     minimizeSettings: () => void
     setExpanded: (expanded: boolean) => void
+    onNavigateSettingsTab: (callback: (tab: string) => void) => () => void
     onToggleVisibility: (callback: (visible: boolean) => void) => () => void
   }
   config: {
@@ -150,7 +152,7 @@ declare global {
       hideWindow: () => void
       setPinned: (pinned: boolean) => void
       setExpanded: (expanded: boolean) => void
-      openSettings: () => void
+      openSettings: (tab?: string) => void
       closeSettings: () => void
       minimizeSettings: () => void
       getConfig: () => Promise<AppConfig>

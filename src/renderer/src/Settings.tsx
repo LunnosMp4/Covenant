@@ -26,6 +26,18 @@ import { getAppBadgeText } from './utils/helpers'
 
 type SettingsTab = 'general' | 'terminal' | 'appLauncher' | 'workflow' | 'preprompts' | 'mcp'
 
+const VALID_SETTINGS_TABS: readonly SettingsTab[] = ['general', 'terminal', 'appLauncher', 'workflow', 'preprompts', 'mcp']
+
+function getInitialTab(): SettingsTab {
+  const hash = window.location.hash
+  const params = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : '')
+  const tab = params.get('tab')
+  if (tab && VALID_SETTINGS_TABS.includes(tab as SettingsTab)) {
+    return tab as SettingsTab
+  }
+  return 'general'
+}
+
 function SidebarGlyph({ tab }: { tab: SettingsTab }): JSX.Element {
   if (tab === 'general') {
     return (
@@ -781,7 +793,7 @@ function PrepromptsTab({ preprompts, isLoading, onAdd, onEdit, onDelete }: Prepr
 }
 
 export default function Settings(): JSX.Element {
-  const [activeTab, setActiveTab] = useState<SettingsTab>('general')
+  const [activeTab, setActiveTab] = useState<SettingsTab>(getInitialTab)
   const [apiKey, setApiKey] = useState('')
   const [proxyUrl, setProxyUrl] = useState('')
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false)
@@ -883,6 +895,14 @@ export default function Settings(): JSX.Element {
       if (typeof unsubReasoningEffort === 'function') unsubReasoningEffort()
       if (typeof unsubButtonVisibility === 'function') unsubButtonVisibility()
     }
+  }, [])
+
+  useEffect(() => {
+    return window.api?.window.onNavigateSettingsTab?.((tab) => {
+      if (VALID_SETTINGS_TABS.includes(tab as SettingsTab)) {
+        setActiveTab(tab as SettingsTab)
+      }
+    })
   }, [])
 
   useEffect(() => {

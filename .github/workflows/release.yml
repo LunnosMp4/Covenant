@@ -14,9 +14,12 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Release
-    runs-on: windows-2022
+  build:
+    name: Build (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [windows-2022, macos-14]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,6 +39,24 @@ jobs:
       - name: Build
         run: npm run build && npm run dist -- --publish never
 
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}
+          path: |
+            dist/*.{exe,dmg,yml,blockmap}
+
+  release:
+    name: Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         env:
@@ -44,6 +65,4 @@ jobs:
           tag_name: ${{ inputs.tag_name || github.ref_name }}
           name: Covenant ${{ inputs.tag_name || github.ref_name }}
           files: |
-            dist/*.exe
-            dist/*.yml
-            dist/*.blockmap
+            dist/*.{exe,dmg,blockmap,yml}

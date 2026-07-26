@@ -114,9 +114,18 @@ const api = {
     hideWindow: () => ipcRenderer.send('hide-window'),
     setPinned: (pinned: boolean) => ipcRenderer.send('set-pinned', pinned),
     setExpanded: (expanded: boolean) => ipcRenderer.send('set-window-expanded', expanded),
-    openSettings: () => ipcRenderer.send('open-settings'),
+    openSettings: (tab?: string) => ipcRenderer.send('open-settings', tab),
     closeSettings: () => ipcRenderer.send('close-settings'),
     minimizeSettings: () => ipcRenderer.send('minimize-settings'),
+    onNavigateSettingsTab: (callback: (tab: string) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, tab: string) => {
+        callback(tab)
+      }
+      ipcRenderer.on('navigate-settings-tab', listener)
+      return () => {
+        ipcRenderer.removeListener('navigate-settings-tab', listener)
+      }
+    },
     onToggleVisibility: (callback: (visible: boolean) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, visible: boolean) => {
         callback(visible)

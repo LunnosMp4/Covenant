@@ -1645,17 +1645,19 @@ async function completeChatWithMcp(
   return 'The model requested too many tool calls without finishing.'
 }
 
-function loadRendererWindow(targetWindow: BrowserWindow, route?: 'settings'): void {
+function loadRendererWindow(targetWindow: BrowserWindow, route?: 'settings', tab?: string): void {
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     const rendererUrl = process.env['ELECTRON_RENDERER_URL']
-    const targetUrl = route === 'settings' ? `${rendererUrl}#/settings` : rendererUrl
+    const query = tab ? `?tab=${encodeURIComponent(tab)}` : ''
+    const targetUrl = route === 'settings' ? `${rendererUrl}#/settings${query}` : rendererUrl
     targetWindow.loadURL(targetUrl)
     return
   }
 
   const rendererEntryFile = join(__dirname, '../renderer/index.html')
   if (route === 'settings') {
-    targetWindow.loadFile(rendererEntryFile, { hash: 'settings' })
+    const hash = tab ? `settings?tab=${encodeURIComponent(tab)}` : 'settings'
+    targetWindow.loadFile(rendererEntryFile, { hash })
     return
   }
 
@@ -1680,7 +1682,6 @@ function createWindow(): void {
     skipTaskbar: true,
     alwaysOnTop: true,
     hasShadow: false,
-    titleBarStyle: isMac ? 'hidden' : undefined,
     thickFrame: isWindows ? false : undefined,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -1734,8 +1735,11 @@ function createWindow(): void {
   loadRendererWindow(mainWindow)
 }
 
-function createSettingsWindow(): void {
+function createSettingsWindow(tab?: string): void {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
+    if (tab) {
+      settingsWindow.webContents.send('navigate-settings-tab', tab)
+    }
     settingsWindow.show()
     settingsWindow.focus()
     return
@@ -1776,7 +1780,7 @@ function createSettingsWindow(): void {
     return { action: 'deny' }
   })
 
-  loadRendererWindow(settingsWindow, 'settings')
+  loadRendererWindow(settingsWindow, 'settings', tab)
 }
 
 function showWindow(): void {
@@ -2008,8 +2012,8 @@ ipcMain.on('set-window-expanded', (_event, expanded: boolean) => {
   applyWindowHeight(height)
 })
 
-ipcMain.on('open-settings', () => {
-  createSettingsWindow()
+ipcMain.on('open-settings', (_event, tab?: string) => {
+  createSettingsWindow(tab)
 })
 
 ipcMain.on('close-settings', () => {

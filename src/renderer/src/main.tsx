@@ -6,7 +6,7 @@ import './assets/index.css'
 
 function isSettingsRoute(): boolean {
   const normalizedHash = window.location.hash.toLowerCase()
-  return normalizedHash === '#settings' || normalizedHash === '#/settings'
+  return normalizedHash.startsWith('#settings') || normalizedHash.startsWith('#/settings')
 }
 
 const isSettingsWindow = isSettingsRoute()

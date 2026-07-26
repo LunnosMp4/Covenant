@@ -2198,8 +2198,12 @@ export default function App(): JSX.Element {
                   }))}
                   onAddNew={() => {
                     setActivePopup(null)
+                    const tab =
+                      activePopup === 'appLauncher' ? 'appLauncher' :
+                      activePopup === 'workflow' ? 'workflow' :
+                      'preprompts'
                     if (window.api?.window.openSettings) {
-                      window.api.window.openSettings()
+                      window.api.window.openSettings(tab)
                     } else {
                       console.log('Settings window is only available in the Electron app.')
                     }
