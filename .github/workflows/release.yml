@@ -30,7 +30,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -44,7 +44,10 @@ jobs:
         with:
           name: dist-${{ matrix.os }}
           path: |
-            dist/*.{exe,dmg,yml,blockmap}
+            dist/*.exe
+            dist/*.dmg
+            dist/*.yml
+            dist/*.blockmap
 
   release:
     name: Release
@@ -65,4 +68,7 @@ jobs:
           tag_name: ${{ inputs.tag_name || github.ref_name }}
           name: Covenant ${{ inputs.tag_name || github.ref_name }}
           files: |
-            dist/*.{exe,dmg,blockmap,yml}
+            dist/*.exe
+            dist/*.dmg
+            dist/*.blockmap
+            dist/*.yml
