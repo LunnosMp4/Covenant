@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, type CSSProperties } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -13,6 +13,7 @@ import 'prismjs/components/prism-python'
 import ModulePopup, { type ActivePopup, type PopupItem } from './components/ModulePopup'
 import TerminalView from './components/TerminalView'
 import VoiceWaveform from './components/VoiceWaveform'
+import { createId } from './utils/helpers'
 import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from './constants/terminalFonts'
 import {
   DEFAULT_THEME_GRADIENT,
@@ -307,14 +308,6 @@ function GridIcon(): JSX.Element {
   )
 }
 
-function BoltIcon(): JSX.Element {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M13 2L5 13h6l-1 9 8-11h-6l1-9z" />
-    </svg>
-  )
-}
-
 function CodeIcon(): JSX.Element {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -408,14 +401,6 @@ function createConversationTitle(prompt: string): string {
   const firstLine = trimmed.split('\n')[0] || trimmed
   if (firstLine.length <= MAX_CONVERSATION_TITLE_LENGTH) return firstLine
   return `${firstLine.slice(0, MAX_CONVERSATION_TITLE_LENGTH - 3)}...`
-}
-
-function createMessageId(): string {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID()
-  }
-
-  return `msg_${Math.random().toString(36).slice(2)}_${Date.now()}`
 }
 
 function createSelectedSystemPrompt(preprompt: Preprompt): SelectedSystemPrompt {
@@ -551,7 +536,11 @@ export default function App(): JSX.Element {
   const successResetTimersRef = useRef<Record<string, number>>({})
   const activeConversationRef = useRef<ChatConversation | null>(null)
   const streamBufferRef = useRef<{ content: string; reasoning: string } | null>(null)
+  const activeStreamIdRef = useRef<string | null>(null)
+  const activeStreamMessageIdRef = useRef<string | null>(null)
+  const activeStreamConversationIdRef = useRef<string | null>(null)
   const reasoningAutoCloseTimersRef = useRef<Record<string, number>>({})
+  const autoCollapseReasoningRef = useRef(autoCollapseReasoning)
   // Ref for the hide-delay timer so it can be cancelled on rapid show/hide.
   const hideDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -577,13 +566,6 @@ export default function App(): JSX.Element {
     }
     pasteBlocksRef.current.clear()
     setQuery('')
-  }
-
-  function updateQueryFromDiv(): void {
-    const div = inputRef.current
-    if (div) {
-      setQuery(div.textContent ?? '')
-    }
   }
 
   useEffect(() => {
@@ -866,6 +848,16 @@ export default function App(): JSX.Element {
   }, [activeConversation])
 
   useEffect(() => {
+    activeStreamIdRef.current = activeStreamId
+    activeStreamMessageIdRef.current = activeStreamMessageId
+    activeStreamConversationIdRef.current = activeStreamConversationId
+  }, [activeStreamId, activeStreamMessageId, activeStreamConversationId])
+
+  useEffect(() => {
+    autoCollapseReasoningRef.current = autoCollapseReasoning
+  }, [autoCollapseReasoning])
+
+  useEffect(() => {
     if (!isChatOpen) return
     setAutoScrollEnabled(true)
   }, [isChatOpen, activeConversation?.id])
@@ -1130,10 +1122,11 @@ export default function App(): JSX.Element {
     }
 
     const unsubscribe = window.api.chat.onStreamEvent((event: ChatStreamEvent) => {
-      if (!activeStreamId || event.id !== activeStreamId) return
+      const streamId = activeStreamIdRef.current
+      if (!streamId || event.id !== streamId) return
 
-      const conversationId = activeStreamConversationId
-      const messageId = activeStreamMessageId
+      const conversationId = activeStreamConversationIdRef.current
+      const messageId = activeStreamMessageIdRef.current
       if (!conversationId || !messageId) return
 
       if (event.type === 'content' && event.delta) {
@@ -1252,7 +1245,7 @@ export default function App(): JSX.Element {
         setActiveStreamMessageId(null)
         setActiveStreamConversationId(null)
 
-        if (autoCollapseReasoning) {
+        if (autoCollapseReasoningRef.current) {
           const timerId = window.setTimeout(() => {
             setThinkingOpenById((previous) => ({
               ...previous,
@@ -1271,14 +1264,7 @@ export default function App(): JSX.Element {
         unsubscribe()
       }
     }
-  }, [
-    activeStreamConversationId,
-    activeStreamId,
-    activeStreamMessageId,
-    persistConversation,
-    updateConversationMessage,
-    upsertConversation
-  ])
+  }, [])
 
   const handleSubmit = useCallback(async () => {
     const rawPrompt = getFullPrompt().trim()
@@ -1292,7 +1278,7 @@ export default function App(): JSX.Element {
     if (!nextConversation) {
       const createdAt = now
       nextConversation = {
-        id: createMessageId(),
+        id: createId('msg_'),
         title: createConversationTitle(rawPrompt),
         createdAt,
         updatedAt: createdAt,
@@ -1303,7 +1289,7 @@ export default function App(): JSX.Element {
     }
 
     const userMessage: ChatMessage = {
-      id: createMessageId(),
+      id: createId('msg_'),
       role: 'user',
       content: rawPrompt,
       createdAt: now
@@ -1341,7 +1327,7 @@ export default function App(): JSX.Element {
         }))
       ]
 
-      const assistantMessageId = createMessageId()
+      const assistantMessageId = createId('msg_')
       const placeholderAssistant: ChatMessage = {
         id: assistantMessageId,
         role: 'assistant',
@@ -1391,7 +1377,7 @@ export default function App(): JSX.Element {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to fetch AI response.'
       const errorMessage: ChatMessage = {
-        id: createMessageId(),
+        id: createId('msg_'),
         role: 'assistant',
         content: `Error: ${message}`,
         createdAt: Date.now()
@@ -1456,7 +1442,7 @@ export default function App(): JSX.Element {
       const baseConversation =
         activeConversation ??
         ({
-          id: createMessageId(),
+          id: createId('msg_'),
           title: DEFAULT_CONVERSATION_TITLE,
           createdAt: now,
           updatedAt: now,
@@ -1465,7 +1451,7 @@ export default function App(): JSX.Element {
         } as ChatConversation)
 
       const assistantMessage: ChatMessage = {
-        id: createMessageId(),
+        id: createId('msg_'),
         role: 'assistant',
         content,
         createdAt: now
@@ -1595,10 +1581,7 @@ export default function App(): JSX.Element {
               }))
             })
         }
-      } else {
-        console.log(`${item.title} selected`)
       }
-
       if (activePopup !== 'workflow' && activePopup !== 'settings') {
         setActivePopup(null)
       } else {
@@ -1769,23 +1752,32 @@ export default function App(): JSX.Element {
     [activeConversation, activePopup, conversations, mode, switchToAiMode, toggleMode, toggleRecording]
   )
 
-  const chatMessages = activeConversation
-    ? normalizeMessageOrder(activeConversation.messages)
-    : []
+  const chatMessages = useMemo(
+    () => (activeConversation ? normalizeMessageOrder(activeConversation.messages) : []),
+    [activeConversation]
+  )
 
-  const themePalette = getThemePalette(themeGradient)
-  const themeStyles: CSSProperties = {
-    '--chat-accent': themePalette.accent,
-    '--chat-accent-soft': themePalette.accentSoft,
-    '--chat-accent-strong': themePalette.accentStrong,
-    '--chat-user-text': themePalette.userText,
-    '--chat-assistant-text': themePalette.assistantText,
-    '--chat-assistant-bg': themePalette.assistantBg,
-    '--chat-assistant-border': themePalette.assistantBorder,
-    '--chat-scroll-thumb': themePalette.scrollbarThumb,
-    '--chat-scroll-thumb-hover': themePalette.scrollbarThumbHover,
-    '--chat-meta-text': themePalette.metaText
-  } as CSSProperties
+  const themePalette = useMemo(() => getThemePalette(themeGradient), [themeGradient])
+  const themeStyles = useMemo<CSSProperties>(
+    () => ({
+      '--chat-accent': themePalette.accent,
+      '--chat-accent-soft': themePalette.accentSoft,
+      '--chat-accent-strong': themePalette.accentStrong,
+      '--chat-user-text': themePalette.userText,
+      '--chat-assistant-text': themePalette.assistantText,
+      '--chat-assistant-bg': themePalette.assistantBg,
+      '--chat-assistant-border': themePalette.assistantBorder,
+      '--chat-scroll-thumb': themePalette.scrollbarThumb,
+      '--chat-scroll-thumb-hover': themePalette.scrollbarThumbHover,
+      '--chat-meta-text': themePalette.metaText
+    } as CSSProperties),
+    [themePalette]
+  )
+
+  const contextStats = useMemo(
+    () => (activeConversation ? computeContextStats(activeConversation.messages, chatModel) : null),
+    [activeConversation, chatModel]
+  )
 
   return (
     <div
@@ -1844,8 +1836,8 @@ export default function App(): JSX.Element {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      {(() => {
-                        const stats = activeConversation ? computeContextStats(activeConversation.messages, chatModel) : null
+                        {(() => {
+                        const stats = contextStats
                         if (!stats || stats.maxTokens <= 0) return null
                         const radius = 11
                         const circumference = 2 * Math.PI * radius

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { LauncherApp, LauncherAppTarget } from '../types/launcher-app'
 import ModalOverlay from './ModalOverlay'
+import { getAppBadgeText, createId } from '../utils/helpers'
 
 interface AppFormModalProps {
   initialData?: LauncherApp
@@ -15,11 +16,6 @@ interface AppFormModalProps {
 
 type AppTargetRow = LauncherAppTarget & { id: string }
 
-function getAppBadgeText(title: string): string {
-  const trimmedTitle = title.trim()
-  return trimmedTitle.slice(0, 2).toUpperCase() || 'AP'
-}
-
 function IconPreview({ title }: { title: string }): JSX.Element {
   return (
     <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl border border-neutral-700 bg-neutral-950">
@@ -31,11 +27,7 @@ function IconPreview({ title }: { title: string }): JSX.Element {
 }
 
 function createTargetId(): string {
-  if (globalThis.crypto?.randomUUID) {
-    return globalThis.crypto.randomUUID()
-  }
-
-  return `target-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  return createId('target-')
 }
 
 function createTargetRow(path = '', argumentsValue = ''): AppTargetRow {

@@ -22,10 +22,9 @@ import type { McpServer } from '../../shared/mcp'
 import type { LauncherApp } from './types/launcher-app'
 import type { Preprompt } from './types/preprompt'
 import type { Workflow } from './types/workflow'
+import { getAppBadgeText } from './utils/helpers'
 
 type SettingsTab = 'general' | 'terminal' | 'appLauncher' | 'workflow' | 'preprompts' | 'mcp'
-
-const THEME_GRADIENT_SET = new Set<string>(THEME_OPTIONS.map((option) => option.gradientClass))
 
 function SidebarGlyph({ tab }: { tab: SettingsTab }): JSX.Element {
   if (tab === 'general') {
@@ -170,11 +169,6 @@ function SectionCard({
       <div className="mt-4">{children}</div>
     </section>
   )
-}
-
-function getAppBadgeText(title: string): string {
-  const trimmedTitle = title.trim()
-  return trimmedTitle.slice(0, 2).toUpperCase() || 'AP'
 }
 
 function getAppTargetsSummary(app: LauncherApp): string {

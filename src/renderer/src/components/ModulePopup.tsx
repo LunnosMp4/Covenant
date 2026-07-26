@@ -13,6 +13,7 @@ import type { LauncherAppTarget } from '../types/launcher-app'
 import type { Workflow, WorkflowExecutionState } from '../types/workflow'
 import CustomSelect from './CustomSelect'
 import WorkflowList from './WorkflowList'
+import { getAppBadgeText } from '../utils/helpers'
 
 export type ActivePopup = 'appLauncher' | 'workflow' | 'settings'
 export type PopupAnchorSide = 'left' | 'right'
@@ -142,11 +143,6 @@ function ItemIcon({ icon }: { icon: PopupIcon }): JSX.Element {
       <path d="M13 2L5 13h6l-1 9 8-11h-6l1-9z" />
     </svg>
   )
-}
-
-function getAppBadgeText(title: string): string {
-  const trimmedTitle = title.trim()
-  return trimmedTitle.slice(0, 2).toUpperCase() || 'AP'
 }
 
 function SettingsPopup({
