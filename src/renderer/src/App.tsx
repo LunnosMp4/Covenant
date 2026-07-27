@@ -704,7 +704,7 @@ export default function App(): JSX.Element {
       // IMPORTANT: capture the returned cleanup function to prevent an IPC
       // listener leak — each call to onToggleVisibility registers a new
       // ipcRenderer listener that must be removed when this effect tears down.
-      const unsubscribe = window.api.window.onToggleVisibility((v) => {
+      const unsubscribe = window.api.window.onToggleVisibility((v, terminalMode) => {
         if (v) {
           // Cancel any pending hide timer so rapid show/hide doesn't race.
           if (hideDelayTimerRef.current !== null) {
@@ -713,6 +713,12 @@ export default function App(): JSX.Element {
           }
           setIsAppVisible(true)
           setVisible(true)
+
+          if (terminalMode) {
+            setHasInitializedTerminal(true)
+            setMode('terminal')
+            setActivePopup(null)
+          }
         } else {
           setVisible(false)
           setIsPinned(false)

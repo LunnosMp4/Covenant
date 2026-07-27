@@ -29,9 +29,12 @@ import {
   DEFAULT_CHAT_MODEL,
   DEFAULT_ENABLE_WEB_SEARCH,
   DEFAULT_REASONING_EFFORT,
+  DEFAULT_SHORTCUTS,
   modelDoesReasoning,
   modelSupportsExtendedParams,
-  modelSupportsWebSearch
+  modelSupportsWebSearch,
+  normalizeShortcuts,
+  type ShortcutConfig
 } from '../shared/config'
 import type { McpAuth, McpHeader, McpServer, McpTool } from '../shared/mcp'
 
@@ -133,7 +136,8 @@ const DEFAULT_CONFIG: AppConfig = {
   chatModel: DEFAULT_CHAT_MODEL,
   reasoningEffort: DEFAULT_REASONING_EFFORT,
   enableWebSearch: DEFAULT_ENABLE_WEB_SEARCH,
-  autoCollapseReasoning: DEFAULT_AUTO_COLLAPSE_REASONING
+  autoCollapseReasoning: DEFAULT_AUTO_COLLAPSE_REASONING,
+  shortcuts: { ...DEFAULT_SHORTCUTS }
 }
 
 const WORKFLOW_LANGUAGE_SET = new Set<WorkflowLanguage>([
@@ -1098,7 +1102,8 @@ function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined): AppC
     autoCollapseReasoning:
       typeof rawConfig?.autoCollapseReasoning === 'boolean'
         ? rawConfig.autoCollapseReasoning
-        : DEFAULT_AUTO_COLLAPSE_REASONING
+        : DEFAULT_AUTO_COLLAPSE_REASONING,
+    shortcuts: normalizeShortcuts(rawConfig?.shortcuts)
   }
 }
 
@@ -1796,7 +1801,7 @@ function createSettingsWindow(tab?: string): void {
   loadRendererWindow(settingsWindow, 'settings', tab)
 }
 
-function showWindow(): void {
+function showWindow(terminalMode = false): void {
   if (!mainWindow) return
 
   const { x, y } = getWindowPosition()
@@ -1804,7 +1809,7 @@ function showWindow(): void {
 
   mainWindow.show()
   mainWindow.focus()
-  mainWindow.webContents.send('toggle-visibility', true)
+  mainWindow.webContents.send('toggle-visibility', true, terminalMode)
   isVisible = true
 }
 
@@ -1877,6 +1882,57 @@ function toggleWindow(): void {
   }
 }
 
+function openTerminalMode(): void {
+  if (!mainWindow) return
+
+  if (!isVisible) {
+    showWindow(true)
+  } else {
+    mainWindow.webContents.send('toggle-visibility', true, true)
+  }
+}
+
+function getShortcutDisplay(shortcut: string): string {
+  return shortcut || 'Disabled'
+}
+
+function updateTrayTooltip(shortcut: string): void {
+  if (tray && !tray.isDestroyed()) {
+    const display = getShortcutDisplay(shortcut)
+    tray.setToolTip(`Covenant - ${display}`)
+  }
+}
+
+function registerShortcuts(config: AppConfig): void {
+  globalShortcut.unregisterAll()
+
+  const shortcuts = config.shortcuts ?? DEFAULT_SHORTCUTS
+
+  if (shortcuts.openApp) {
+    try {
+      const ok = globalShortcut.register(shortcuts.openApp, toggleWindow)
+      if (!ok) {
+        console.warn(`Failed to register global shortcut: ${shortcuts.openApp} (may conflict with another app)`)
+      }
+    } catch (error) {
+      console.warn(`Error registering global shortcut '${shortcuts.openApp}':`, error)
+    }
+  }
+
+  if (shortcuts.openAppTerminal) {
+    try {
+      const ok = globalShortcut.register(shortcuts.openAppTerminal, openTerminalMode)
+      if (!ok) {
+        console.warn(`Failed to register global shortcut: ${shortcuts.openAppTerminal} (may conflict with another app)`)
+      }
+    } catch (error) {
+      console.warn(`Error registering global shortcut '${shortcuts.openAppTerminal}':`, error)
+    }
+  }
+
+  updateTrayTooltip(shortcuts.openApp)
+}
+
 function createTray(): void {
   try {
     // Try to find and load tray icon
@@ -1903,8 +1959,9 @@ function createTray(): void {
 
     tray = new Tray(trayIconPath)
     
-    // Set tooltip
-    tray.setToolTip('Covenant - Alt+Space')
+    // Set tooltip — will be updated by registerShortcuts() once config is loaded
+    const config = readConfig()
+    tray.setToolTip(`Covenant - ${getShortcutDisplay(config.shortcuts?.openApp ?? DEFAULT_SHORTCUTS.openApp)}`)
 
     // Create context menu
     const contextMenu = Menu.buildFromTemplate([
@@ -1976,7 +2033,7 @@ app.whenReady().then(() => {
   createWindow()
   createTray()
 
-  globalShortcut.register('Alt+Space', toggleWindow)
+  registerShortcuts(config)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -2410,6 +2467,20 @@ ipcMain.on('update-auto-collapse-reasoning', (_event, autoCollapseReasoning: boo
 
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.webContents.send('auto-collapse-reasoning-updated', nextAutoCollapse)
+  }
+})
+
+ipcMain.on('update-shortcuts', (_event, rawShortcuts: unknown) => {
+  const shortcuts = normalizeShortcuts(rawShortcuts)
+  updateConfig({ shortcuts })
+  registerShortcuts(readConfig())
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('shortcuts-updated', shortcuts)
+  }
+
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.webContents.send('shortcuts-updated', shortcuts)
   }
 })
 

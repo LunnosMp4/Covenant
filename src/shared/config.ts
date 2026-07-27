@@ -54,6 +54,25 @@ export function modelSupportsWebSearch(modelId: string): boolean {
     lower.startsWith('gpt-4o')
 }
 
+export interface ShortcutConfig {
+  openApp: string
+  openAppTerminal: string
+}
+
+export const DEFAULT_SHORTCUTS: ShortcutConfig = {
+  openApp: 'Alt+Space',
+  openAppTerminal: 'Alt+T'
+}
+
+export function normalizeShortcuts(raw: unknown): ShortcutConfig {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_SHORTCUTS }
+  const obj = raw as Record<string, unknown>
+  return {
+    openApp: typeof obj.openApp === 'string' ? obj.openApp : DEFAULT_SHORTCUTS.openApp,
+    openAppTerminal: typeof obj.openAppTerminal === 'string' ? obj.openAppTerminal : DEFAULT_SHORTCUTS.openAppTerminal
+  }
+}
+
 export interface AppConfig {
   apiKey: string
   themeGradient: string
@@ -67,4 +86,5 @@ export interface AppConfig {
   reasoningEffort: ReasoningEffort
   enableWebSearch: boolean
   autoCollapseReasoning: boolean
+  shortcuts: ShortcutConfig
 }

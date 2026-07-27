@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { AppConfig } from '../shared/config'
-import type { ButtonVisibility, ReasoningEffort } from '../shared/config'
+import type { ButtonVisibility, ReasoningEffort, ShortcutConfig } from '../shared/config'
 import type { McpServer } from '../shared/mcp'
 
 interface Preprompt {
@@ -134,9 +134,9 @@ const api = {
         ipcRenderer.removeListener('navigate-settings-tab', listener)
       }
     },
-    onToggleVisibility: (callback: (visible: boolean) => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, visible: boolean) => {
-        callback(visible)
+    onToggleVisibility: (callback: (visible: boolean, terminalMode?: boolean) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, visible: boolean, terminalMode?: boolean) => {
+        callback(visible, terminalMode)
       }
 
       ipcRenderer.on('toggle-visibility', listener)
@@ -171,6 +171,18 @@ const api = {
       ipcRenderer.send('update-web-search', enableWebSearch),
     updateAutoCollapseReasoning: (autoCollapseReasoning: boolean) =>
       ipcRenderer.send('update-auto-collapse-reasoning', autoCollapseReasoning),
+    updateShortcuts: (shortcuts: ShortcutConfig) => ipcRenderer.send('update-shortcuts', shortcuts),
+    onShortcutsUpdated: (callback: (shortcuts: ShortcutConfig) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, shortcuts: ShortcutConfig) => {
+        callback(shortcuts)
+      }
+
+      ipcRenderer.on('shortcuts-updated', listener)
+
+      return () => {
+        ipcRenderer.removeListener('shortcuts-updated', listener)
+      }
+    },
     onThemeUpdated: (callback: (gradientClass: string) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, gradientClass: string) => {
         callback(gradientClass)
@@ -392,6 +404,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateReasoningEffort: api.config.updateReasoningEffort,
   updateWebSearch: api.config.updateWebSearch,
   updateAutoCollapseReasoning: api.config.updateAutoCollapseReasoning,
+  updateShortcuts: api.config.updateShortcuts,
   getTerminalFonts: api.config.getTerminalFonts,
   onThemeUpdated: api.config.onThemeUpdated,
   onTerminalFontUpdated: api.config.onTerminalFontUpdated,

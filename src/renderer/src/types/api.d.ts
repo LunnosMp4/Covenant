@@ -1,4 +1,4 @@
-import type { AppConfig, ButtonVisibility, ReasoningEffort } from '../../../shared/config'
+import type { AppConfig, ButtonVisibility, ReasoningEffort, ShortcutConfig } from '../../../shared/config'
 import type { McpServer } from '../../../shared/mcp'
 import type { Preprompt } from './preprompt'
 import type { LauncherApp } from './launcher-app'
@@ -92,7 +92,7 @@ interface CovenantAPI {
     minimizeSettings: () => void
     setExpanded: (expanded: boolean) => void
     onNavigateSettingsTab: (callback: (tab: string) => void) => () => void
-    onToggleVisibility: (callback: (visible: boolean) => void) => () => void
+    onToggleVisibility: (callback: (visible: boolean, terminalMode?: boolean) => void) => () => void
   }
   config: {
     getConfig: () => Promise<AppConfig>
@@ -111,6 +111,7 @@ interface CovenantAPI {
     updateReasoningEffort: (reasoningEffort: ReasoningEffort) => void
     updateWebSearch: (enableWebSearch: boolean) => void
     updateAutoCollapseReasoning: (autoCollapseReasoning: boolean) => void
+    updateShortcuts: (shortcuts: ShortcutConfig) => void
     getTerminalFonts: () => Promise<string[]>
     onThemeUpdated: (callback: (gradientClass: string) => void) => () => void
     onTerminalFontUpdated: (callback: (terminalFont: string) => void) => () => void
@@ -120,6 +121,7 @@ interface CovenantAPI {
     onReasoningEffortUpdated: (callback: (reasoningEffort: ReasoningEffort) => void) => () => void
     onWebSearchUpdated: (callback: (enableWebSearch: boolean) => void) => () => void
     onAutoCollapseReasoningUpdated: (callback: (autoCollapseReasoning: boolean) => void) => () => void
+    onShortcutsUpdated: (callback: (shortcuts: ShortcutConfig) => void) => () => void
   }
   chat: {
     askCovenant: (messages: Array<{ role: ChatRole; content: string | InputContent[] }>) => Promise<string>
@@ -185,6 +187,7 @@ declare global {
       updateReasoningEffort: (reasoningEffort: ReasoningEffort) => void
       updateWebSearch: (enableWebSearch: boolean) => void
       updateAutoCollapseReasoning: (autoCollapseReasoning: boolean) => void
+      updateShortcuts: (shortcuts: ShortcutConfig) => void
       getTerminalFonts: () => Promise<string[]>
       onThemeUpdated: (callback: (gradientClass: string) => void) => () => void
       onTerminalFontUpdated: (callback: (terminalFont: string) => void) => () => void

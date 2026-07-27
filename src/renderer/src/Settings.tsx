@@ -16,8 +16,8 @@ import {
   THEME_OPTIONS,
   normalizeThemeGradient
 } from './constants/theme'
-import type { AppConfig, ButtonVisibility, ReasoningEffort } from '../../shared/config'
-import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_REASONING_EFFORT, REASONING_EFFORT_OPTIONS, modelSupportsExtendedParams, modelSupportsWebSearch } from '../../shared/config'
+import type { AppConfig, ButtonVisibility, ReasoningEffort, ShortcutConfig } from '../../shared/config'
+import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_REASONING_EFFORT, DEFAULT_SHORTCUTS, REASONING_EFFORT_OPTIONS, modelSupportsExtendedParams, modelSupportsWebSearch } from '../../shared/config'
 import type { McpServer } from '../../shared/mcp'
 import type { LauncherApp } from './types/launcher-app'
 import type { Preprompt } from './types/preprompt'
@@ -183,6 +183,132 @@ function SectionCard({
   )
 }
 
+const MODIFIER_KEY_DISPLAY: Record<string, string> = {
+  Control: 'Ctrl',
+  Alt: 'Alt',
+  Shift: 'Shift',
+  Meta: 'Win'
+}
+
+function normalizeKeyName(key: string): string {
+  if (key === ' ') return 'Space'
+  if (key.length === 1) return key.toUpperCase()
+  return key
+}
+
+interface ShortcutRecorderProps {
+  value: string
+  onChange: (shortcut: string) => void
+  conflictWarning?: string | null
+  defaultShortcut: string
+  onReset: () => void
+}
+
+function ShortcutRecorder({
+  value,
+  onChange,
+  conflictWarning,
+  defaultShortcut,
+  onReset
+}: ShortcutRecorderProps): JSX.Element {
+  const [isRecording, setIsRecording] = useState(false)
+  const [previousValue, setPreviousValue] = useState(value)
+
+  const startRecording = (): void => {
+    setPreviousValue(value)
+    setIsRecording(true)
+  }
+
+  const cancelRecording = (): void => {
+    setIsRecording(false)
+  }
+
+  useEffect(() => {
+    if (!isRecording) return
+
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      event.preventDefault()
+      event.stopPropagation()
+
+      const modifiers: string[] = []
+      if (event.ctrlKey) modifiers.push('Ctrl')
+      if (event.altKey) modifiers.push('Alt')
+      if (event.shiftKey) modifiers.push('Shift')
+      if (event.metaKey) modifiers.push('Win')
+
+      const keyName = normalizeKeyName(event.key)
+
+      if (MODIFIER_KEY_DISPLAY[keyName]) {
+        return
+      }
+
+      if (event.key === 'Escape') {
+        setIsRecording(false)
+        return
+      }
+
+      const combo = modifiers.length > 0
+        ? `${modifiers.join('+')}+${keyName}`
+        : keyName
+
+      setIsRecording(false)
+      onChange(combo)
+    }
+
+    const handleBlur = (): void => {
+      setIsRecording(false)
+    }
+
+    window.addEventListener('keydown', handleKeyDown, true)
+    window.addEventListener('blur', handleBlur)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true)
+      window.removeEventListener('blur', handleBlur)
+    }
+  }, [isRecording, onChange])
+
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={startRecording}
+          className={`flex-1 rounded-lg border px-3 py-2 text-sm text-left transition-colors cursor-pointer ${
+            isRecording
+              ? 'border-amber-500/60 bg-amber-500/10 text-amber-200 animate-pulse'
+              : !value
+                ? 'border-neutral-800 bg-neutral-950 text-neutral-600'
+                : 'border-neutral-700 bg-neutral-950 text-neutral-100 hover:border-neutral-600'
+          }`}
+        >
+          {isRecording
+            ? 'Press a key combo...'
+            : value || (
+              <span className="italic text-neutral-600">Disabled</span>
+            )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setIsRecording(false)
+            onReset()
+          }}
+          className="flex-shrink-0 rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 py-2 text-xs text-neutral-400 transition-colors hover:border-neutral-600 hover:text-neutral-200"
+          title={`Reset to default (${defaultShortcut})`}
+        >
+          Reset
+        </button>
+      </div>
+
+      {conflictWarning ? (
+        <p className="mt-2 text-xs text-amber-400">{conflictWarning}</p>
+      ) : null}
+    </div>
+  )
+}
+
 function getAppTargetsSummary(app: LauncherApp): string {
   const targetCount =
     Array.isArray(app.targets) && app.targets.length > 0
@@ -222,6 +348,8 @@ interface GeneralTabProps {
   onWebSearchChange: (value: boolean) => void
   autoCollapseReasoning: boolean
   onAutoCollapseReasoningChange: (value: boolean) => void
+  shortcuts: ShortcutConfig
+  onShortcutChange: (field: keyof ShortcutConfig, value: string) => void
 }
 
 function GeneralTab({
@@ -247,7 +375,9 @@ function GeneralTab({
   enableWebSearch,
   onWebSearchChange,
   autoCollapseReasoning,
-  onAutoCollapseReasoningChange
+  onAutoCollapseReasoningChange,
+  shortcuts,
+  onShortcutChange
 }: GeneralTabProps): JSX.Element {
   return (
     <div className="space-y-6">
@@ -439,6 +569,53 @@ function GeneralTab({
             label="Workflows"
             description="Show the Workflows button to run saved scripts and automations."
           />
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Keyboard Shortcuts"
+        description="Configure global shortcuts to open Covenant. These are OS-level shortcuts that work from anywhere. In-app navigation (Tab, Ctrl+Tab) is unaffected by these settings."
+      >
+        <div className="space-y-5">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-neutral-300">
+              Open App
+            </label>
+            <p className="mb-2 text-xs text-neutral-500">
+              Toggles the Covenant command bar open/close.
+            </p>
+            <ShortcutRecorder
+              value={shortcuts.openApp}
+              onChange={(val) => onShortcutChange('openApp', val)}
+              conflictWarning={
+                shortcuts.openApp && shortcuts.openAppTerminal && shortcuts.openApp === shortcuts.openAppTerminal
+                  ? 'This shortcut is also assigned to Open App in Terminal Mode'
+                  : null
+              }
+              defaultShortcut={DEFAULT_SHORTCUTS.openApp}
+              onReset={() => onShortcutChange('openApp', DEFAULT_SHORTCUTS.openApp)}
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-neutral-300">
+              Open App in Terminal Mode
+            </label>
+            <p className="mb-2 text-xs text-neutral-500">
+              Opens Covenant directly with the terminal panel visible and focused, skipping the AI bar.
+            </p>
+            <ShortcutRecorder
+              value={shortcuts.openAppTerminal}
+              onChange={(val) => onShortcutChange('openAppTerminal', val)}
+              conflictWarning={
+                shortcuts.openAppTerminal && shortcuts.openApp && shortcuts.openAppTerminal === shortcuts.openApp
+                  ? 'This shortcut is also assigned to Open App'
+                  : null
+              }
+              defaultShortcut={DEFAULT_SHORTCUTS.openAppTerminal}
+              onReset={() => onShortcutChange('openAppTerminal', DEFAULT_SHORTCUTS.openAppTerminal)}
+            />
+          </div>
         </div>
       </SectionCard>
     </div>
@@ -808,6 +985,7 @@ export default function Settings(): JSX.Element {
   const [enableWebSearch, setEnableWebSearch] = useState(true)
   const [autoCollapseReasoning, setAutoCollapseReasoning] = useState(true)
   const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true })
+  const [shortcuts, setShortcuts] = useState<ShortcutConfig>({ ...DEFAULT_SHORTCUTS })
   const [mcpServers, setMcpServers] = useState<McpServer[]>([])
   const [isMcpServersLoading, setIsMcpServersLoading] = useState(false)
   const [mcpFeedbackMessage, setMcpFeedbackMessage] = useState('')
@@ -861,6 +1039,7 @@ export default function Settings(): JSX.Element {
         setEnableWebSearch(typeof config.enableWebSearch === 'boolean' ? config.enableWebSearch : true)
         setAutoCollapseReasoning(typeof config.autoCollapseReasoning === 'boolean' ? config.autoCollapseReasoning : true)
         setButtonVisibility(config.buttonVisibility ?? { appLauncher: true, workflow: true })
+        setShortcuts(config.shortcuts ?? { ...DEFAULT_SHORTCUTS })
       } catch {
         if (!isMounted) return
         setApiKey('')
@@ -889,11 +1068,16 @@ export default function Settings(): JSX.Element {
       setButtonVisibility(newVis)
     })
 
+    const unsubShortcuts = window.api?.config.onShortcutsUpdated?.((newShortcuts) => {
+      setShortcuts(newShortcuts)
+    })
+
     return () => {
       isMounted = false
       if (typeof unsubChatModel === 'function') unsubChatModel()
       if (typeof unsubReasoningEffort === 'function') unsubReasoningEffort()
       if (typeof unsubButtonVisibility === 'function') unsubButtonVisibility()
+      if (typeof unsubShortcuts === 'function') unsubShortcuts()
     }
   }, [])
 
@@ -1191,6 +1375,14 @@ export default function Settings(): JSX.Element {
     window.api?.config.updateButtonVisibility?.(visibility)
   }
 
+  const handleShortcutChange = (field: keyof ShortcutConfig, value: string): void => {
+    setShortcuts((prev) => {
+      const next = { ...prev, [field]: value }
+      window.api?.config.updateShortcuts?.(next)
+      return next
+    })
+  }
+
   const handleOpenAddApp = (): void => {
     setEditingApp(undefined)
     setAppsFeedbackMessage('')
@@ -1446,6 +1638,8 @@ export default function Settings(): JSX.Element {
                 onWebSearchChange={handleWebSearchChange}
                 autoCollapseReasoning={autoCollapseReasoning}
                 onAutoCollapseReasoningChange={handleAutoCollapseReasoningChange}
+                shortcuts={shortcuts}
+                onShortcutChange={handleShortcutChange}
               />
             )}
             {activeTab === 'terminal' && (
