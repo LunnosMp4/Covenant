@@ -2,6 +2,9 @@ import { useState, useEffect, useMemo, useRef, useCallback, type CSSProperties }
 import { motion, AnimatePresence } from 'framer-motion'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 import Prism from 'prismjs'
 import 'prismjs/components/prism-bash'
 import 'prismjs/components/prism-batch'
@@ -464,6 +467,14 @@ function normalizeMessageOrder(messages: ChatMessage[]): ChatMessage[] {
   })
 }
 
+function preprocessLatexDelimiters(content: string): string {
+  return content
+    .replace(/\\\[/g, '$$$$\n')
+    .replace(/\\\]/g, '\n$$$$')
+    .replace(/\\\(/g, '$')
+    .replace(/\\\)/g, '$')
+}
+
 function highlightMarkdownCode(code: string, language: string | undefined): string {
   if (!language) return code
   const grammar = Prism.languages[language]
@@ -472,9 +483,11 @@ function highlightMarkdownCode(code: string, language: string | undefined): stri
 }
 
 function AssistantMarkdown({ content }: { content: string }): JSX.Element {
+  const query = preprocessLatexDelimiters(content)
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[rehypeKatex]}
       className="chat-markdown"
       components={{
         a({ href, children, ...props }) {
@@ -485,6 +498,9 @@ function AssistantMarkdown({ content }: { content: string }): JSX.Element {
             </a>
           )
         },
+        pre({ children, ...props }) {
+          return <pre className="chat-code-block" {...props}>{children}</pre>
+        },
         code({ inline, className, children, ...props }) {
           const rawCode = String(children ?? '').replace(/\n$/, '')
           const match = /language-(\w+)/.exec(className ?? '')
@@ -493,13 +509,11 @@ function AssistantMarkdown({ content }: { content: string }): JSX.Element {
           if (!inline) {
             const highlighted = highlightMarkdownCode(rawCode, language)
             return (
-              <pre className="chat-code-block">
-                <code
-                  className={className}
-                  dangerouslySetInnerHTML={{ __html: highlighted }}
-                  {...props}
-                />
-              </pre>
+              <code
+                className={className}
+                dangerouslySetInnerHTML={{ __html: highlighted }}
+                {...props}
+              />
             )
           }
 
@@ -511,7 +525,7 @@ function AssistantMarkdown({ content }: { content: string }): JSX.Element {
         }
       }}
     >
-      {content}
+      {query}
     </ReactMarkdown>
   )
 }
