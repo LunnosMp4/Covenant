@@ -231,6 +231,18 @@ class TerminalManager {
     return this.sessionMap.has(sessionId)
   }
 
+  getFirstSessionId(): string | null {
+    const first = this.sessionMap.keys().next()
+    return first.done ? null : first.value
+  }
+
+  getSessions(): Array<{ sessionId: string; shell: string }> {
+    return [...this.sessionMap.entries()].map(([id, s]) => ({
+      sessionId: id,
+      shell: extractShellName(s.shell)
+    }))
+  }
+
   disposeAll(): void {
     for (const session of this.sessionMap.values()) {
       try {

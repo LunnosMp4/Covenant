@@ -138,6 +138,9 @@ interface CovenantAPI {
     killTerminal: (sessionId: string) => Promise<{ success: boolean }>
     onData: (callback: (sessionId: string, chunk: string) => void) => () => void
     onExit: (callback: (payload: TerminalExitPayload) => void) => () => void
+    reportActiveSession: (sessionId: string) => void
+    listSessions: () => Promise<Array<{ sessionId: string; shell: string }>>
+    sendToActiveSession: (code: string) => Promise<{ success: boolean; sessionId?: string; created?: boolean }>
   }
   voice: {
     transcribe: (audioBuffer: ArrayBuffer) => Promise<string>

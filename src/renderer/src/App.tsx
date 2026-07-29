@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback, type CSSProperties } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, Children, type CSSProperties } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -482,6 +482,71 @@ function highlightMarkdownCode(code: string, language: string | undefined): stri
   return Prism.highlight(code, grammar, language)
 }
 
+const SHELL_LANGUAGES = new Set(['bash', 'sh', 'shell', 'zsh', 'powershell', 'ps1', 'cmd'])
+
+function TerminalSendIcon(): JSX.Element {
+  return (
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  )
+}
+
+function CodeBlock({
+  language,
+  code,
+  ...props
+}: { language: string | undefined; code: string } & React.HTMLAttributes<HTMLPreElement>): JSX.Element {
+  const [sent, setSent] = useState(false)
+  const highlighted = highlightMarkdownCode(code, language)
+  const isShell = language != null && SHELL_LANGUAGES.has(language)
+
+  const handleSendToTerminal = async () => {
+    if (!window.api?.terminal) return
+    const result = await window.api.terminal.sendToActiveSession(code)
+    if (result.success) {
+      setSent(true)
+      setTimeout(() => setSent(false), 2000)
+    }
+  }
+
+  return (
+    <div className="chat-code-block-wrapper">
+      <div className="chat-code-block-header">
+        <span className="chat-code-block-lang">{language ?? 'code'}</span>
+        <div className="chat-code-block-actions">
+          {isShell && (
+            <button
+              type="button"
+              onClick={handleSendToTerminal}
+              className={`chat-code-block-btn ${sent ? 'chat-code-block-btn-sent' : ''}`}
+              title="Send to Terminal"
+              aria-label="Send code to terminal"
+            >
+              <TerminalSendIcon />
+            </button>
+          )}
+        </div>
+      </div>
+      <pre className="chat-code-block" {...props}>
+        <code
+          className={language ? `language-${language}` : undefined}
+          dangerouslySetInnerHTML={{ __html: highlighted }}
+        />
+      </pre>
+    </div>
+  )
+}
+
 function AssistantMarkdown({ content }: { content: string }): JSX.Element {
   const query = preprocessLatexDelimiters(content)
   return (
@@ -499,26 +564,26 @@ function AssistantMarkdown({ content }: { content: string }): JSX.Element {
           )
         },
         pre({ children, ...props }) {
-          return <pre className="chat-code-block" {...props}>{children}</pre>
-        },
-        code({ inline, className, children, ...props }) {
-          const rawCode = String(children ?? '').replace(/\n$/, '')
-          const match = /language-(\w+)/.exec(className ?? '')
+          const childArr = Children.toArray(children)
+          const codeEl = childArr[0] as { props?: { className?: string; children?: unknown } } | undefined
+          const className = codeEl?.props?.className ?? ''
+          const rawCode = codeEl?.props?.children != null ? String(codeEl.props.children).replace(/\n$/, '') : ''
+          const match = /language-(\w+)/.exec(className)
           const language = match?.[1]
 
-          if (!inline) {
-            const highlighted = highlightMarkdownCode(rawCode, language)
+          return <CodeBlock language={language} code={rawCode} {...props} />
+        },
+        code({ inline, className, children, ...props }) {
+          if (inline) {
             return (
-              <code
-                className={className}
-                dangerouslySetInnerHTML={{ __html: highlighted }}
-                {...props}
-              />
+              <code className="chat-code-inline" {...props}>
+                {children}
+              </code>
             )
           }
 
           return (
-            <code className="chat-code-inline" {...props}>
+            <code className={className} {...props}>
               {children}
             </code>
           )

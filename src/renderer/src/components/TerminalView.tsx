@@ -181,6 +181,7 @@ function TerminalView({
     isRestoringRef.current = false
     activeSessionIdRef.current = sessionId
     setActiveTabId(sessionId)
+    window.api?.terminal.reportActiveSession(sessionId)
 
     requestAnimationFrame(() => {
       fitAndResize(sessionId)
@@ -333,42 +334,59 @@ function TerminalView({
       return
     }
 
-    const startInitialTab = async (): Promise<void> => {
-      try {
-        const result = await terminalApi.startTerminal({
-          cols: terminal.cols,
-          rows: terminal.rows
-        })
-
-        if (result.error) {
-          terminal.writeln(`\r\n[error] ${result.error}\r\n`)
-          return
-        }
-
-        const shellName = extractShellName(result.shell)
-        const tab: TerminalTab = {
-          sessionId: result.sessionId,
-          shell: shellName,
-          shellPath: result.shell,
+    void terminalApi.listSessions().then((existing) => {
+      if (existing.length > 0) {
+        const liveTabs: TerminalTab[] = existing.map((s) => ({
+          sessionId: s.sessionId,
+          shell: s.shell,
+          shellPath: s.shell,
           buffer: '',
           isAlive: true,
           isStarted: true
-        }
-
-        tabsRefSetter([tab])
-        activeSessionIdRef.current = result.sessionId
-        setActiveTabId(result.sessionId)
-
-        fitAndResize()
-        terminal.focus()
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unable to start terminal.'
-        terminal.writeln(`\r\n[error] ${message}\r\n`)
+        }))
+        tabsRefSetter(liveTabs)
+        switchToTab(existing[0].sessionId)
+        return
       }
-    }
 
-    void startInitialTab()
-  }, [active, fitAndResize, tabsRefSetter])
+      const startInitialTab = async (): Promise<void> => {
+        try {
+          const result = await terminalApi.startTerminal({
+            cols: terminal.cols,
+            rows: terminal.rows
+          })
+
+          if (result.error) {
+            terminal.writeln(`\r\n[error] ${result.error}\r\n`)
+            return
+          }
+
+          const shellName = extractShellName(result.shell)
+          const tab: TerminalTab = {
+            sessionId: result.sessionId,
+            shell: shellName,
+            shellPath: result.shell,
+            buffer: '',
+            isAlive: true,
+            isStarted: true
+          }
+
+          tabsRefSetter([tab])
+          activeSessionIdRef.current = result.sessionId
+          setActiveTabId(result.sessionId)
+          window.api?.terminal.reportActiveSession(result.sessionId)
+
+          fitAndResize()
+          terminal.focus()
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unable to start terminal.'
+          terminal.writeln(`\r\n[error] ${message}\r\n`)
+        }
+      }
+
+      void startInitialTab()
+    })
+  }, [active, fitAndResize, switchToTab, tabsRefSetter])
 
   const activeTab = tabs.find((t) => t.sessionId === activeTabId)
 

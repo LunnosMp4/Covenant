@@ -324,7 +324,14 @@ const api = {
       return () => {
         ipcRenderer.removeListener('terminal:exit', listener)
       }
-    }
+    },
+    reportActiveSession: (sessionId: string) => {
+      ipcRenderer.send('terminal:report-active-session', sessionId)
+    },
+    listSessions: () =>
+      ipcRenderer.invoke('terminal:list-sessions') as Promise<Array<{ sessionId: string; shell: string }>>,
+    sendToActiveSession: (code: string) =>
+      ipcRenderer.invoke('terminal:send-to-active-session', { code }) as Promise<{ success: boolean; sessionId?: string; created?: boolean }>
   },
   voice: {
     transcribe: (audioBuffer: ArrayBuffer) =>

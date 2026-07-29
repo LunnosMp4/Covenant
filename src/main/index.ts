@@ -152,6 +152,7 @@ const WORKFLOW_LANGUAGE_SET = new Set<WorkflowLanguage>([
 const runningWorkflowIds = new Set<string>()
 const mcpSessionIds = new Map<string, string>()
 const terminalSubscribers = new Set<WebContents>()
+let lastActiveSessionId: string | null = null
 const MAX_CONVERSATIONS = 20
 const CHAT_ROLE_SET = new Set<ChatRole>(['system', 'user', 'assistant'])
 
@@ -227,6 +228,9 @@ terminalManager.onData((sessionId, chunk) => {
 })
 
 terminalManager.onExit((payload: TerminalExitPayload) => {
+  if (payload.sessionId === lastActiveSessionId) {
+    lastActiveSessionId = null
+  }
   emitTerminalEvent('terminal:exit', payload)
 })
 
@@ -2202,7 +2206,11 @@ ipcMain.handle('terminal:start', (event, payload?: { cols?: unknown; rows?: unkn
   const config = readConfig()
 
   try {
-    return terminalManager.createSession(cols, rows, config.preferredShell)
+    const result = terminalManager.createSession(cols, rows, config.preferredShell)
+    if (result.created && result.sessionId) {
+      lastActiveSessionId = result.sessionId
+    }
+    return result
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown terminal error'
     console.error('Terminal start failed:', message)
@@ -2261,7 +2269,56 @@ ipcMain.handle('terminal:kill', (event, payload?: { sessionId?: unknown }) => {
   if (!sessionId) return { success: false }
 
   terminalManager.kill(sessionId)
+  if (sessionId === lastActiveSessionId) {
+    lastActiveSessionId = null
+  }
   return { success: true }
+})
+
+ipcMain.on('terminal:report-active-session', (_event, sessionId: unknown) => {
+  if (typeof sessionId === 'string' && sessionId.length > 0) {
+    lastActiveSessionId = sessionId
+  }
+})
+
+ipcMain.handle('terminal:list-sessions', () => {
+  return terminalManager.getSessions()
+})
+
+ipcMain.handle('terminal:send-to-active-session', (event, payload?: { code?: unknown }) => {
+  assertMainWindowSender(event.sender)
+
+  const code = typeof payload?.code === 'string' ? payload.code : ''
+  if (!code) return { success: false }
+
+  let sessionId: string | null = null
+  let created = false
+
+  if (lastActiveSessionId && terminalManager.hasSession(lastActiveSessionId)) {
+    sessionId = lastActiveSessionId
+  } else {
+    sessionId = terminalManager.getFirstSessionId()
+  }
+
+  if (!sessionId) {
+    const config = readConfig()
+    const result = terminalManager.createSession(DEFAULT_TERMINAL_COLS, DEFAULT_TERMINAL_ROWS, config.preferredShell)
+    if (!result.created || !result.sessionId) {
+      return { success: false, error: result.error ?? 'Failed to create terminal session' }
+    }
+    sessionId = result.sessionId
+    lastActiveSessionId = sessionId
+    created = true
+    attachTerminalSubscriber(event.sender)
+  }
+
+  const isMultiLine = code.includes('\n')
+  const wrapped = isMultiLine ? `\x1b[200~${code}\x1b[201~` : code
+
+  terminalManager.write(sessionId, wrapped)
+  event.sender.send('toggle-visibility', true, true)
+
+  return { success: true, sessionId, created }
 })
 
 ipcMain.handle('select-file', async () => {
