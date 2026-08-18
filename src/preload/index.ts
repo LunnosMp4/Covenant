@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { clipboard, contextBridge, ipcRenderer } from 'electron'
 import type { AppConfig } from '../shared/config'
 import type { ButtonVisibility, ReasoningEffort, ShortcutConfig } from '../shared/config'
 import type { McpServer } from '../shared/mcp'
@@ -353,6 +353,9 @@ const api = {
     deleteWorkflow: (workflowId: string) =>
       ipcRenderer.invoke('delete-workflow', workflowId) as Promise<Workflow[]>
   },
+  clipboard: {
+    writeText: (text: string) => clipboard.writeText(text)
+  },
   selectFile: () => ipcRenderer.invoke('select-file') as Promise<string>,
   getFileIcon: (filePath: string) => ipcRenderer.invoke('get-file-icon', filePath) as Promise<string>,
   launchApp: (path: string, launchArguments: string) =>
@@ -421,5 +424,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onReasoningEffortUpdated: api.config.onReasoningEffortUpdated,
   askCovenant: api.chat.askCovenant,
   transcribe: api.voice.transcribe,
-  onToggleVisibility: api.window.onToggleVisibility
+  onToggleVisibility: api.window.onToggleVisibility,
+  writeText: api.clipboard.writeText
 })

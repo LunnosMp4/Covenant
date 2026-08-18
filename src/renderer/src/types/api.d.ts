@@ -162,6 +162,9 @@ interface CovenantAPI {
   executeWorkflow: (workflow: Partial<Workflow>) => Promise<{ success: boolean; error?: string }>
   onWorkflowStatusUpdate: (callback: (payload: WorkflowStatusUpdatePayload) => void) => () => void
   onWorkflowLog: (callback: (payload: WorkflowLogPayload) => void) => () => void
+  clipboard: {
+    writeText: (text: string) => void
+  }
 }
 
 declare global {
@@ -201,6 +204,7 @@ declare global {
       askCovenant: (messages: Array<{ role: ChatRole; content: string | InputContent[] }>) => Promise<string>
       transcribe: (audioBuffer: ArrayBuffer) => Promise<string>
     onToggleVisibility: (callback: (visible: boolean) => void) => () => void
+    writeText: (text: string) => void
     }
   }
 }

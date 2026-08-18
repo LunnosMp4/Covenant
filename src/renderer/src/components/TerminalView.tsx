@@ -75,6 +75,15 @@ function PlusIcon(): JSX.Element {
   )
 }
 
+function CopyIcon(): JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  )
+}
+
 const TERMINAL_OPTIONS = {
   allowProposedApi: false,
   convertEol: true,
@@ -109,6 +118,7 @@ function TerminalView({
 
   const [tabs, setTabs] = useState<TerminalTab[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
+  const [hasSelection, setHasSelection] = useState(false)
 
   const tabsRefSetter = useCallback((next: TerminalTab[]) => {
     tabsRef.current = next
@@ -135,7 +145,28 @@ function TerminalView({
       }
     })
 
-    return { terminal, fitAddon, disposeInput }
+    const disposeSelection = terminal.onSelectionChange(() => {
+      setHasSelection(terminal.hasSelection())
+    })
+
+    const disposeCustomKey = terminal.attachCustomKeyEventHandler((event) => {
+      const key = event.key.toLowerCase()
+      const isCopyShortcut =
+        ((event.ctrlKey || event.metaKey) && event.shiftKey && key === 'c') ||
+        (event.metaKey && !event.shiftKey && !event.ctrlKey && !event.altKey && key === 'c')
+
+      if (isCopyShortcut && terminal.hasSelection()) {
+        const selection = terminal.getSelection()
+        if (selection) {
+          window.api?.clipboard.writeText(selection)
+        }
+        return false
+      }
+
+      return true
+    })
+
+    return { terminal, fitAddon, disposeInput, disposeSelection, disposeCustomKey }
   }, [fontFamily])
 
   const fitAndResize = useCallback((sessionId?: string) => {
@@ -244,12 +275,21 @@ function TerminalView({
     }
   }, [switchToTab, tabsRefSetter])
 
+  const copySelection = useCallback(() => {
+    const terminal = terminalRef.current
+    if (!terminal || !terminal.hasSelection()) return
+    const selection = terminal.getSelection()
+    if (selection) {
+      window.api?.clipboard.writeText(selection)
+    }
+  }, [])
+
   // Create xterm on mount
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
 
-    const { terminal, fitAddon, disposeInput } = createTerminal(host)
+    const { terminal, fitAddon, disposeInput, disposeSelection, disposeCustomKey } = createTerminal(host)
 
     const unsubscribeData = window.api?.terminal.onData((sessionId, chunk) => {
       if (tabsRef.current.some((t) => t.sessionId === sessionId)) {
@@ -276,7 +316,7 @@ function TerminalView({
       }
     })
 
-    unsubscribeRef.current = [disposeInput, unsubscribeData, unsubscribeExit].filter(
+    unsubscribeRef.current = [disposeInput, disposeSelection, disposeCustomKey, unsubscribeData, unsubscribeExit].filter(
       (f): f is (() => void) => typeof f === 'function'
     )
 
@@ -416,6 +456,20 @@ function TerminalView({
           </p>
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={copySelection}
+            disabled={!hasSelection}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
+              hasSelection
+                ? 'border-white/10 text-neutral-400 hover:border-white/20 hover:bg-white/10 hover:text-neutral-200'
+                : 'border-white/10 text-neutral-600 cursor-not-allowed'
+            }`}
+            aria-label="Copy selection"
+            title="Copy selection"
+          >
+            <CopyIcon />
+          </button>
           <button
             type="button"
             onClick={onToggleExpand}

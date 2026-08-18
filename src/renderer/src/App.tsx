@@ -159,25 +159,15 @@ const CHAT_MODEL_PRICING: Record<
     outputPerMillion: number
   }
 > = {
-  'gpt-4o-mini': {
-    inputPerMillion: 0.15,
-    cachedInputPerMillion: 0.08,
-    outputPerMillion: 0.6
-  },
-  'gpt-5.4-nano': {
+  'gpt-5.6-luna': {
     inputPerMillion: 0.2,
     cachedInputPerMillion: 0.02,
-    outputPerMillion: 1.25
-  },
-  'gpt-5.6-luna': {
-    inputPerMillion: 1,
-    cachedInputPerMillion: 0.10,
-    outputPerMillion: 6
+    outputPerMillion: 1.2
   },
   'gpt-5.6-terra': {
-    inputPerMillion: 2.50,
-    cachedInputPerMillion: 0.25,
-    outputPerMillion: 15
+    inputPerMillion: 2.00,
+    cachedInputPerMillion: 0.2,
+    outputPerMillion: 12
   }
 }
 
@@ -501,12 +491,70 @@ function TerminalSendIcon(): JSX.Element {
   )
 }
 
+function CopyIcon(): JSX.Element {
+  return (
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  )
+}
+
+function CheckIcon(): JSX.Element {
+  return (
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  )
+}
+
+function CopyButton({ text, className }: { text: string; className?: string }): JSX.Element {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = () => {
+    window.api?.clipboard.writeText(text)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className={className}
+      title="Copy"
+      aria-label="Copy"
+    >
+      {copied ? <CheckIcon /> : <CopyIcon />}
+    </button>
+  )
+}
+
 function CodeBlock({
   language,
   code,
   ...props
 }: { language: string | undefined; code: string } & React.HTMLAttributes<HTMLPreElement>): JSX.Element {
   const [sent, setSent] = useState(false)
+  const [copied, setCopied] = useState(false)
   const highlighted = highlightMarkdownCode(code, language)
   const isShell = language != null && SHELL_LANGUAGES.has(language)
 
@@ -519,11 +567,26 @@ function CodeBlock({
     }
   }
 
+  const handleCopy = () => {
+    window.api?.clipboard.writeText(code)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   return (
     <div className="chat-code-block-wrapper">
       <div className="chat-code-block-header">
         <span className="chat-code-block-lang">{language ?? 'code'}</span>
         <div className="chat-code-block-actions">
+          <button
+            type="button"
+            onClick={handleCopy}
+            className={`chat-code-block-btn ${copied ? 'chat-code-block-btn-sent' : ''}`}
+            title="Copy code"
+            aria-label="Copy code"
+          >
+            {copied ? <CheckIcon /> : <CopyIcon />}
+          </button>
           {isShell && (
             <button
               type="button"
@@ -2117,6 +2180,14 @@ export default function App(): JSX.Element {
                   <div
                     ref={chatScrollRef}
                     onScroll={handleChatScroll}
+                    onCopy={(e) => {
+                      const selection = window.getSelection()
+                      if (!selection || selection.isCollapsed) return
+                      const text = selection.toString()
+                      if (!text) return
+                      e.preventDefault()
+                      e.clipboardData.setData('text/plain', text)
+                    }}
                     className="mt-3 overflow-y-auto chat-scrollbar space-y-3 pr-2"
                     style={{ height: isExpanded ? 'calc(100vh - 210px)' : CHAT_SCROLL_HEIGHT, minHeight: CHAT_SCROLL_HEIGHT }}
                   >
@@ -2313,9 +2384,13 @@ export default function App(): JSX.Element {
                                 </>
                               )}
 
-                              {isAssistant && metaLabel ? (
-                                <div className="chat-message-meta">
-                                  {metaLabel}
+                              {isAssistant ? (
+                                <div className="chat-message-meta flex items-center gap-2">
+                                  {metaLabel ? <span>{metaLabel}</span> : null}
+                                  <CopyButton
+                                    text={message.content}
+                                    className="flex items-center justify-center h-6 w-6 rounded-md text-neutral-500 hover:text-neutral-200 hover:bg-white/10 transition-colors"
+                                  />
                                 </div>
                               ) : null}
                             </div>
@@ -2491,9 +2566,14 @@ export default function App(): JSX.Element {
 
                     const text = e.clipboardData.getData('text/plain')
                     if (!text) return
-                    const lines = text.split('\n').length
-                    if (lines <= 5 && text.length <= 300) return
                     e.preventDefault()
+                    const lines = text.split('\n').length
+                    if (lines <= 5 && text.length <= 300) {
+                      document.execCommand('insertText', false, text)
+                      const d = inputRef.current
+                      if (d) setQuery(d.textContent ?? '')
+                      return
+                    }
                     const id = crypto.randomUUID()
                     pasteBlocksRef.current.set(id, text)
                     const chip = document.createElement('span')
