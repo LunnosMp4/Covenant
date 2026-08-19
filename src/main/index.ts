@@ -72,9 +72,22 @@ interface ChatMessage {
   content: string
   createdAt: number
   reasoning?: string
+  reasoningTitle?: string
+  steps?: ReasoningStep[]
   usage?: ChatUsage
   model?: string
+  sources?: Source[]
+  stopped?: boolean
 }
+
+interface Source {
+  title: string
+  url: string
+}
+
+type ReasoningStep =
+  | { type: 'reasoning'; text: string }
+  | { type: 'web_search'; id: string; query: string; status: 'searching' | 'done'; sources: Source[] }
 
 interface ChatUsage {
   promptTokens?: number
@@ -155,6 +168,7 @@ const terminalSubscribers = new Set<WebContents>()
 let lastActiveSessionId: string | null = null
 const MAX_CONVERSATIONS = 20
 const CHAT_ROLE_SET = new Set<ChatRole>(['system', 'user', 'assistant'])
+const activeChatStreams = new Map<string, AbortController>()
 
 const MAX_TERMINAL_INPUT_CHUNK = 8192
 const DEFAULT_TERMINAL_COLS = 120
@@ -332,7 +346,48 @@ const appStore = new StoreClass<AppStoreSchema>({
                 content: { type: 'string' },
                 createdAt: { type: 'number' },
                 reasoning: { type: 'string' },
+                reasoningTitle: { type: 'string' },
                 model: { type: 'string' },
+                stopped: { type: 'boolean' },
+                sources: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                      title: { type: 'string' },
+                      url: { type: 'string' }
+                    },
+                    required: ['url']
+                  }
+                },
+                steps: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                      type: { type: 'string', enum: ['reasoning', 'web_search'] },
+                      text: { type: 'string' },
+                      id: { type: 'string' },
+                      query: { type: 'string' },
+                      status: { type: 'string', enum: ['searching', 'done'] },
+                      sources: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          additionalProperties: false,
+                          properties: {
+                            title: { type: 'string' },
+                            url: { type: 'string' }
+                          },
+                          required: ['url']
+                        }
+                      }
+                    },
+                    required: ['type']
+                  }
+                },
                 usage: {
                   type: 'object',
                   additionalProperties: false,
@@ -427,6 +482,50 @@ function normalizeChatUsage(payload: unknown): ChatUsage | undefined {
   }
 }
 
+function normalizeSources(payload: unknown): Source[] | undefined {
+  if (!Array.isArray(payload)) return undefined
+
+  const sources = payload
+    .map((item): Source | null => {
+      if (!item || typeof item !== 'object') return null
+      const raw = item as Record<string, unknown>
+      const url = typeof raw.url === 'string' ? raw.url.trim() : ''
+      if (!url) return null
+      const title = typeof raw.title === 'string' ? raw.title.trim() : ''
+      return { title, url }
+    })
+    .filter((source): source is Source => Boolean(source))
+
+  return sources.length > 0 ? sources : undefined
+}
+
+function normalizeReasoningSteps(payload: unknown): ReasoningStep[] | undefined {
+  if (!Array.isArray(payload)) return undefined
+
+  const steps = payload
+    .map((item): ReasoningStep | null => {
+      if (!item || typeof item !== 'object') return null
+      const raw = item as Record<string, unknown>
+      if (raw.type === 'reasoning') {
+        const text = typeof raw.text === 'string' ? raw.text : ''
+        if (!text) return null
+        return { type: 'reasoning', text }
+      }
+      if (raw.type === 'web_search') {
+        const id = typeof raw.id === 'string' ? raw.id : ''
+        if (!id) return null
+        const query = typeof raw.query === 'string' ? raw.query : ''
+        const status = raw.status === 'done' ? 'done' : 'searching'
+        const sources = normalizeSources(raw.sources) ?? []
+        return { type: 'web_search', id, query, status, sources }
+      }
+      return null
+    })
+    .filter((step): step is ReasoningStep => Boolean(step))
+
+  return steps.length > 0 ? steps : undefined
+}
+
 function normalizeChatMessage(payload: Partial<ChatMessage>): ChatMessage | null {
   const role = typeof payload.role === 'string' ? payload.role.trim() : ''
   if (!CHAT_ROLE_SET.has(role as ChatRole)) return null
@@ -443,8 +542,15 @@ function normalizeChatMessage(payload: Partial<ChatMessage>): ChatMessage | null
 
   const reasoning =
     typeof payload.reasoning === 'string' && payload.reasoning.trim() ? payload.reasoning.trim() : undefined
+  const reasoningTitle =
+    typeof payload.reasoningTitle === 'string' && payload.reasoningTitle.trim()
+      ? payload.reasoningTitle.trim()
+      : undefined
+  const steps = normalizeReasoningSteps(payload.steps)
   const usage = normalizeChatUsage(payload.usage)
   const model = typeof payload.model === 'string' && payload.model.trim() ? payload.model.trim() : undefined
+  const sources = normalizeSources(payload.sources)
+  const stopped = payload.stopped === true ? true : undefined
 
   return {
     id,
@@ -452,8 +558,12 @@ function normalizeChatMessage(payload: Partial<ChatMessage>): ChatMessage | null
     content,
     createdAt,
     reasoning,
+    reasoningTitle,
+    steps,
     usage,
-    model
+    model,
+    sources,
+    stopped
   }
 }
 
@@ -2541,6 +2651,11 @@ ipcMain.on('update-shortcuts', (_event, rawShortcuts: unknown) => {
   }
 })
 
+ipcMain.on('covenant:chat-cancel', (_event, streamId: string) => {
+  if (typeof streamId !== 'string') return
+  activeChatStreams.get(streamId)?.abort()
+})
+
 ipcMain.handle('covenant:chat-stream', async (event, rawMessages: Array<{ role?: string; content?: string | Array<{ type: string; text?: string; image_url?: string }> }>) => {
   const sanitizedMessages = Array.isArray(rawMessages)
     ? rawMessages
@@ -2639,7 +2754,19 @@ ipcMain.handle('covenant:chat-stream', async (event, rawMessages: Array<{ role?:
     params.tools = [{ type: 'web_search' }]
   }
 
-  const stream = client.responses.stream(params as any)
+  const controller = new AbortController()
+  activeChatStreams.set(streamId, controller)
+
+  const stream = client.responses.stream(params as any, { signal: controller.signal })
+
+  const extractWebSearchQuery = (action: Record<string, unknown> | undefined): string => {
+    if (!action) return ''
+    if (Array.isArray(action.queries) && action.queries.length > 0) return String(action.queries[0])
+    if (typeof action.query === 'string' && action.query.trim()) return action.query
+    if (typeof action.pattern === 'string' && action.pattern.trim()) return action.pattern
+    if (typeof action.url === 'string' && action.url.trim()) return action.url
+    return ''
+  }
 
   void (async () => {
     const reasoningBufferMap = new Map<string, string>()
@@ -2656,16 +2783,14 @@ ipcMain.handle('covenant:chat-stream', async (event, rawMessages: Array<{ role?:
               sendStreamEvent({ id: streamId, type: 'reasoning-start', itemId: item.id })
             } else if (item.type === 'web_search_call') {
               const action = item.action as Record<string, unknown> | undefined
-              const query = Array.isArray(action?.queries) && action.queries.length > 0
-                ? String(action.queries[0])
-                : typeof action?.query === 'string' ? action.query : ''
               sendStreamEvent({
                 id: streamId,
                 type: 'tool-start',
+                itemId: item.id,
                 toolType: 'web_search',
                 toolName: 'Web Search',
                 actionType: typeof action?.type === 'string' ? action.type : 'search',
-                query
+                query: extractWebSearchQuery(action)
               })
             }
             break
@@ -2723,6 +2848,15 @@ ipcMain.handle('covenant:chat-stream', async (event, rawMessages: Array<{ role?:
               })
             } else if (doneItem.type === 'web_search_call') {
               const action = (doneItem as Record<string, unknown>).action as Record<string, unknown> | undefined
+              const query = extractWebSearchQuery(action)
+
+              sendStreamEvent({
+                id: streamId,
+                type: 'tool-query',
+                itemId: doneItem.id,
+                query
+              })
+
               const rawSources: Array<Record<string, unknown>> = []
               if (Array.isArray(action?.sources)) {
                 rawSources.push(...action.sources as Array<Record<string, unknown>>)
@@ -2750,13 +2884,10 @@ ipcMain.handle('covenant:chat-stream', async (event, rawMessages: Array<{ role?:
                 .filter((src) => src.url.length > 0)
 
               if (sources.length > 0) {
-                const query = Array.isArray(action?.queries) && action.queries.length > 0
-                  ? String(action.queries[0])
-                  : typeof action?.query === 'string' ? action.query : ''
-
                 sendStreamEvent({
                   id: streamId,
                   type: 'sources',
+                  itemId: doneItem.id,
                   sources,
                   query
                 })
@@ -2792,8 +2923,14 @@ ipcMain.handle('covenant:chat-stream', async (event, rawMessages: Array<{ role?:
         }
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to fetch AI response.'
-      sendStreamEvent({ id: streamId, type: 'error', error: message })
+      if (controller.signal.aborted) {
+        sendStreamEvent({ id: streamId, type: 'done', usage: undefined, model, stopped: true })
+      } else {
+        const message = error instanceof Error ? error.message : 'Unable to fetch AI response.'
+        sendStreamEvent({ id: streamId, type: 'error', error: message })
+      }
+    } finally {
+      activeChatStreams.delete(streamId)
     }
   })()
 

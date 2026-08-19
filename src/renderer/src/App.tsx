@@ -47,9 +47,11 @@ interface ChatMessage {
   createdAt: number
   reasoning?: string
   reasoningTitle?: string
+  steps?: ReasoningStep[]
   usage?: ChatUsage
   model?: string
   sources?: Source[]
+  stopped?: boolean
   images?: { base64: string; fileName: string; mimeType: string }[]
 }
 
@@ -65,6 +67,10 @@ interface Source {
   title: string
   url: string
 }
+
+type ReasoningStep =
+  | { type: 'reasoning'; text: string }
+  | { type: 'web_search'; id: string; query: string; status: 'searching' | 'done'; sources: Source[] }
 
 interface ChatConversation {
   id: string
@@ -85,7 +91,7 @@ interface ChatStreamEvent {
   id: string
   type: 'content' | 'reasoning' | 'done' | 'error'
     | 'reasoning-start' | 'reasoning-title' | 'reasoning-delta' | 'reasoning-end'
-    | 'tool-start' | 'sources'
+    | 'tool-start' | 'tool-query' | 'sources'
   delta?: string
   usage?: ChatUsage
   error?: string
@@ -97,6 +103,7 @@ interface ChatStreamEvent {
   actionType?: string
   query?: string
   sources?: Source[]
+  stopped?: boolean
 }
 
 type AppMode = 'ai' | 'terminal'
@@ -216,10 +223,10 @@ function formatUsageSummary(message: ChatMessage): string | undefined {
   return parts.join(' · ')
 }
 
-function getFaviconUrl(url: string): string {
+function getFaviconUrl(url: string, size = 16): string {
   try {
     const parsed = new URL(url)
-    return `https://www.google.com/s2/favicons?domain=${parsed.hostname}&sz=16`
+    return `https://www.google.com/s2/favicons?domain=${parsed.hostname}&sz=${size}`
   } catch {
     return ''
   }
@@ -229,6 +236,15 @@ function formatSourceUrl(url: string): string {
   try {
     const parsed = new URL(url)
     return parsed.hostname.replace(/^www\./, '') + parsed.pathname.replace(/\/$/, '')
+  } catch {
+    return url
+  }
+}
+
+function formatSourceDomain(url: string): string {
+  try {
+    const parsed = new URL(url)
+    return parsed.hostname.replace(/^www\./, '')
   } catch {
     return url
   }
@@ -393,6 +409,27 @@ function StopIcon(): JSX.Element {
   )
 }
 
+function GlobeIcon({ className }: { className?: string }): JSX.Element {
+  return (
+    <svg
+      className={className}
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M2 12h20" />
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    </svg>
+  )
+}
+
 function ImageIcon(): JSX.Element {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -523,6 +560,56 @@ function CheckIcon(): JSX.Element {
     >
       <path d="M20 6 9 17l-5-5" />
     </svg>
+  )
+}
+
+function WebSearchStepRow({ step }: { step: Extract<ReasoningStep, { type: 'web_search' }> }): JSX.Element {
+  const isSearching = step.status === 'searching'
+  const query = step.query?.trim()
+
+  return (
+    <div className="chat-thinking-search">
+      <GlobeIcon
+        className={`chat-thinking-search-icon${isSearching ? ' chat-thinking-search-icon--pulse' : ''}`}
+      />
+      <div className="chat-thinking-search-content">
+        <span>
+          {query ? (
+            <>
+              Searching web for <span className="chat-thinking-search-query">“{query}”</span>
+            </>
+          ) : (
+            'Searching the web…'
+          )}
+        </span>
+        {!isSearching && step.sources.length > 0 ? (
+          <div className="chat-thinking-search-sources">
+            {step.sources.slice(0, 3).map((source) => (
+              <a
+                key={source.url}
+                href={source.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="chat-thinking-source"
+              >
+                <img
+                  src={getFaviconUrl(source.url, 32)}
+                  alt=""
+                  className="chat-thinking-source-favicon"
+                  onError={(e) => {
+                    ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+                  }}
+                />
+                <span className="chat-thinking-source-domain">{formatSourceDomain(source.url)}</span>
+              </a>
+            ))}
+            {step.sources.length > 3 ? (
+              <span className="chat-thinking-source-more">+{step.sources.length - 3} more</span>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </div>
   )
 }
 
@@ -1378,15 +1465,25 @@ export default function App(): JSX.Element {
       }
 
       if (event.type === 'reasoning-delta' && event.delta) {
+        const delta = event.delta
         streamBufferRef.current = {
           content: streamBufferRef.current?.content ?? '',
-          reasoning: `${streamBufferRef.current?.reasoning ?? ''}${event.delta}`
+          reasoning: `${streamBufferRef.current?.reasoning ?? ''}${delta}`
         }
 
-        updateConversationMessage(conversationId, messageId, (message) => ({
-          ...message,
-          reasoning: `${message.reasoning ?? ''}${event.delta}`
-        }))
+        updateConversationMessage(conversationId, messageId, (message) => {
+          const steps = message.steps ?? []
+          const last = steps[steps.length - 1]
+          const nextSteps: ReasoningStep[] =
+            last && last.type === 'reasoning'
+              ? [...steps.slice(0, -1), { type: 'reasoning', text: last.text + delta }]
+              : [...steps, { type: 'reasoning', text: delta }]
+          return {
+            ...message,
+            reasoning: `${message.reasoning ?? ''}${delta}`,
+            steps: nextSteps
+          }
+        })
         return
       }
 
@@ -1395,16 +1492,67 @@ export default function App(): JSX.Element {
       }
 
       if (event.type === 'sources' && event.sources && event.sources.length > 0) {
-        updateConversationMessage(conversationId, messageId, (message) => ({
-          ...message,
-          sources: event.sources
-        }))
+        const sources = event.sources
+        updateConversationMessage(conversationId, messageId, (message) => {
+          const steps = message.steps ?? []
+          let targetIndex = -1
+          if (event.itemId) {
+            targetIndex = steps.findIndex(
+              (step) => step.type === 'web_search' && step.id === event.itemId
+            )
+          }
+          if (targetIndex === -1) {
+            for (let i = steps.length - 1; i >= 0; i -= 1) {
+              const step = steps[i]
+              if (step.type === 'web_search' && step.status === 'searching') {
+                targetIndex = i
+                break
+              }
+            }
+          }
+          const nextSteps =
+            targetIndex === -1
+              ? steps
+              : steps.map((step, index) => {
+                  if (index !== targetIndex || step.type !== 'web_search') return step
+                  return { ...step, status: 'done' as const, sources }
+                })
+          return { ...message, sources, steps: nextSteps }
+        })
         return
       }
 
       if (event.type === 'tool-start') {
-        // Timeline step for tool calls is tracked via the stream events;
-        // no persistent state change needed on the message for now.
+        if (event.toolType === 'web_search') {
+          updateConversationMessage(conversationId, messageId, (message) => ({
+            ...message,
+            steps: [
+              ...(message.steps ?? []),
+              {
+                type: 'web_search',
+                id: event.itemId ?? createId('search_'),
+                query: event.query ?? '',
+                status: 'searching',
+                sources: []
+              }
+            ]
+          }))
+        }
+        return
+      }
+
+      if (event.type === 'tool-query') {
+        const query = event.query
+        if (!event.itemId || !query) return
+        updateConversationMessage(conversationId, messageId, (message) => {
+          const steps = message.steps ?? []
+          const nextSteps = steps.map((step) => {
+            if (step.type !== 'web_search' || step.id !== event.itemId) return step
+            if (step.query) return step
+            return { ...step, query }
+          })
+          return { ...message, steps: nextSteps }
+        })
         return
       }
 
@@ -1444,7 +1592,13 @@ export default function App(): JSX.Element {
                   content: streamBufferRef.current?.content ?? message.content,
                   usage: event.usage,
                   reasoning: streamBufferRef.current?.reasoning ?? message.reasoning,
-                  model: event.model ?? message.model
+                  model: event.model ?? message.model,
+                  stopped: event.stopped ?? message.stopped,
+                  steps: (message.steps ?? []).map((step) =>
+                    step.type === 'web_search' && step.status === 'searching'
+                      ? { ...step, status: 'done' as const }
+                      : step
+                  )
                 }
               : message
           )
@@ -1483,6 +1637,12 @@ export default function App(): JSX.Element {
         unsubscribe()
       }
     }
+  }, [])
+
+  const handleCancel = useCallback(() => {
+    const streamId = activeStreamIdRef.current
+    if (!streamId) return
+    window.api?.chat.cancelStream?.(streamId)
   }, [])
 
   const handleSubmit = useCallback(async () => {
@@ -2200,8 +2360,11 @@ export default function App(): JSX.Element {
                         const isStreaming =
                           isAssistant && isLoading && activeStreamMessageId === message.id
                         const reasoningText = message.reasoning?.trim() ?? ''
+                        const reasoningSteps = message.steps ?? []
+                        const hasSteps = reasoningSteps.length > 0
                         const hasReasoningContent =
                           reasoningText.length > 0 ||
+                          hasSteps ||
                           (message.reasoningTitle != null && message.reasoningTitle.trim().length > 0)
                         const showThinking =
                           isAssistant &&
@@ -2209,7 +2372,9 @@ export default function App(): JSX.Element {
                         const isThinkingOpen = Boolean(thinkingOpenById[message.id])
                         const modelLabel = message.model?.trim()
                         const usageLabel = formatUsageSummary(message)
-                        const metaLabel = [modelLabel, usageLabel].filter(Boolean).join(` \u00b7 `)
+                        const metaLabel = [message.stopped ? 'Stopped' : null, modelLabel, usageLabel]
+                          .filter(Boolean)
+                          .join(` \u00b7 `)
 
                         return (
                           <div
@@ -2275,7 +2440,25 @@ export default function App(): JSX.Element {
 
                                   {isThinkingOpen && (
                                     <div className="chat-thinking-body">
-                                      {reasoningText ? (
+                                      {hasSteps ? (
+                                        reasoningSteps.map((step, stepIndex) => {
+                                          if (step.type === 'reasoning') {
+                                            const isLastStep = stepIndex === reasoningSteps.length - 1
+                                            return (
+                                              <p
+                                                key={`reasoning-${stepIndex}`}
+                                                className="chat-thinking-text whitespace-pre-wrap"
+                                              >
+                                                {step.text}
+                                                {isStreaming && isLastStep ? (
+                                                  <span className="chat-thinking-cursor">|</span>
+                                                ) : null}
+                                              </p>
+                                            )
+                                          }
+                                          return <WebSearchStepRow key={step.id} step={step} />
+                                        })
+                                      ) : reasoningText ? (
                                         <p className="chat-thinking-text whitespace-pre-wrap">
                                           {reasoningText}
                                           {isStreaming ? (
@@ -2626,12 +2809,12 @@ export default function App(): JSX.Element {
               <div className="w-1" />
 
               <button
-                onClick={() => void handleSubmit()}
-                disabled={!query.trim() || isLoading}
+                onClick={() => void (isLoading ? handleCancel() : handleSubmit())}
+                disabled={!isLoading && !query.trim()}
                 className="flex items-center justify-center w-8 h-8 mr-1 rounded-lg bg-neutral-700/60 hover:bg-neutral-600/80 disabled:opacity-30 disabled:cursor-not-allowed text-neutral-300 transition-all duration-150 border border-white/8"
-                aria-label="Submit prompt"
+                aria-label={isLoading ? 'Stop generating' : 'Submit prompt'}
               >
-                {isLoading ? <SpinnerIcon /> : <SendIcon />}
+                {isLoading ? <StopIcon /> : <SendIcon />}
               </button>
 
               {attachedImages.length > 0 && (

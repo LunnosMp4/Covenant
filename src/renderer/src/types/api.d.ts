@@ -23,9 +23,11 @@ interface ChatMessage {
   createdAt: number
   reasoning?: string
   reasoningTitle?: string
+  steps?: ReasoningStep[]
   usage?: ChatUsage
   model?: string
   sources?: Source[]
+  stopped?: boolean
   images?: ChatMessageImage[]
 }
 
@@ -42,11 +44,15 @@ interface Source {
   url: string
 }
 
+type ReasoningStep =
+  | { type: 'reasoning'; text: string }
+  | { type: 'web_search'; id: string; query: string; status: 'searching' | 'done'; sources: Source[] }
+
 interface ChatStreamEvent {
   id: string
   type: 'content' | 'reasoning' | 'done' | 'error'
     | 'reasoning-start' | 'reasoning-title' | 'reasoning-delta' | 'reasoning-end'
-    | 'tool-start' | 'sources'
+    | 'tool-start' | 'tool-query' | 'sources'
   delta?: string
   usage?: ChatUsage
   error?: string
@@ -58,6 +64,7 @@ interface ChatStreamEvent {
   actionType?: string
   query?: string
   sources?: Source[]
+  stopped?: boolean
 }
 
 interface ChatConversation {
@@ -127,6 +134,7 @@ interface CovenantAPI {
     askCovenant: (messages: Array<{ role: ChatRole; content: string | InputContent[] }>) => Promise<string>
     askCovenantStream: (messages: Array<{ role: ChatRole; content: string | InputContent[] }>) => Promise<{ id: string }>
     onStreamEvent: (callback: (event: ChatStreamEvent) => void) => () => void
+    cancelStream: (streamId: string) => void
     getConversations: () => Promise<ChatConversation[]>
     getConversation: (id: string) => Promise<ChatConversation | null>
     saveConversation: (conversation: ChatConversation) => Promise<ChatConversation[]>

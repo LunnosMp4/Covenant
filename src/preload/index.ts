@@ -22,9 +22,11 @@ interface ChatMessage {
   createdAt: number
   reasoning?: string
   reasoningTitle?: string
+  steps?: ReasoningStep[]
   usage?: ChatUsage
   model?: string
   sources?: Source[]
+  stopped?: boolean
   images?: { base64: string; fileName: string; mimeType: string }[]
 }
 
@@ -41,11 +43,15 @@ interface Source {
   url: string
 }
 
+type ReasoningStep =
+  | { type: 'reasoning'; text: string }
+  | { type: 'web_search'; id: string; query: string; status: 'searching' | 'done'; sources: Source[] }
+
 interface ChatStreamEvent {
   id: string
   type: 'content' | 'reasoning' | 'done' | 'error'
     | 'reasoning-start' | 'reasoning-title' | 'reasoning-delta' | 'reasoning-end'
-    | 'tool-start' | 'sources'
+    | 'tool-start' | 'tool-query' | 'sources'
   delta?: string
   usage?: ChatUsage
   error?: string
@@ -57,6 +63,7 @@ interface ChatStreamEvent {
   actionType?: string
   query?: string
   sources?: Source[]
+  stopped?: boolean
 }
 
 interface ChatConversation {
@@ -289,6 +296,7 @@ const api = {
         ipcRenderer.removeListener('covenant:chat-stream-event', listener)
       }
     },
+    cancelStream: (streamId: string) => ipcRenderer.send('covenant:chat-cancel', streamId),
     getConversations: () => ipcRenderer.invoke('get-conversations') as Promise<ChatConversation[]>,
     getConversation: (id: string) => ipcRenderer.invoke('get-conversation', id) as Promise<ChatConversation | null>,
     saveConversation: (conversation: ChatConversation) =>
