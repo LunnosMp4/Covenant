@@ -192,6 +192,17 @@ function formatCurrency(amount: number): string {
   }).format(amount)
 }
 
+function formatConversationTimestamp(timestamp: number): string {
+  const date = new Date(timestamp)
+  const monthDay = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const time = date.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  })
+  return `${monthDay}, ${time}`
+}
+
 function formatUsageSummary(message: ChatMessage): string | undefined {
   const usage = message.usage
   if (!usage) {
@@ -1301,6 +1312,37 @@ export default function App(): JSX.Element {
       .catch(() => {})
   }, [])
 
+  const generateConversationTitleAsync = useCallback(
+    (conversationId: string, prompt: string): void => {
+      if (!window.api?.chat.generateConversationTitle) return
+
+      void window.api.chat
+        .generateConversationTitle(prompt)
+        .then((rawTitle) => {
+          const safeTitle =
+            typeof rawTitle === 'string' ? rawTitle.trim().slice(0, MAX_CONVERSATION_TITLE_LENGTH) : ''
+          if (!safeTitle) return
+
+          setConversations((previous) =>
+            previous.map((conversation) =>
+              conversation.id === conversationId ? { ...conversation, title: safeTitle } : conversation
+            )
+          )
+
+          const currentConversation = activeConversationRef.current
+          if (currentConversation && currentConversation.id === conversationId) {
+            const updatedConversation = { ...currentConversation, title: safeTitle }
+            setActiveConversation(updatedConversation)
+            persistConversation(updatedConversation)
+          }
+        })
+        .catch(() => {
+          // Keep the fallback title when generation fails.
+        })
+    },
+    [persistConversation]
+  )
+
   useEffect(() => {
     void loadConversations()
   }, [loadConversations])
@@ -1844,6 +1886,7 @@ export default function App(): JSX.Element {
         systemPrompt: activeSystemPrompt || undefined
       }
       setActiveConversation(nextConversation)
+      generateConversationTitleAsync(nextConversation.id, rawPrompt)
     }
 
     const userMessage: ChatMessage = {
@@ -1974,6 +2017,7 @@ export default function App(): JSX.Element {
     selectedSystemPrompt,
     upsertConversation,
     persistConversation,
+    generateConversationTitleAsync,
     attachedImages
   ])
 
@@ -2765,7 +2809,7 @@ export default function App(): JSX.Element {
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: -8, scale: 0.98 }}
                           transition={{ duration: 0.15 }}
-                          className="absolute right-0 top-10 z-20 w-56 overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950/95 shadow-xl"
+                          className="absolute right-0 top-10 z-20 w-72 overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950/95 shadow-xl"
                         >
                           <div className="max-h-40 overflow-y-auto scrollbar-hidden py-1">
                             {conversations.length === 0 ? (
@@ -2790,8 +2834,13 @@ export default function App(): JSX.Element {
                                     className="flex min-w-0 flex-1 flex-col gap-0.5 text-left"
                                   >
                                     <span className="truncate font-medium">{conversation.title}</span>
-                                    <span className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
-                                      {conversation.messages.length} messages
+                                    <span className="mt-0.5 flex items-center justify-between gap-2">
+                                      <span className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+                                        {conversation.messages.length} messages
+                                      </span>
+                                      <span className="flex-shrink-0 text-[10px] tabular-nums text-neutral-500">
+                                        {formatConversationTimestamp(conversation.updatedAt)}
+                                      </span>
                                     </span>
                                   </button>
                                   <button
@@ -3401,6 +3450,7 @@ export default function App(): JSX.Element {
           <ConfirmDeleteModal
             title="Delete conversation"
             message={`Are you sure you want to delete "${deletingConversation.title}"? This cannot be undone.`}
+            withBackdrop={false}
             onConfirm={() => {
               void handleDeleteConversation()
             }}

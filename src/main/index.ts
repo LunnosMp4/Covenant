@@ -167,6 +167,8 @@ const mcpSessionIds = new Map<string, string>()
 const terminalSubscribers = new Set<WebContents>()
 let lastActiveSessionId: string | null = null
 const MAX_CONVERSATIONS = 20
+const CONVERSATION_TITLE_MODEL = 'gpt-4o-mini'
+const MAX_GENERATED_TITLE_LENGTH = 60
 const CHAT_ROLE_SET = new Set<ChatRole>(['system', 'user', 'assistant'])
 const activeChatStreams = new Map<string, AbortController>()
 
@@ -1788,6 +1790,56 @@ async function completeChatWithMcp(
   return 'The model requested too many tool calls without finishing.'
 }
 
+function normalizeGeneratedTitle(rawTitle: unknown): string | null {
+  if (typeof rawTitle !== 'string') return null
+
+  const cleaned = rawTitle
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/^["'“”‘’«»]+|["'“”‘’«»]+$/g, '')
+    .replace(/[.!?…]+$/, '')
+    .trim()
+
+  if (!cleaned) return null
+  return cleaned.slice(0, MAX_GENERATED_TITLE_LENGTH)
+}
+
+async function generateConversationTitle(prompt: string): Promise<string> {
+  const normalizedPrompt = prompt.trim()
+  if (!normalizedPrompt) {
+    throw new Error('Prompt cannot be empty.')
+  }
+
+  const storedConfig = readConfig()
+  const apiKey = storedConfig.apiKey || process.env.OPENAI_API_KEY
+  if (!apiKey) {
+    throw new Error('OpenAI API key is missing.')
+  }
+
+  const proxyUrl = resolveOpenAIProxyUrl(storedConfig.proxyUrl)
+  const openAIProxyAgent = proxyUrl ? new ProxyAgent(proxyUrl) : undefined
+
+  const client = new OpenAI({
+    apiKey,
+    fetchOptions: openAIProxyAgent
+      ? {
+          dispatcher: openAIProxyAgent
+        }
+      : undefined
+  })
+
+  const response = await client.responses.create({
+    model: CONVERSATION_TITLE_MODEL,
+    instructions:
+      'Generate a very short conversation title (at most 6 words) that summarizes the user prompt. Respond with only the title, without quotes, without trailing punctuation, and without any explanation.',
+    input: `User prompt: ${normalizedPrompt}`,
+    temperature: 0.3
+  })
+
+  const rawTitle = (response as unknown as { output_text?: unknown }).output_text
+  return normalizeGeneratedTitle(rawTitle) ?? 'New chat'
+}
+
 function loadRendererWindow(targetWindow: BrowserWindow, route?: 'settings', tab?: string): void {
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     const rendererUrl = process.env['ELECTRON_RENDERER_URL']
@@ -2245,6 +2297,10 @@ ipcMain.handle('save-conversation', (_event, payload: Partial<ChatConversation>)
 
 ipcMain.handle('delete-conversation', (_event, conversationId: string) => {
   return deleteConversation(conversationId)
+})
+
+ipcMain.handle('generate-conversation-title', async (_event, prompt: string) => {
+  return generateConversationTitle(prompt)
 })
 
 ipcMain.handle('get-preprompts', () => {

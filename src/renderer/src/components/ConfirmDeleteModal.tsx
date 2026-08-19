@@ -5,16 +5,18 @@ interface ConfirmDeleteModalProps {
   message: string
   onConfirm: () => void
   onCancel: () => void
+  withBackdrop?: boolean
 }
 
 export default function ConfirmDeleteModal({
   title,
   message,
   onConfirm,
-  onCancel
+  onCancel,
+  withBackdrop = true
 }: ConfirmDeleteModalProps): JSX.Element {
   return (
-    <ModalOverlay onClose={onCancel}>
+    <ModalOverlay onClose={onCancel} withBackdrop={withBackdrop}>
       <div className="rounded-2xl border border-neutral-800 bg-neutral-900/95 p-5 shadow-[0_22px_60px_rgba(0,0,0,0.55)]">
         <h3 className="text-lg font-semibold text-neutral-100">{title}</h3>
         <p className="mt-2 text-sm text-neutral-400">{message}</p>

@@ -302,7 +302,9 @@ const api = {
     saveConversation: (conversation: ChatConversation) =>
       ipcRenderer.invoke('save-conversation', conversation) as Promise<ChatConversation[]>,
     deleteConversation: (id: string) =>
-      ipcRenderer.invoke('delete-conversation', id) as Promise<ChatConversation[]>
+      ipcRenderer.invoke('delete-conversation', id) as Promise<ChatConversation[]>,
+    generateConversationTitle: (prompt: string) =>
+      ipcRenderer.invoke('generate-conversation-title', prompt) as Promise<string>
   },
   terminal: {
     startTerminal: (size?: { cols?: number; rows?: number }) =>
