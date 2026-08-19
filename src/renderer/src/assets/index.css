@@ -85,6 +85,11 @@ body[data-window='settings'] *::-webkit-scrollbar {
   backdrop-filter: blur(36px);
 }
 
+::highlight(chat-search) {
+  background-color: var(--chat-accent, rgba(245, 158, 11, 0.55));
+  color: #111111;
+}
+
 .chat-message {
   border-width: 1px;
   word-break: break-word;

@@ -621,6 +621,17 @@ function saveConversation(payload: Partial<ChatConversation>): ChatConversation[
   return nextConversations
 }
 
+function deleteConversation(id: string): ChatConversation[] {
+  const normalizedId = typeof id === 'string' ? id.trim() : ''
+  if (!normalizedId) {
+    return getConversations()
+  }
+
+  const nextConversations = getConversations().filter((conversation) => conversation.id !== normalizedId)
+  appStore.set('conversations', nextConversations)
+  return nextConversations
+}
+
 function normalizeLauncherTargets(payload: Partial<LauncherApp>): LauncherAppTarget[] {
   const rawTargets = Array.isArray(payload.targets) ? payload.targets : []
   const sanitizedTargets = rawTargets
@@ -2230,6 +2241,10 @@ ipcMain.handle('get-conversation', (_event, conversationId: string) => {
 
 ipcMain.handle('save-conversation', (_event, payload: Partial<ChatConversation>) => {
   return saveConversation(payload)
+})
+
+ipcMain.handle('delete-conversation', (_event, conversationId: string) => {
+  return deleteConversation(conversationId)
 })
 
 ipcMain.handle('get-preprompts', () => {

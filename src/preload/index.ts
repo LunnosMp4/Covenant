@@ -300,7 +300,9 @@ const api = {
     getConversations: () => ipcRenderer.invoke('get-conversations') as Promise<ChatConversation[]>,
     getConversation: (id: string) => ipcRenderer.invoke('get-conversation', id) as Promise<ChatConversation | null>,
     saveConversation: (conversation: ChatConversation) =>
-      ipcRenderer.invoke('save-conversation', conversation) as Promise<ChatConversation[]>
+      ipcRenderer.invoke('save-conversation', conversation) as Promise<ChatConversation[]>,
+    deleteConversation: (id: string) =>
+      ipcRenderer.invoke('delete-conversation', id) as Promise<ChatConversation[]>
   },
   terminal: {
     startTerminal: (size?: { cols?: number; rows?: number }) =>

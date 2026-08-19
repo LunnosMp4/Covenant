@@ -16,6 +16,7 @@ import 'prismjs/components/prism-python'
 import ModulePopup, { type ActivePopup, type PopupItem } from './components/ModulePopup'
 import TerminalView from './components/TerminalView'
 import VoiceWaveform from './components/VoiceWaveform'
+import ConfirmDeleteModal from './components/ConfirmDeleteModal'
 import { createId } from './utils/helpers'
 import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from './constants/terminalFonts'
 import {
@@ -449,6 +450,43 @@ function XIcon(): JSX.Element {
   )
 }
 
+function SearchIcon(): JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.35-4.35" />
+    </svg>
+  )
+}
+
+function ChevronUpIcon(): JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="m18 15-6-6-6 6" />
+    </svg>
+  )
+}
+
+function ChevronDownIcon(): JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  )
+}
+
+function TrashIcon(): JSX.Element {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 6h18" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <line x1="10" y1="11" x2="10" y2="17" />
+      <line x1="14" y1="11" x2="14" y2="17" />
+    </svg>
+  )
+}
+
 interface AttachedImage {
   id: string
   base64: string
@@ -492,6 +530,142 @@ function normalizeMessageOrder(messages: ChatMessage[]): ChatMessage[] {
     if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt
     return CHAT_ROLE_ORDER.indexOf(a.role) - CHAT_ROLE_ORDER.indexOf(b.role)
   })
+}
+
+interface SearchMatch {
+  conversationId: string
+  conversationTitle: string
+  messageId: string
+  role: ChatRole
+  snippet: string
+  count: number
+}
+
+interface SearchGroup {
+  conversationId: string
+  conversationTitle: string
+  matches: SearchMatch[]
+}
+
+function getMessageSearchText(message: ChatMessage): string {
+  const parts = [message.content]
+  if (message.reasoning?.trim()) {
+    parts.push(message.reasoning.trim())
+  }
+  return parts.join('\n')
+}
+
+function countOccurrences(text: string, query: string): number {
+  const lowerText = text.toLowerCase()
+  const lowerQuery = query.toLowerCase()
+  let count = 0
+  let index = lowerText.indexOf(lowerQuery)
+  while (index !== -1) {
+    count += 1
+    index = lowerText.indexOf(lowerQuery, index + lowerQuery.length)
+  }
+  return count
+}
+
+function buildSearchSnippet(text: string, query: string, maxLength = 96): string {
+  const lowerText = text.toLowerCase()
+  const lowerQuery = query.toLowerCase()
+  const index = lowerText.indexOf(lowerQuery)
+  if (index === -1) {
+    return text.replace(/\s+/g, ' ').trim().slice(0, maxLength)
+  }
+
+  const start = Math.max(0, index - 28)
+  const end = Math.min(text.length, index + query.length + 28)
+  const prefix = start > 0 ? '…' : ''
+  const suffix = end < text.length ? '…' : ''
+  const snippet = text.slice(start, end).replace(/\s+/g, ' ').trim()
+  return `${prefix}${snippet}${suffix}`
+}
+
+function buildSearchMatches(
+  conversations: ChatConversation[],
+  activeConversation: ChatConversation | null,
+  query: string
+): SearchMatch[] {
+  const trimmed = query.trim()
+  if (!trimmed) return []
+
+  const allConversations = [...conversations]
+  if (activeConversation && !allConversations.some((item) => item.id === activeConversation.id)) {
+    allConversations.unshift(activeConversation)
+  }
+
+  const matches: SearchMatch[] = []
+  for (const conversation of allConversations) {
+    for (const message of normalizeMessageOrder(conversation.messages)) {
+      const text = getMessageSearchText(message)
+      const count = countOccurrences(text, trimmed)
+      if (count <= 0) continue
+
+      matches.push({
+        conversationId: conversation.id,
+        conversationTitle: conversation.title || DEFAULT_CONVERSATION_TITLE,
+        messageId: message.id,
+        role: message.role,
+        snippet: buildSearchSnippet(text, trimmed),
+        count
+      })
+    }
+  }
+
+  return matches
+}
+
+function getSearchHighlightRegistry(): { set(name: string, highlight: unknown): void; delete(name: string): void } | undefined {
+  return (CSS as unknown as { highlights?: { set(name: string, highlight: unknown): void; delete(name: string): void } })
+    .highlights
+}
+
+function clearSearchHighlight(): void {
+  getSearchHighlightRegistry()?.delete('chat-search')
+}
+
+function applySearchHighlight(container: HTMLElement, query: string): void {
+  const registry = getSearchHighlightRegistry()
+  const HighlightCtor = (window as unknown as { Highlight?: new (...ranges: Range[]) => unknown }).Highlight
+
+  if (!registry || !HighlightCtor) {
+    clearSearchHighlight()
+    return
+  }
+
+  const lowerQuery = query.toLowerCase()
+  const ranges: Range[] = []
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+  let node = walker.nextNode()
+
+  while (node) {
+    const value = node.nodeValue ?? ''
+    if (value) {
+      const lowerValue = value.toLowerCase()
+      let index = lowerValue.indexOf(lowerQuery)
+      while (index !== -1) {
+        try {
+          const range = document.createRange()
+          range.setStart(node, index)
+          range.setEnd(node, index + lowerQuery.length)
+          ranges.push(range)
+        } catch {
+          break
+        }
+        index = lowerValue.indexOf(lowerQuery, index + lowerQuery.length)
+      }
+    }
+    node = walker.nextNode()
+  }
+
+  if (ranges.length === 0) {
+    registry.delete('chat-search')
+    return
+  }
+
+  registry.set('chat-search', new HighlightCtor(...ranges))
 }
 
 function preprocessLatexDelimiters(content: string): string {
@@ -785,6 +959,10 @@ export default function App(): JSX.Element {
   const [autoCollapseReasoning, setAutoCollapseReasoning] = useState(true)
   const [isPinned, setIsPinned] = useState(false)
   const [sourcesPanelMessageId, setSourcesPanelMessageId] = useState<string | null>(null)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [activeSearchMatchIndex, setActiveSearchMatchIndex] = useState(0)
+  const [deletingConversation, setDeletingConversation] = useState<ChatConversation | null>(null)
   const [voiceState, setVoiceState] = useState<'idle' | 'recording' | 'transcribing' | 'error'>('idle')
   const micStreamRef = useRef<MediaStream | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -798,6 +976,7 @@ export default function App(): JSX.Element {
   const imagePanelRef = useRef<HTMLDivElement>(null)
   const imageButtonRef = useRef<HTMLButtonElement>(null)
   const chatScrollRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const historyMenuRef = useRef<HTMLDivElement>(null)
   const historyButtonRef = useRef<HTMLButtonElement>(null)
   const successResetTimersRef = useRef<Record<string, number>>({})
@@ -2097,6 +2276,49 @@ export default function App(): JSX.Element {
     [activePopup, handleClose, isChatOpen]
   )
 
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false)
+    setSearchQuery('')
+    setActiveSearchMatchIndex(0)
+  }, [])
+
+  const openSearch = useCallback(() => {
+    setSearchOpen(true)
+    window.setTimeout(() => searchInputRef.current?.focus(), 40)
+  }, [])
+
+  const toggleSearch = useCallback(() => {
+    if (searchOpen) {
+      closeSearch()
+    } else {
+      openSearch()
+    }
+  }, [searchOpen, openSearch, closeSearch])
+
+  const handleDeleteConversation = useCallback(async () => {
+    const target = deletingConversation
+    if (!target) return
+
+    if (!window.api?.chat.deleteConversation) {
+      setDeletingConversation(null)
+      return
+    }
+
+    try {
+      const updated = await window.api.chat.deleteConversation(target.id)
+      setConversations(sortConversations(updated))
+      if (activeConversation?.id === target.id) {
+        setActiveConversation(null)
+        setIsChatOpen(false)
+        closeSearch()
+      }
+    } catch {
+      // Ignore deletion failures — keep the current UI state.
+    } finally {
+      setDeletingConversation(null)
+    }
+  }, [deletingConversation, activeConversation, closeSearch])
+
   const handleRootKeyDownCapture = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
       if (
@@ -2110,6 +2332,23 @@ export default function App(): JSX.Element {
         event.preventDefault()
         event.stopPropagation()
         void toggleRecording()
+        return
+      }
+
+      if (
+        mode === 'ai' &&
+        event.ctrlKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        !event.shiftKey &&
+        (event.key === 'f' || event.key === 'F')
+      ) {
+        event.preventDefault()
+        event.stopPropagation()
+        if (!isChatOpen) {
+          setIsChatOpen(true)
+        }
+        openSearch()
         return
       }
 
@@ -2142,13 +2381,112 @@ export default function App(): JSX.Element {
         switchToAiMode()
       }
     },
-    [activeConversation, activePopup, conversations, mode, switchToAiMode, toggleMode, toggleRecording]
+    [activeConversation, activePopup, conversations, isChatOpen, mode, switchToAiMode, toggleMode, toggleRecording, openSearch]
   )
 
   const chatMessages = useMemo(
     () => (activeConversation ? normalizeMessageOrder(activeConversation.messages) : []),
     [activeConversation]
   )
+
+  const searchMatches = useMemo(
+    () => buildSearchMatches(conversations, activeConversation, searchQuery),
+    [conversations, activeConversation, searchQuery]
+  )
+
+  const searchGroups = useMemo<SearchGroup[]>(() => {
+    const groups: SearchGroup[] = []
+    for (const match of searchMatches) {
+      const last = groups[groups.length - 1]
+      if (last && last.conversationId === match.conversationId) {
+        last.matches.push(match)
+      } else {
+        groups.push({
+          conversationId: match.conversationId,
+          conversationTitle: match.conversationTitle,
+          matches: [match]
+        })
+      }
+    }
+    return groups
+  }, [searchMatches])
+
+  const navigateToSearchMatch = useCallback(
+    (match: SearchMatch) => {
+      if (match.conversationId !== activeConversation?.id) {
+        const conversation = conversations.find((item) => item.id === match.conversationId)
+        if (conversation) {
+          setActiveConversation(conversation)
+        }
+      }
+      setIsChatOpen(true)
+      setIsHistoryOpen(false)
+      setActivePopup(null)
+      window.setTimeout(() => {
+        const scrollElement = chatScrollRef.current
+        const messageElement = scrollElement?.querySelector(`[data-message-id="${match.messageId}"]`)
+        if (messageElement) {
+          messageElement.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        }
+      }, 80)
+    },
+    [activeConversation, conversations]
+  )
+
+  const goToSearchMatch = useCallback(
+    (index: number) => {
+      if (searchMatches.length === 0) return
+      const clamped = ((index % searchMatches.length) + searchMatches.length) % searchMatches.length
+      setActiveSearchMatchIndex(clamped)
+      navigateToSearchMatch(searchMatches[clamped])
+    },
+    [searchMatches, navigateToSearchMatch]
+  )
+
+  const goToNextSearchMatch = useCallback(() => {
+    goToSearchMatch(activeSearchMatchIndex + 1)
+  }, [goToSearchMatch, activeSearchMatchIndex])
+
+  const goToPreviousSearchMatch = useCallback(() => {
+    goToSearchMatch(activeSearchMatchIndex - 1)
+  }, [goToSearchMatch, activeSearchMatchIndex])
+
+  const selectSearchMatch = useCallback(
+    (match: SearchMatch) => {
+      const index = searchMatches.indexOf(match)
+      if (index === -1) return
+      goToSearchMatch(index)
+    },
+    [searchMatches, goToSearchMatch]
+  )
+
+  const selectSearchGroup = useCallback(
+    (conversationId: string) => {
+      const index = searchMatches.findIndex((match) => match.conversationId === conversationId)
+      if (index === -1) return
+      goToSearchMatch(index)
+    },
+    [searchMatches, goToSearchMatch]
+  )
+
+  useEffect(() => {
+    const trimmedQuery = searchQuery.trim()
+    const scrollElement = chatScrollRef.current
+
+    if (!trimmedQuery || !scrollElement || !isChatOpen) {
+      clearSearchHighlight()
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      applySearchHighlight(scrollElement, trimmedQuery)
+    }, 0)
+
+    return () => {
+      window.clearTimeout(timer)
+      clearSearchHighlight()
+    }
+  }, [searchQuery, chatMessages, activeConversation?.id, isChatOpen])
 
   const themePalette = useMemo(() => getThemePalette(themeGradient), [themeGradient])
   const themeStyles = useMemo<CSSProperties>(
@@ -2229,6 +2567,130 @@ export default function App(): JSX.Element {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
+                      <div className="relative">
+                        <motion.div
+                          initial={false}
+                          animate={{ width: searchOpen ? 280 : 32 }}
+                          transition={{ type: 'spring', damping: 26, stiffness: 320, mass: 0.8 }}
+                          className={`flex h-8 items-center overflow-hidden rounded-lg border transition-colors duration-150 ${
+                            searchOpen
+                              ? 'border-white/20 bg-white/10'
+                              : 'border-white/10 hover:border-white/20 hover:bg-white/10'
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={toggleSearch}
+                            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-neutral-300 transition-colors hover:text-neutral-100"
+                            aria-label={searchOpen ? 'Close search' : 'Search conversations'}
+                            aria-pressed={searchOpen}
+                          >
+                            <SearchIcon />
+                          </button>
+                          {searchOpen && (
+                            <>
+                              <input
+                                ref={searchInputRef}
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => {
+                                  setSearchQuery(e.target.value)
+                                  setActiveSearchMatchIndex(0)
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Escape') {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    closeSearch()
+                                  } else if (e.key === 'Enter') {
+                                    e.preventDefault()
+                                    if (e.shiftKey) {
+                                      goToPreviousSearchMatch()
+                                    } else {
+                                      goToNextSearchMatch()
+                                    }
+                                  }
+                                }}
+                                placeholder="Search all conversations…"
+                                className="h-full min-w-0 flex-1 bg-transparent text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none"
+                                spellCheck={false}
+                              />
+                              {searchQuery.trim() && searchMatches.length > 0 ? (
+                                <span className="flex-shrink-0 text-[11px] tabular-nums text-neutral-400">
+                                  {activeSearchMatchIndex + 1} / {searchMatches.length}
+                                </span>
+                              ) : null}
+                              <button
+                                type="button"
+                                onClick={goToPreviousSearchMatch}
+                                disabled={searchMatches.length === 0}
+                                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-white/10 hover:text-neutral-200 disabled:cursor-not-allowed disabled:opacity-30"
+                                aria-label="Previous match"
+                              >
+                                <ChevronUpIcon />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={goToNextSearchMatch}
+                                disabled={searchMatches.length === 0}
+                                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-white/10 hover:text-neutral-200 disabled:cursor-not-allowed disabled:opacity-30"
+                                aria-label="Next match"
+                              >
+                                <ChevronDownIcon />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={closeSearch}
+                                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-white/10 hover:text-neutral-200"
+                                aria-label="Close search"
+                              >
+                                <XIcon />
+                              </button>
+                            </>
+                          )}
+                        </motion.div>
+                        {searchQuery.trim() && searchGroups.length > 0 && (
+                          <div className="absolute left-0 top-full z-20 mt-1 w-72 max-h-52 overflow-y-auto chat-scrollbar rounded-lg border border-neutral-800 bg-neutral-950/95 py-1 shadow-xl">
+                            {searchGroups.map((group) => (
+                              <div key={group.conversationId} className="py-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => selectSearchGroup(group.conversationId)}
+                                  className="flex w-full items-center justify-between gap-2 px-2.5 py-1 text-left transition-colors hover:bg-neutral-800/70"
+                                >
+                                  <span className="truncate text-[12px] font-medium text-neutral-200">
+                                    {group.conversationTitle}
+                                  </span>
+                                  <span className="flex-shrink-0 text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+                                    {group.matches.length} match{group.matches.length === 1 ? '' : 'es'}
+                                  </span>
+                                </button>
+                                {group.matches.slice(0, 3).map((match) => (
+                                  <button
+                                    key={match.messageId}
+                                    type="button"
+                                    onClick={() => selectSearchMatch(match)}
+                                    className={`flex w-full items-center gap-2 px-4 py-1 text-left transition-colors hover:bg-neutral-800/70 ${
+                                      searchMatches.indexOf(match) === activeSearchMatchIndex
+                                        ? 'bg-neutral-800/70'
+                                        : ''
+                                    }`}
+                                  >
+                                    <span
+                                      className={`flex-shrink-0 text-[10px] uppercase tracking-[0.1em] ${
+                                        match.role === 'user' ? 'text-neutral-500' : 'text-neutral-600'
+                                      }`}
+                                    >
+                                      {match.role === 'user' ? 'You' : 'AI'}
+                                    </span>
+                                    <span className="truncate text-[12px] text-neutral-400">{match.snippet}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                         {(() => {
                         const stats = contextStats
                         if (!stats || stats.maxTokens <= 0) return null
@@ -2310,25 +2772,41 @@ export default function App(): JSX.Element {
                               <p className="px-2.5 py-2 text-[11px] text-neutral-500">No conversations yet.</p>
                             ) : (
                               conversations.map((conversation) => (
-                                <button
+                                <div
                                   key={conversation.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setActiveConversation(conversation)
-                                    setIsChatOpen(true)
-                                    setIsHistoryOpen(false)
-                                  }}
-                                  className={`flex w-full flex-col gap-0.5 px-2.5 py-1.5 text-left text-[12px] transition-colors hover:bg-neutral-800/70 ${
+                                  className={`flex w-full items-center gap-1 px-2.5 py-1.5 text-[12px] transition-colors hover:bg-neutral-800/70 ${
                                     conversation.id === activeConversation?.id
                                       ? 'bg-neutral-800/70 text-neutral-100'
                                       : 'text-neutral-300'
                                   }`}
                                 >
-                                  <span className="truncate font-medium">{conversation.title}</span>
-                                  <span className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
-                                    {conversation.messages.length} messages
-                                  </span>
-                                </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveConversation(conversation)
+                                      setIsChatOpen(true)
+                                      setIsHistoryOpen(false)
+                                    }}
+                                    className="flex min-w-0 flex-1 flex-col gap-0.5 text-left"
+                                  >
+                                    <span className="truncate font-medium">{conversation.title}</span>
+                                    <span className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+                                      {conversation.messages.length} messages
+                                    </span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setDeletingConversation(conversation)
+                                      setIsHistoryOpen(false)
+                                    }}
+                                    className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-red-500/20 hover:text-red-300"
+                                    aria-label={`Delete ${conversation.title}`}
+                                  >
+                                    <TrashIcon />
+                                  </button>
+                                </div>
                               ))
                             )}
                           </div>
@@ -2379,6 +2857,7 @@ export default function App(): JSX.Element {
                         return (
                           <div
                             key={message.id}
+                            data-message-id={message.id}
                             className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
                           >
                             <div
@@ -2916,6 +3395,19 @@ export default function App(): JSX.Element {
           </div>
         </motion.div>
       )}
+
+      <AnimatePresence>
+        {deletingConversation && (
+          <ConfirmDeleteModal
+            title="Delete conversation"
+            message={`Are you sure you want to delete "${deletingConversation.title}"? This cannot be undone.`}
+            onConfirm={() => {
+              void handleDeleteConversation()
+            }}
+            onCancel={() => setDeletingConversation(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

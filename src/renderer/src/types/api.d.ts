@@ -138,6 +138,7 @@ interface CovenantAPI {
     getConversations: () => Promise<ChatConversation[]>
     getConversation: (id: string) => Promise<ChatConversation | null>
     saveConversation: (conversation: ChatConversation) => Promise<ChatConversation[]>
+    deleteConversation: (id: string) => Promise<ChatConversation[]>
   }
   terminal: {
     startTerminal: (size?: { cols?: number; rows?: number }) => Promise<TerminalStartResult>
