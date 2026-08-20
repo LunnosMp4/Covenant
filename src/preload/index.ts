@@ -99,6 +99,13 @@ interface Workflow {
   content: string
 }
 
+interface Task {
+  id: string
+  title: string
+  done: boolean
+  createdAt: number
+}
+
 interface WorkflowStatusUpdatePayload {
   id: string
   status: 'running' | 'success' | 'error'
@@ -150,6 +157,15 @@ const api = {
 
       return () => {
         ipcRenderer.removeListener('toggle-visibility', listener)
+      }
+    },
+    onOpenTasks: (callback: () => void) => {
+      const listener = () => {
+        callback()
+      }
+      ipcRenderer.on('open-tasks', listener)
+      return () => {
+        ipcRenderer.removeListener('open-tasks', listener)
       }
     }
   },
@@ -363,7 +379,12 @@ const api = {
     saveWorkflow: (workflow: Partial<Workflow>) =>
       ipcRenderer.invoke('save-workflow', workflow) as Promise<Workflow[]>,
     deleteWorkflow: (workflowId: string) =>
-      ipcRenderer.invoke('delete-workflow', workflowId) as Promise<Workflow[]>
+      ipcRenderer.invoke('delete-workflow', workflowId) as Promise<Workflow[]>,
+    getTasks: () => ipcRenderer.invoke('get-tasks') as Promise<Task[]>,
+    addTask: (title: string) => ipcRenderer.invoke('add-task', title) as Promise<Task[]>,
+    toggleTask: (taskId: string) => ipcRenderer.invoke('toggle-task', taskId) as Promise<Task[]>,
+    deleteTask: (taskId: string) => ipcRenderer.invoke('delete-task', taskId) as Promise<Task[]>,
+    clearCompletedTasks: () => ipcRenderer.invoke('clear-completed-tasks') as Promise<Task[]>
   },
   clipboard: {
     writeText: (text: string) => clipboard.writeText(text)

@@ -3,6 +3,7 @@ import type { McpServer } from './mcp'
 export interface ButtonVisibility {
   appLauncher: boolean
   workflow: boolean
+  tasks: boolean
 }
 
 export type ReasoningEffort = 'low' | 'medium' | 'high'
@@ -28,7 +29,8 @@ export const DEFAULT_AUTO_COLLAPSE_REASONING = true
 
 export const DEFAULT_BUTTON_VISIBILITY: ButtonVisibility = {
   appLauncher: true,
-  workflow: true
+  workflow: true,
+  tasks: true
 }
 
 export function getModelCapabilities(modelId: string): ChatModelOption | undefined {
@@ -55,11 +57,13 @@ export function modelSupportsWebSearch(modelId: string): boolean {
 export interface ShortcutConfig {
   openApp: string
   openAppTerminal: string
+  openTasks: string
 }
 
 export const DEFAULT_SHORTCUTS: ShortcutConfig = {
   openApp: 'Alt+Space',
-  openAppTerminal: 'Alt+T'
+  openAppTerminal: 'Alt+T',
+  openTasks: 'Alt+L'
 }
 
 export function normalizeShortcuts(raw: unknown): ShortcutConfig {
@@ -67,7 +71,8 @@ export function normalizeShortcuts(raw: unknown): ShortcutConfig {
   const obj = raw as Record<string, unknown>
   return {
     openApp: typeof obj.openApp === 'string' ? obj.openApp : DEFAULT_SHORTCUTS.openApp,
-    openAppTerminal: typeof obj.openAppTerminal === 'string' ? obj.openAppTerminal : DEFAULT_SHORTCUTS.openAppTerminal
+    openAppTerminal: typeof obj.openAppTerminal === 'string' ? obj.openAppTerminal : DEFAULT_SHORTCUTS.openAppTerminal,
+    openTasks: typeof obj.openTasks === 'string' ? obj.openTasks : DEFAULT_SHORTCUTS.openTasks
   }
 }
 

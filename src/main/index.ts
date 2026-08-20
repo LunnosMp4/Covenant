@@ -130,11 +130,19 @@ interface LauncherApp {
   arguments?: string
 }
 
+interface Task {
+  id: string
+  title: string
+  done: boolean
+  createdAt: number
+}
+
 interface AppStoreSchema {
   preprompts: Preprompt[]
   apps: LauncherApp[]
   workflows: Workflow[]
   conversations: ChatConversation[]
+  tasks: Task[]
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -260,7 +268,8 @@ const appStore = new StoreClass<AppStoreSchema>({
     preprompts: [],
     apps: [],
     workflows: [],
-    conversations: []
+    conversations: [],
+    tasks: []
   },
   schema: {
     preprompts: {
@@ -322,6 +331,21 @@ const appStore = new StoreClass<AppStoreSchema>({
           content: { type: 'string' }
         },
         required: ['id', 'title', 'language', 'content']
+      }
+    },
+    tasks: {
+      type: 'array',
+      default: [],
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          id: { type: 'string' },
+          title: { type: 'string' },
+          done: { type: 'boolean' },
+          createdAt: { type: 'number' }
+        },
+        required: ['id', 'title', 'done', 'createdAt']
       }
     },
     conversations: {
@@ -454,6 +478,58 @@ function deletePreprompt(id: string): Preprompt[] {
   const nextPreprompts = getPreprompts().filter((item) => item.id !== normalizedId)
   appStore.set('preprompts', nextPreprompts)
   return nextPreprompts
+}
+
+function getTasks(): Task[] {
+  return appStore.get('tasks', [])
+}
+
+function addTask(title: string): Task[] {
+  const normalizedTitle = typeof title === 'string' ? title.trim() : ''
+  if (!normalizedTitle) {
+    throw new Error('Task title is required.')
+  }
+
+  const created: Task = {
+    id: randomUUID(),
+    title: normalizedTitle,
+    done: false,
+    createdAt: Date.now()
+  }
+
+  const nextTasks = [...getTasks(), created]
+  appStore.set('tasks', nextTasks)
+  return nextTasks
+}
+
+function toggleTask(id: string): Task[] {
+  const normalizedId = typeof id === 'string' ? id.trim() : ''
+  if (!normalizedId) {
+    return getTasks()
+  }
+
+  const nextTasks = getTasks().map((item) =>
+    item.id === normalizedId ? { ...item, done: !item.done } : item
+  )
+  appStore.set('tasks', nextTasks)
+  return nextTasks
+}
+
+function deleteTask(id: string): Task[] {
+  const normalizedId = typeof id === 'string' ? id.trim() : ''
+  if (!normalizedId) {
+    return getTasks()
+  }
+
+  const nextTasks = getTasks().filter((item) => item.id !== normalizedId)
+  appStore.set('tasks', nextTasks)
+  return nextTasks
+}
+
+function clearCompletedTasks(): Task[] {
+  const nextTasks = getTasks().filter((item) => !item.done)
+  appStore.set('tasks', nextTasks)
+  return nextTasks
 }
 
 function normalizeChatUsage(payload: unknown): ChatUsage | undefined {
@@ -1188,7 +1264,8 @@ function normalizeButtonVisibility(raw: unknown): AppConfig['buttonVisibility'] 
   const obj = raw as Record<string, unknown>
   return {
     appLauncher: typeof obj.appLauncher === 'boolean' ? obj.appLauncher : DEFAULT_BUTTON_VISIBILITY.appLauncher,
-    workflow: typeof obj.workflow === 'boolean' ? obj.workflow : DEFAULT_BUTTON_VISIBILITY.workflow
+    workflow: typeof obj.workflow === 'boolean' ? obj.workflow : DEFAULT_BUTTON_VISIBILITY.workflow,
+    tasks: typeof obj.tasks === 'boolean' ? obj.tasks : DEFAULT_BUTTON_VISIBILITY.tasks
   }
 }
 
@@ -2069,6 +2146,18 @@ function openTerminalMode(): void {
   }
 }
 
+function openTasksMode(): void {
+  if (!mainWindow) return
+
+  if (!isVisible) {
+    showWindow()
+  } else {
+    mainWindow.webContents.send('toggle-visibility', true)
+  }
+
+  mainWindow.webContents.send('open-tasks')
+}
+
 function getShortcutDisplay(shortcut: string): string {
   return shortcut || 'Disabled'
 }
@@ -2104,6 +2193,17 @@ function registerShortcuts(config: AppConfig): void {
       }
     } catch (error) {
       console.warn(`Error registering global shortcut '${shortcuts.openAppTerminal}':`, error)
+    }
+  }
+
+  if (shortcuts.openTasks) {
+    try {
+      const ok = globalShortcut.register(shortcuts.openTasks, openTasksMode)
+      if (!ok) {
+        console.warn(`Failed to register global shortcut: ${shortcuts.openTasks} (may conflict with another app)`)
+      }
+    } catch (error) {
+      console.warn(`Error registering global shortcut '${shortcuts.openTasks}':`, error)
     }
   }
 
@@ -2337,6 +2437,26 @@ ipcMain.handle('save-workflow', (_event, payload: Partial<Workflow>) => {
 
 ipcMain.handle('delete-workflow', (_event, workflowId: string) => {
   return deleteWorkflow(workflowId)
+})
+
+ipcMain.handle('get-tasks', () => {
+  return getTasks()
+})
+
+ipcMain.handle('add-task', (_event, title: string) => {
+  return addTask(title)
+})
+
+ipcMain.handle('toggle-task', (_event, taskId: string) => {
+  return toggleTask(taskId)
+})
+
+ipcMain.handle('delete-task', (_event, taskId: string) => {
+  return deleteTask(taskId)
+})
+
+ipcMain.handle('clear-completed-tasks', () => {
+  return clearCompletedTasks()
 })
 
 ipcMain.handle('execute-workflow', async (event, workflowPayload: Partial<Workflow>) => {
@@ -2640,7 +2760,8 @@ ipcMain.on('update-button-visibility', (_event, buttonVisibility: Partial<AppCon
   const current = readConfig().buttonVisibility
   const nextButtonVisibility: AppConfig['buttonVisibility'] = {
     appLauncher: typeof buttonVisibility?.appLauncher === 'boolean' ? buttonVisibility.appLauncher : current.appLauncher,
-    workflow: typeof buttonVisibility?.workflow === 'boolean' ? buttonVisibility.workflow : current.workflow
+    workflow: typeof buttonVisibility?.workflow === 'boolean' ? buttonVisibility.workflow : current.workflow,
+    tasks: typeof buttonVisibility?.tasks === 'boolean' ? buttonVisibility.tasks : current.tasks
   }
   updateConfig({ buttonVisibility: nextButtonVisibility })
 

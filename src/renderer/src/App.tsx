@@ -28,6 +28,7 @@ import type { ButtonVisibility, ReasoningEffort } from '../../shared/config'
 import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_REASONING_EFFORT } from '../../shared/config'
 import type { LauncherApp, LauncherAppTarget } from './types/launcher-app'
 import type { Preprompt } from './types/preprompt'
+import type { Task } from './types/task'
 import type {
   Workflow,
   WorkflowExecutionState,
@@ -338,6 +339,17 @@ function CodeIcon(): JSX.Element {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
       <path d="M14.2354 7.14709C14.3167 6.74092 14.0533 6.3458 13.6471 6.26456C13.2409 6.18333 12.8458 6.44674 12.7646 6.85291L14.2354 7.14709ZM10.7646 16.8529C10.6833 17.2591 10.9467 17.6542 11.3529 17.7354C11.7591 17.8167 12.1542 17.5533 12.2354 17.1471L10.7646 16.8529ZM7.97342 15.4921C8.26837 15.7829 8.74323 15.7795 9.03406 15.4846C9.32488 15.1896 9.32153 14.7148 9.02658 14.4239L7.97342 15.4921ZM5.5 12L4.97342 11.4659C4.83048 11.6069 4.75 11.7993 4.75 12C4.75 12.2007 4.83048 12.3931 4.97342 12.5341L5.5 12ZM9.02658 9.57606C9.32153 9.28523 9.32488 8.81037 9.03406 8.51542C8.74323 8.22047 8.26837 8.21712 7.97342 8.50794L9.02658 9.57606ZM15.9773 14.3782C15.6802 14.6669 15.6735 15.1417 15.9622 15.4387C16.2509 15.7358 16.7257 15.7425 17.0227 15.4538L15.9773 14.3782ZM19.5 12L20.0227 12.5378C20.1667 12.3979 20.2486 12.2061 20.25 12.0053C20.2514 11.8046 20.1723 11.6116 20.0303 11.4697L19.5 12ZM17.0303 8.46967C16.7374 8.17678 16.2626 8.17678 15.9697 8.46967C15.6768 8.76256 15.6768 9.23744 15.9697 9.53033L17.0303 8.46967ZM12.7646 6.85291L10.7646 16.8529L12.2354 17.1471L14.2354 7.14709L12.7646 6.85291ZM9.02658 14.4239L6.02658 11.4659L4.97342 12.5341L7.97342 15.4921L9.02658 14.4239ZM6.02658 12.5341L9.02658 9.57606L7.97342 8.50794L4.97342 11.4659L6.02658 12.5341ZM17.0227 15.4538L20.0227 12.5378L18.9773 11.4622L15.9773 14.3782L17.0227 15.4538ZM20.0303 11.4697L17.0303 8.46967L15.9697 9.53033L18.9697 12.5303L20.0303 11.4697Z"/>
+    </svg>
+  )
+}
+
+function TasksIcon(): JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M4 6h16" />
+      <path d="M4 12h16" />
+      <path d="M4 18h10" />
+      <path d="m16 16 2 2 4-4" />
     </svg>
   )
 }
@@ -956,6 +968,7 @@ export default function App(): JSX.Element {
   const [apps, setApps] = useState<LauncherApp[]>([])
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [preprompts, setPreprompts] = useState<Preprompt[]>([])
+  const [tasks, setTasks] = useState<Task[]>([])
   const [workflowExecutionById, setWorkflowExecutionById] = useState<
     Record<string, WorkflowExecutionState>
   >({})
@@ -963,7 +976,7 @@ export default function App(): JSX.Element {
   const [activePopup, setActivePopup] = useState<ActivePopup | null>(null)
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
   const [showImagePanel, setShowImagePanel] = useState(false)
-  const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true })
+  const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true, tasks: true })
   const [chatModel, setChatModel] = useState<string>(DEFAULT_CHAT_MODEL)
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT)
   const [enableWebSearch, setEnableWebSearch] = useState(true)
@@ -1175,6 +1188,19 @@ export default function App(): JSX.Element {
   }, [])
 
   useEffect(() => {
+    if (!window.api?.window.onOpenTasks) return
+
+    const unsubscribe = window.api.window.onOpenTasks(() => {
+      setMode('ai')
+      setActivePopup('tasks')
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
     if (!visible || mode !== 'ai') {
       return
     }
@@ -1277,6 +1303,56 @@ export default function App(): JSX.Element {
       setWorkflows(savedWorkflows)
     } catch {
       setWorkflows([])
+    }
+  }, [])
+
+  const loadTasks = useCallback(async (): Promise<void> => {
+    if (!window.api?.store.getTasks) {
+      setTasks([])
+      return
+    }
+
+    try {
+      const savedTasks = await window.api.store.getTasks()
+      setTasks(savedTasks)
+    } catch {
+      setTasks([])
+    }
+  }, [])
+
+  const handleAddTask = useCallback(async (title: string): Promise<void> => {
+    if (!window.api?.store.addTask) return
+    try {
+      setTasks(await window.api.store.addTask(title))
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  const handleToggleTask = useCallback(async (id: string): Promise<void> => {
+    if (!window.api?.store.toggleTask) return
+    try {
+      setTasks(await window.api.store.toggleTask(id))
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  const handleDeleteTask = useCallback(async (id: string): Promise<void> => {
+    if (!window.api?.store.deleteTask) return
+    try {
+      setTasks(await window.api.store.deleteTask(id))
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  const handleClearCompletedTasks = useCallback(async (): Promise<void> => {
+    if (!window.api?.store.clearCompletedTasks) return
+    try {
+      setTasks(await window.api.store.clearCompletedTasks())
+    } catch {
+      // ignore
     }
   }, [])
 
@@ -1423,8 +1499,13 @@ export default function App(): JSX.Element {
 
     if (activePopup === 'workflow') {
       void loadWorkflows()
+      return
     }
-  }, [activePopup, loadApps, loadPreprompts, loadWorkflows])
+
+    if (activePopup === 'tasks') {
+      void loadTasks()
+    }
+  }, [activePopup, loadApps, loadPreprompts, loadTasks, loadWorkflows])
 
   useEffect(() => {
     if (!activeConversation) {
@@ -3190,6 +3271,11 @@ export default function App(): JSX.Element {
                     setReasoningEffort(effort)
                     window.api?.config.updateReasoningEffort?.(effort)
                   }}
+                  tasks={tasks}
+                  onAddTask={handleAddTask}
+                  onToggleTask={handleToggleTask}
+                  onDeleteTask={handleDeleteTask}
+                  onClearCompletedTasks={handleClearCompletedTasks}
                 />
               )}
             </AnimatePresence>
@@ -3336,14 +3422,16 @@ export default function App(): JSX.Element {
 
               <div className="w-1" />
 
-              <button
-                onClick={() => void (isLoading ? handleCancel() : handleSubmit())}
-                disabled={!isLoading && !query.trim()}
-                className="flex items-center justify-center w-8 h-8 mr-1 rounded-lg bg-neutral-700/60 hover:bg-neutral-600/80 disabled:opacity-30 disabled:cursor-not-allowed text-neutral-300 transition-all duration-150 border border-white/8"
-                aria-label={isLoading ? 'Stop generating' : 'Submit prompt'}
-              >
-                {isLoading ? <StopIcon /> : <SendIcon />}
-              </button>
+              {(isLoading || query.trim()) && (
+                <button
+                  onClick={() => void (isLoading ? handleCancel() : handleSubmit())}
+                  disabled={!isLoading && !query.trim()}
+                  className="flex items-center justify-center w-8 h-8 mr-1 rounded-lg bg-neutral-700/60 hover:bg-neutral-600/80 disabled:opacity-30 disabled:cursor-not-allowed text-neutral-300 transition-all duration-150 border border-white/8"
+                  aria-label={isLoading ? 'Stop generating' : 'Submit prompt'}
+                >
+                  {isLoading ? <StopIcon /> : <SendIcon />}
+                </button>
+              )}
 
               {attachedImages.length > 0 && (
                 <button
@@ -3392,6 +3480,20 @@ export default function App(): JSX.Element {
                     aria-pressed={activePopup === 'workflow'}
                   >
                     <CodeIcon />
+                  </button>
+                )}
+
+                {buttonVisibility.tasks && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      togglePopup('tasks')
+                    }}
+                    className="flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all duration-150"
+                    aria-label="Tasks"
+                    aria-pressed={activePopup === 'tasks'}
+                  >
+                    <TasksIcon />
                   </button>
                 )}
               </div>

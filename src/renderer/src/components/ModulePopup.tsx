@@ -11,11 +11,13 @@ import {
 } from '../../../shared/config'
 import type { LauncherAppTarget } from '../types/launcher-app'
 import type { Workflow, WorkflowExecutionState } from '../types/workflow'
+import type { Task } from '../types/task'
 import CustomSelect from './CustomSelect'
 import WorkflowList from './WorkflowList'
+import TasksPopup from './TasksPopup'
 import { getAppBadgeText } from '../utils/helpers'
 
-export type ActivePopup = 'appLauncher' | 'workflow' | 'settings'
+export type ActivePopup = 'appLauncher' | 'workflow' | 'settings' | 'tasks'
 export type PopupAnchorSide = 'left' | 'right'
 type SettingsPopupTab = 'prompt' | 'model'
 
@@ -37,7 +39,8 @@ export interface PopupItem {
 const MODULE_LABELS: Record<ActivePopup, string> = {
   appLauncher: 'App Launcher',
   workflow: 'Workflows',
-  settings: 'Settings'
+  settings: 'Settings',
+  tasks: 'Tasks'
 }
 
 interface ModulePopupProps {
@@ -61,6 +64,11 @@ interface ModulePopupProps {
   onOpenFullSettings?: () => void
   reasoningEffort?: ReasoningEffort
   onSelectReasoningEffort?: (effort: ReasoningEffort) => void
+  tasks?: Task[]
+  onAddTask?: (title: string) => void
+  onToggleTask?: (id: string) => void
+  onDeleteTask?: (id: string) => void
+  onClearCompletedTasks?: () => void
 }
 
 function CloseIcon(): JSX.Element {
@@ -347,7 +355,12 @@ export default function ModulePopup({
   onSelectChatModel,
   onOpenFullSettings,
   reasoningEffort = DEFAULT_REASONING_EFFORT,
-  onSelectReasoningEffort
+  onSelectReasoningEffort,
+  tasks = [],
+  onAddTask,
+  onToggleTask,
+  onDeleteTask,
+  onClearCompletedTasks
 }: ModulePopupProps): JSX.Element {
   const items =
     activePopup === 'appLauncher'
@@ -373,7 +386,8 @@ export default function ModulePopup({
         ? 'No preprompts saved yet.'
         : 'No items available.'
   const anchorClass = anchorSide === 'left' ? 'left-0' : 'right-0'
-  const popupWidthClass = activePopup === 'workflow' ? 'w-[460px] max-w-[92vw]' : 'w-[320px]'
+  const popupWidthClass =
+    activePopup === 'workflow' ? 'w-[460px] max-w-[92vw]' : activePopup === 'tasks' ? 'w-[360px]' : 'w-[320px]'
 
   return (
     <motion.div
@@ -399,6 +413,14 @@ export default function ModulePopup({
           onSelectChatModel={onSelectChatModel}
           reasoningEffort={reasoningEffort}
           onSelectReasoningEffort={onSelectReasoningEffort}
+        />
+      ) : activePopup === 'tasks' ? (
+        <TasksPopup
+          tasks={tasks}
+          onAdd={(title) => onAddTask?.(title)}
+          onToggle={(id) => onToggleTask?.(id)}
+          onDelete={(id) => onDeleteTask?.(id)}
+          onClearCompleted={() => onClearCompletedTasks?.()}
         />
       ) : (
         <div className="space-y-1">
@@ -436,7 +458,7 @@ export default function ModulePopup({
         </div>
       )}
 
-      {activePopup !== 'settings' && (
+      {activePopup !== 'settings' && activePopup !== 'tasks' && (
         <button
           type="button"
           onClick={onAddNew}

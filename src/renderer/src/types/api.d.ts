@@ -3,6 +3,7 @@ import type { McpServer } from '../../../shared/mcp'
 import type { Preprompt } from './preprompt'
 import type { LauncherApp } from './launcher-app'
 import type { Workflow, WorkflowLogPayload, WorkflowStatusUpdatePayload } from './workflow'
+import type { Task } from './task'
 
 type ChatRole = 'system' | 'user' | 'assistant'
 
@@ -100,6 +101,7 @@ interface CovenantAPI {
     setExpanded: (expanded: boolean) => void
     onNavigateSettingsTab: (callback: (tab: string) => void) => () => void
     onToggleVisibility: (callback: (visible: boolean, terminalMode?: boolean) => void) => () => void
+    onOpenTasks: (callback: () => void) => () => void
   }
   config: {
     getConfig: () => Promise<AppConfig>
@@ -165,6 +167,11 @@ interface CovenantAPI {
     getWorkflows: () => Promise<Workflow[]>
     saveWorkflow: (workflow: Partial<Workflow>) => Promise<Workflow[]>
     deleteWorkflow: (workflowId: string) => Promise<Workflow[]>
+    getTasks: () => Promise<Task[]>
+    addTask: (title: string) => Promise<Task[]>
+    toggleTask: (taskId: string) => Promise<Task[]>
+    deleteTask: (taskId: string) => Promise<Task[]>
+    clearCompletedTasks: () => Promise<Task[]>
   }
   selectFile: () => Promise<string>
   getFileIcon: (filePath: string) => Promise<string>

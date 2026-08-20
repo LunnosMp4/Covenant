@@ -569,6 +569,12 @@ function GeneralTab({
             label="Workflows"
             description="Show the Workflows button to run saved scripts and automations."
           />
+          <MinimalistToggle
+            checked={buttonVisibility.tasks}
+            onChange={(checked) => onButtonVisibilityChange({ ...buttonVisibility, tasks: checked })}
+            label="Tasks"
+            description="Show the Tasks button to quickly capture and check off to-dos."
+          />
         </div>
       </SectionCard>
 
@@ -614,6 +620,28 @@ function GeneralTab({
               }
               defaultShortcut={DEFAULT_SHORTCUTS.openAppTerminal}
               onReset={() => onShortcutChange('openAppTerminal', DEFAULT_SHORTCUTS.openAppTerminal)}
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-neutral-300">
+              Open Tasks
+            </label>
+            <p className="mb-2 text-xs text-neutral-500">
+              Opens Covenant directly on the Tasks quick-capture list.
+            </p>
+            <ShortcutRecorder
+              value={shortcuts.openTasks}
+              onChange={(val) => onShortcutChange('openTasks', val)}
+              conflictWarning={
+                shortcuts.openTasks && shortcuts.openApp && shortcuts.openTasks === shortcuts.openApp
+                  ? 'This shortcut is also assigned to Open App'
+                  : shortcuts.openTasks && shortcuts.openAppTerminal && shortcuts.openTasks === shortcuts.openAppTerminal
+                    ? 'This shortcut is also assigned to Open App in Terminal Mode'
+                    : null
+              }
+              defaultShortcut={DEFAULT_SHORTCUTS.openTasks}
+              onReset={() => onShortcutChange('openTasks', DEFAULT_SHORTCUTS.openTasks)}
             />
           </div>
         </div>
@@ -984,7 +1012,7 @@ export default function Settings(): JSX.Element {
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT)
   const [enableWebSearch, setEnableWebSearch] = useState(true)
   const [autoCollapseReasoning, setAutoCollapseReasoning] = useState(true)
-  const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true })
+  const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true, tasks: true })
   const [shortcuts, setShortcuts] = useState<ShortcutConfig>({ ...DEFAULT_SHORTCUTS })
   const [mcpServers, setMcpServers] = useState<McpServer[]>([])
   const [isMcpServersLoading, setIsMcpServersLoading] = useState(false)
@@ -1038,7 +1066,7 @@ export default function Settings(): JSX.Element {
         )
         setEnableWebSearch(typeof config.enableWebSearch === 'boolean' ? config.enableWebSearch : true)
         setAutoCollapseReasoning(typeof config.autoCollapseReasoning === 'boolean' ? config.autoCollapseReasoning : true)
-        setButtonVisibility(config.buttonVisibility ?? { appLauncher: true, workflow: true })
+        setButtonVisibility(config.buttonVisibility ?? { appLauncher: true, workflow: true, tasks: true })
         setShortcuts(config.shortcuts ?? { ...DEFAULT_SHORTCUTS })
       } catch {
         if (!isMounted) return
@@ -1050,7 +1078,7 @@ export default function Settings(): JSX.Element {
         setPreferredShell(undefined)
         setMcpServers([])
         setChatModel(DEFAULT_CHAT_MODEL)
-        setButtonVisibility({ appLauncher: true, workflow: true })
+        setButtonVisibility({ appLauncher: true, workflow: true, tasks: true })
       }
     }
 
