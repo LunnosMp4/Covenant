@@ -12,6 +12,7 @@ import {
 import type { LauncherAppTarget } from '../types/launcher-app'
 import type { Workflow, WorkflowExecutionState } from '../types/workflow'
 import type { Task } from '../types/task'
+import type { GamificationState, XpToastState } from '../types/gamification'
 import CustomSelect from './CustomSelect'
 import WorkflowList from './WorkflowList'
 import TasksPopup from './TasksPopup'
@@ -69,6 +70,8 @@ interface ModulePopupProps {
   onToggleTask?: (id: string) => void
   onDeleteTask?: (id: string) => void
   onClearCompletedTasks?: () => void
+  gamification?: GamificationState
+  xpToast?: XpToastState | null
 }
 
 function CloseIcon(): JSX.Element {
@@ -360,7 +363,9 @@ export default function ModulePopup({
   onAddTask,
   onToggleTask,
   onDeleteTask,
-  onClearCompletedTasks
+  onClearCompletedTasks,
+  gamification,
+  xpToast
 }: ModulePopupProps): JSX.Element {
   const items =
     activePopup === 'appLauncher'
@@ -421,6 +426,8 @@ export default function ModulePopup({
           onToggle={(id) => onToggleTask?.(id)}
           onDelete={(id) => onDeleteTask?.(id)}
           onClearCompleted={() => onClearCompletedTasks?.()}
+          gamification={gamification}
+          xpToast={xpToast}
         />
       ) : (
         <div className="space-y-1">

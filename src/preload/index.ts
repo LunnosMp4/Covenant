@@ -104,6 +104,45 @@ interface Task {
   title: string
   done: boolean
   createdAt: number
+  evaluating?: boolean
+  tier?: 'TRIVIAL' | 'EASY' | 'MEDIUM' | 'HARD' | 'EPIC'
+  xpReward?: number
+  estimatedMinutes?: number
+  categoryTag?:
+    | 'Dev'
+    | 'DevOps'
+    | 'SysAdmin'
+    | 'Writing'
+    | 'Design'
+    | 'Admin'
+    | 'Personal'
+    | 'Health'
+    | 'General'
+  actionType?:
+    | 'terminal_command'
+    | 'code_refactor'
+    | 'quick_action'
+    | 'deep_work'
+    | 'communication'
+    | 'maintenance'
+  rationale?: string
+}
+
+interface GamificationState {
+  currentLevel: number
+  currentXP: number
+  totalLifetimeXP: number
+  streakDays: number
+  lastActiveDate: string | null
+}
+
+interface ClearCompletedResult {
+  tasks: Task[]
+  gamification: GamificationState
+  xpGained: number
+  levelUp: boolean
+  streakBonusApplied: boolean
+  clearedCount: number
 }
 
 interface WorkflowStatusUpdatePayload {
@@ -381,10 +420,21 @@ const api = {
     deleteWorkflow: (workflowId: string) =>
       ipcRenderer.invoke('delete-workflow', workflowId) as Promise<Workflow[]>,
     getTasks: () => ipcRenderer.invoke('get-tasks') as Promise<Task[]>,
+    getGamification: () => ipcRenderer.invoke('get-gamification') as Promise<GamificationState>,
     addTask: (title: string) => ipcRenderer.invoke('add-task', title) as Promise<Task[]>,
     toggleTask: (taskId: string) => ipcRenderer.invoke('toggle-task', taskId) as Promise<Task[]>,
     deleteTask: (taskId: string) => ipcRenderer.invoke('delete-task', taskId) as Promise<Task[]>,
-    clearCompletedTasks: () => ipcRenderer.invoke('clear-completed-tasks') as Promise<Task[]>
+    clearCompletedTasks: () =>
+      ipcRenderer.invoke('clear-completed-tasks') as Promise<ClearCompletedResult>,
+    onTasksUpdated: (callback: (tasks: Task[]) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, tasks: Task[]) => {
+        callback(tasks)
+      }
+      ipcRenderer.on('tasks:updated', listener)
+      return () => {
+        ipcRenderer.removeListener('tasks:updated', listener)
+      }
+    }
   },
   clipboard: {
     writeText: (text: string) => clipboard.writeText(text)

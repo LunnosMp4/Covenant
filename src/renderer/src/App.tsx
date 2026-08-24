@@ -29,6 +29,7 @@ import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_REASONING_EFFORT } from
 import type { LauncherApp, LauncherAppTarget } from './types/launcher-app'
 import type { Preprompt } from './types/preprompt'
 import type { Task } from './types/task'
+import type { GamificationState, XpToastState } from './types/gamification'
 import type {
   Workflow,
   WorkflowExecutionState,
@@ -109,6 +110,14 @@ interface ChatStreamEvent {
 }
 
 type AppMode = 'ai' | 'terminal'
+
+const DEFAULT_GAMIFICATION_STATE: GamificationState = {
+  currentLevel: 1,
+  currentXP: 0,
+  totalLifetimeXP: 0,
+  streakDays: 0,
+  lastActiveDate: null
+}
 
 const MAX_WORKFLOW_LOG_LINES = 200
 const MAX_CONVERSATION_TITLE_LENGTH = 48
@@ -969,6 +978,8 @@ export default function App(): JSX.Element {
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [preprompts, setPreprompts] = useState<Preprompt[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
+  const [gamification, setGamification] = useState<GamificationState>(DEFAULT_GAMIFICATION_STATE)
+  const [xpToast, setXpToast] = useState<XpToastState | null>(null)
   const [workflowExecutionById, setWorkflowExecutionById] = useState<
     Record<string, WorkflowExecutionState>
   >({})
@@ -1201,6 +1212,18 @@ export default function App(): JSX.Element {
   }, [])
 
   useEffect(() => {
+    const unsubscribe = window.api?.store.onTasksUpdated?.((nextTasks) => {
+      setTasks(nextTasks)
+    })
+
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe()
+      }
+    }
+  }, [])
+
+  useEffect(() => {
     if (!visible || mode !== 'ai') {
       return
     }
@@ -1320,6 +1343,19 @@ export default function App(): JSX.Element {
     }
   }, [])
 
+  const loadGamification = useCallback(async (): Promise<void> => {
+    if (!window.api?.store.getGamification) {
+      setGamification(DEFAULT_GAMIFICATION_STATE)
+      return
+    }
+
+    try {
+      setGamification(await window.api.store.getGamification())
+    } catch {
+      setGamification(DEFAULT_GAMIFICATION_STATE)
+    }
+  }, [])
+
   const handleAddTask = useCallback(async (title: string): Promise<void> => {
     if (!window.api?.store.addTask) return
     try {
@@ -1350,7 +1386,21 @@ export default function App(): JSX.Element {
   const handleClearCompletedTasks = useCallback(async (): Promise<void> => {
     if (!window.api?.store.clearCompletedTasks) return
     try {
-      setTasks(await window.api.store.clearCompletedTasks())
+      const result = await window.api.store.clearCompletedTasks()
+      setTasks(result.tasks)
+      setGamification(result.gamification)
+
+      if (result.clearedCount > 0) {
+        setXpToast({
+          id: Date.now(),
+          xpGained: result.xpGained,
+          levelUp: result.levelUp,
+          newLevel: result.gamification.currentLevel,
+          streakDays: result.gamification.streakDays,
+          streakBonusApplied: result.streakBonusApplied
+        })
+        window.setTimeout(() => setXpToast(null), 2800)
+      }
     } catch {
       // ignore
     }
@@ -1504,8 +1554,9 @@ export default function App(): JSX.Element {
 
     if (activePopup === 'tasks') {
       void loadTasks()
+      void loadGamification()
     }
-  }, [activePopup, loadApps, loadPreprompts, loadTasks, loadWorkflows])
+  }, [activePopup, loadApps, loadPreprompts, loadTasks, loadWorkflows, loadGamification])
 
   useEffect(() => {
     if (!activeConversation) {
@@ -3276,6 +3327,8 @@ export default function App(): JSX.Element {
                   onToggleTask={handleToggleTask}
                   onDeleteTask={handleDeleteTask}
                   onClearCompletedTasks={handleClearCompletedTasks}
+                  gamification={gamification}
+                  xpToast={xpToast}
                 />
               )}
             </AnimatePresence>

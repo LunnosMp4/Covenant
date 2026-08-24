@@ -4,6 +4,7 @@ import type { Preprompt } from './preprompt'
 import type { LauncherApp } from './launcher-app'
 import type { Workflow, WorkflowLogPayload, WorkflowStatusUpdatePayload } from './workflow'
 import type { Task } from './task'
+import type { ClearCompletedResult, GamificationState } from './gamification'
 
 type ChatRole = 'system' | 'user' | 'assistant'
 
@@ -168,10 +169,12 @@ interface CovenantAPI {
     saveWorkflow: (workflow: Partial<Workflow>) => Promise<Workflow[]>
     deleteWorkflow: (workflowId: string) => Promise<Workflow[]>
     getTasks: () => Promise<Task[]>
+    getGamification: () => Promise<GamificationState>
     addTask: (title: string) => Promise<Task[]>
     toggleTask: (taskId: string) => Promise<Task[]>
     deleteTask: (taskId: string) => Promise<Task[]>
-    clearCompletedTasks: () => Promise<Task[]>
+    clearCompletedTasks: () => Promise<ClearCompletedResult>
+    onTasksUpdated: (callback: (tasks: Task[]) => void) => () => void
   }
   selectFile: () => Promise<string>
   getFileIcon: (filePath: string) => Promise<string>
