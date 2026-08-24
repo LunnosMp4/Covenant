@@ -708,6 +708,28 @@ function deleteTask(id: string): Task[] {
   return nextTasks
 }
 
+function reorderTasks(orderedIds: unknown): Task[] {
+  if (!Array.isArray(orderedIds)) {
+    return getTasks()
+  }
+
+  const currentTasks = getTasks()
+  const byId = new Map(currentTasks.map((task) => [task.id, task]))
+
+  const ordered = orderedIds
+    .map((rawId) => (typeof rawId === 'string' ? rawId.trim() : ''))
+    .filter((id): id is string => Boolean(id))
+    .map((id) => byId.get(id))
+    .filter((task): task is Task => Boolean(task))
+
+  const seen = new Set(ordered.map((task) => task.id))
+  const remaining = currentTasks.filter((task) => !seen.has(task.id))
+  const nextTasks = [...ordered, ...remaining]
+
+  appStore.set('tasks', nextTasks)
+  return nextTasks
+}
+
 function clearCompletedTasks(): ClearCompletedResult {
   const currentTasks = getTasks()
   const completedTasks = currentTasks.filter((item) => item.done)
@@ -2699,6 +2721,10 @@ ipcMain.handle('toggle-task', (_event, taskId: string) => {
 
 ipcMain.handle('delete-task', (_event, taskId: string) => {
   return deleteTask(taskId)
+})
+
+ipcMain.handle('reorder-tasks', (_event, orderedIds: unknown) => {
+  return reorderTasks(orderedIds)
 })
 
 ipcMain.handle('clear-completed-tasks', () => {

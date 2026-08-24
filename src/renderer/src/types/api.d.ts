@@ -173,6 +173,7 @@ interface CovenantAPI {
     addTask: (title: string) => Promise<Task[]>
     toggleTask: (taskId: string) => Promise<Task[]>
     deleteTask: (taskId: string) => Promise<Task[]>
+    reorderTasks: (orderedIds: string[]) => Promise<Task[]>
     clearCompletedTasks: () => Promise<ClearCompletedResult>
     onTasksUpdated: (callback: (tasks: Task[]) => void) => () => void
   }

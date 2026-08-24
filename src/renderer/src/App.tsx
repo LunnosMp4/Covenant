@@ -1383,6 +1383,15 @@ export default function App(): JSX.Element {
     }
   }, [])
 
+  const handleReorderTasks = useCallback(async (orderedIds: string[]): Promise<void> => {
+    if (!window.api?.store.reorderTasks) return
+    try {
+      setTasks(await window.api.store.reorderTasks(orderedIds))
+    } catch {
+      // ignore
+    }
+  }, [])
+
   const handleClearCompletedTasks = useCallback(async (): Promise<void> => {
     if (!window.api?.store.clearCompletedTasks) return
     try {
@@ -3326,6 +3335,7 @@ export default function App(): JSX.Element {
                   onAddTask={handleAddTask}
                   onToggleTask={handleToggleTask}
                   onDeleteTask={handleDeleteTask}
+                  onReorderTasks={handleReorderTasks}
                   onClearCompletedTasks={handleClearCompletedTasks}
                   gamification={gamification}
                   xpToast={xpToast}

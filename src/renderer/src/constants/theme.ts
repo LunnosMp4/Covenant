@@ -6,6 +6,8 @@ export interface ThemeOption {
   palette: ThemePalette
 }
 
+import type { TaskTier } from '../../../shared/gamification'
+
 export interface ThemePalette {
   accent: string
   accentSoft: string
@@ -17,6 +19,13 @@ export interface ThemePalette {
   scrollbarThumb: string
   scrollbarThumbHover: string
   metaText: string
+  gamification: GamificationColors
+}
+
+export interface GamificationColors {
+  tierColors: Record<TaskTier, string>
+  levelColor: string
+  streakColor: string
 }
 
 export const DEFAULT_THEME_GRADIENT = 'from-neutral-900/95 to-[#1c0f03]'
@@ -37,7 +46,18 @@ export const THEME_OPTIONS: ThemeOption[] = [
       assistantBorder: 'rgba(255, 255, 255, 0.1)',
       scrollbarThumb: 'rgba(245, 158, 11, 0.35)',
       scrollbarThumbHover: 'rgba(245, 158, 11, 0.55)',
-      metaText: 'rgba(255, 255, 255, 0.45)'
+      metaText: 'rgba(255, 255, 255, 0.45)',
+      gamification: {
+        tierColors: {
+          TRIVIAL: '#a8a29e',
+          EASY: '#7dd3fc',
+          MEDIUM: '#fbbf24',
+          HARD: '#fb923c',
+          EPIC: '#fb7185'
+        },
+        levelColor: '#f59e0b',
+        streakColor: '#f59e0b'
+      }
     }
   },
   {
@@ -55,7 +75,18 @@ export const THEME_OPTIONS: ThemeOption[] = [
       assistantBorder: 'rgba(148, 163, 184, 0.2)',
       scrollbarThumb: 'rgba(96, 165, 250, 0.35)',
       scrollbarThumbHover: 'rgba(96, 165, 250, 0.55)',
-      metaText: 'rgba(226, 232, 240, 0.55)'
+      metaText: 'rgba(226, 232, 240, 0.55)',
+      gamification: {
+        tierColors: {
+          TRIVIAL: '#94a3b8',
+          EASY: '#38bdf8',
+          MEDIUM: '#60a5fa',
+          HARD: '#818cf8',
+          EPIC: '#a78bfa'
+        },
+        levelColor: '#60a5fa',
+        streakColor: '#38bdf8'
+      }
     }
   },
   {
@@ -73,7 +104,18 @@ export const THEME_OPTIONS: ThemeOption[] = [
       assistantBorder: 'rgba(196, 181, 253, 0.2)',
       scrollbarThumb: 'rgba(167, 139, 250, 0.35)',
       scrollbarThumbHover: 'rgba(167, 139, 250, 0.55)',
-      metaText: 'rgba(221, 214, 254, 0.55)'
+      metaText: 'rgba(221, 214, 254, 0.55)',
+      gamification: {
+        tierColors: {
+          TRIVIAL: '#a1a1aa',
+          EASY: '#a5b4fc',
+          MEDIUM: '#a78bfa',
+          HARD: '#c084fc',
+          EPIC: '#f0abfc'
+        },
+        levelColor: '#a78bfa',
+        streakColor: '#c084fc'
+      }
     }
   },
   {
@@ -91,7 +133,18 @@ export const THEME_OPTIONS: ThemeOption[] = [
       assistantBorder: 'rgba(110, 231, 183, 0.2)',
       scrollbarThumb: 'rgba(52, 211, 153, 0.35)',
       scrollbarThumbHover: 'rgba(52, 211, 153, 0.55)',
-      metaText: 'rgba(209, 250, 229, 0.55)'
+      metaText: 'rgba(209, 250, 229, 0.55)',
+      gamification: {
+        tierColors: {
+          TRIVIAL: '#94a3b8',
+          EASY: '#6ee7b7',
+          MEDIUM: '#34d399',
+          HARD: '#fbbf24',
+          EPIC: '#f87171'
+        },
+        levelColor: '#34d399',
+        streakColor: '#34d399'
+      }
     }
   }
 ]

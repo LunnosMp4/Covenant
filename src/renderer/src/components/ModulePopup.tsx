@@ -69,6 +69,7 @@ interface ModulePopupProps {
   onAddTask?: (title: string) => void
   onToggleTask?: (id: string) => void
   onDeleteTask?: (id: string) => void
+  onReorderTasks?: (orderedIds: string[]) => void
   onClearCompletedTasks?: () => void
   gamification?: GamificationState
   xpToast?: XpToastState | null
@@ -363,6 +364,7 @@ export default function ModulePopup({
   onAddTask,
   onToggleTask,
   onDeleteTask,
+  onReorderTasks,
   onClearCompletedTasks,
   gamification,
   xpToast
@@ -425,9 +427,11 @@ export default function ModulePopup({
           onAdd={(title) => onAddTask?.(title)}
           onToggle={(id) => onToggleTask?.(id)}
           onDelete={(id) => onDeleteTask?.(id)}
+          onReorder={(orderedIds) => onReorderTasks?.(orderedIds)}
           onClearCompleted={() => onClearCompletedTasks?.()}
           gamification={gamification}
           xpToast={xpToast}
+          themeGradient={themeGradient}
         />
       ) : (
         <div className="space-y-1">

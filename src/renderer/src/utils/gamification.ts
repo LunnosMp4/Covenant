@@ -8,18 +8,31 @@ export const TIER_LABELS: Record<TaskTier, string> = {
   EPIC: 'Epic'
 }
 
-export const TIER_BADGE_CLASSES: Record<TaskTier, string> = {
-  TRIVIAL: 'border-neutral-500/30 bg-neutral-500/10 text-neutral-400',
-  EASY: 'border-sky-400/30 bg-sky-400/10 text-sky-300',
-  MEDIUM: 'border-amber-400/30 bg-amber-400/10 text-amber-300',
-  HARD: 'border-orange-400/30 bg-orange-400/10 text-orange-300',
-  EPIC: 'border-rose-400/30 bg-rose-400/10 text-rose-300'
-}
-
 export function getTierLabel(tier: TaskTier | undefined): string {
   return tier ? TIER_LABELS[tier] : ''
 }
 
-export function getTierBadgeClass(tier: TaskTier | undefined): string {
-  return tier ? TIER_BADGE_CLASSES[tier] : TIER_BADGE_CLASSES.MEDIUM
+export function hexToRgba(hex: string, alpha: number): string {
+  const normalized = hex.replace('#', '').trim()
+  const full =
+    normalized.length === 3
+      ? normalized
+          .split('')
+          .map((char) => char + char)
+          .join('')
+      : normalized
+
+  if (full.length !== 6) {
+    return `rgba(255,255,255,${alpha})`
+  }
+
+  const parsed = parseInt(full, 16)
+  if (Number.isNaN(parsed)) {
+    return `rgba(255,255,255,${alpha})`
+  }
+
+  const r = (parsed >> 16) & 255
+  const g = (parsed >> 8) & 255
+  const b = parsed & 255
+  return `rgba(${r},${g},${b},${alpha})`
 }

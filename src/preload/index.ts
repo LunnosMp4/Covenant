@@ -424,6 +424,8 @@ const api = {
     addTask: (title: string) => ipcRenderer.invoke('add-task', title) as Promise<Task[]>,
     toggleTask: (taskId: string) => ipcRenderer.invoke('toggle-task', taskId) as Promise<Task[]>,
     deleteTask: (taskId: string) => ipcRenderer.invoke('delete-task', taskId) as Promise<Task[]>,
+    reorderTasks: (orderedIds: string[]) =>
+      ipcRenderer.invoke('reorder-tasks', orderedIds) as Promise<Task[]>,
     clearCompletedTasks: () =>
       ipcRenderer.invoke('clear-completed-tasks') as Promise<ClearCompletedResult>,
     onTasksUpdated: (callback: (tasks: Task[]) => void) => {
