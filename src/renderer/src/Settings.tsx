@@ -23,19 +23,22 @@ import type { LauncherApp } from './types/launcher-app'
 import type { Preprompt } from './types/preprompt'
 import type { Workflow } from './types/workflow'
 import { getAppBadgeText } from './utils/helpers'
+import { formatTargetsSummary, normalizeLaunchTargets } from './utils/launcherTargets'
 
 type SettingsTab = 'general' | 'terminal' | 'appLauncher' | 'workflow' | 'preprompts' | 'mcp'
 
 const VALID_SETTINGS_TABS: readonly SettingsTab[] = ['general', 'terminal', 'appLauncher', 'workflow', 'preprompts', 'mcp']
 
+function isSettingsTab(tab: string | null): tab is SettingsTab {
+  return typeof tab === 'string' && VALID_SETTINGS_TABS.includes(tab as SettingsTab)
+}
+
 function getInitialTab(): SettingsTab {
   const hash = window.location.hash
-  const params = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : '')
-  const tab = params.get('tab')
-  if (tab && VALID_SETTINGS_TABS.includes(tab as SettingsTab)) {
-    return tab as SettingsTab
-  }
-  return 'general'
+  const queryIndex = hash.indexOf('?')
+  const query = queryIndex >= 0 ? hash.slice(queryIndex + 1) : ''
+  const tab = new URLSearchParams(query).get('tab')
+  return isSettingsTab(tab) ? tab : 'general'
 }
 
 function SidebarGlyph({ tab }: { tab: SettingsTab }): JSX.Element {
@@ -310,18 +313,8 @@ function ShortcutRecorder({
 }
 
 function getAppTargetsSummary(app: LauncherApp): string {
-  const targetCount =
-    Array.isArray(app.targets) && app.targets.length > 0
-      ? app.targets.length
-      : app.path
-      ? 1
-      : 0
-
-  if (targetCount === 0) {
-    return 'No apps'
-  }
-
-  return `${targetCount} app${targetCount === 1 ? '' : 's'}`
+  const targets = normalizeLaunchTargets(app.targets, app.path, app.arguments)
+  return formatTargetsSummary(targets)
 }
 
 interface GeneralTabProps {
@@ -929,12 +922,13 @@ function WorkflowsTab({
 interface PrepromptsTabProps {
   preprompts: Preprompt[]
   isLoading: boolean
+  feedbackMessage: string
   onAdd: () => void
   onEdit: (preprompt: Preprompt) => void
   onDelete: (preprompt: Preprompt) => void
 }
 
-function PrepromptsTab({ preprompts, isLoading, onAdd, onEdit, onDelete }: PrepromptsTabProps): JSX.Element {
+function PrepromptsTab({ preprompts, isLoading, feedbackMessage, onAdd, onEdit, onDelete }: PrepromptsTabProps): JSX.Element {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -950,6 +944,8 @@ function PrepromptsTab({ preprompts, isLoading, onAdd, onEdit, onDelete }: Prepr
           Add Preprompt
         </button>
       </div>
+
+      {feedbackMessage ? <p className="text-xs text-emerald-300">{feedbackMessage}</p> : null}
 
       <div className="space-y-3">
         {isLoading ? (
@@ -1034,6 +1030,7 @@ export default function Settings(): JSX.Element {
   const [deletingWorkflow, setDeletingWorkflow] = useState<Workflow | undefined>(undefined)
   const [preprompts, setPreprompts] = useState<Preprompt[]>([])
   const [isPrepromptsLoading, setIsPrepromptsLoading] = useState(false)
+  const [prepromptsFeedbackMessage, setPrepromptsFeedbackMessage] = useState('')
   const [isPrepromptFormOpen, setIsPrepromptFormOpen] = useState(false)
   const [editingPreprompt, setEditingPreprompt] = useState<Preprompt | undefined>(undefined)
   const [deletingPreprompt, setDeletingPreprompt] = useState<Preprompt | undefined>(undefined)
@@ -1540,19 +1537,33 @@ export default function Settings(): JSX.Element {
   const handleSavePreprompt = async (payload: { id?: string; title: string; content: string }): Promise<void> => {
     if (!window.api?.store.savePreprompt) return
 
-    const updatedPreprompts = await window.api.store.savePreprompt(payload)
-    setPreprompts(updatedPreprompts)
-    setIsPrepromptFormOpen(false)
-    setEditingPreprompt(undefined)
+    try {
+      const updatedPreprompts = await window.api.store.savePreprompt(payload)
+      setPreprompts(updatedPreprompts)
+      setIsPrepromptFormOpen(false)
+      setEditingPreprompt(undefined)
+      setPrepromptsFeedbackMessage('Preprompt saved.')
+      window.setTimeout(() => setPrepromptsFeedbackMessage(''), 1600)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to save preprompt.'
+      setPrepromptsFeedbackMessage(message)
+    }
   }
 
   const handleConfirmDeletePreprompt = async (): Promise<void> => {
     const target = deletingPreprompt
     if (!target || !window.api?.store.deletePreprompt) return
 
-    const updatedPreprompts = await window.api.store.deletePreprompt(target.id)
-    setPreprompts(updatedPreprompts)
-    setDeletingPreprompt(undefined)
+    try {
+      const updatedPreprompts = await window.api.store.deletePreprompt(target.id)
+      setPreprompts(updatedPreprompts)
+      setDeletingPreprompt(undefined)
+      setPrepromptsFeedbackMessage('Preprompt deleted.')
+      window.setTimeout(() => setPrepromptsFeedbackMessage(''), 1600)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to delete preprompt.'
+      setPrepromptsFeedbackMessage(message)
+    }
   }
 
   const pageTitle = useMemo(() => {
@@ -1702,6 +1713,7 @@ export default function Settings(): JSX.Element {
               <PrepromptsTab
                 preprompts={preprompts}
                 isLoading={isPrepromptsLoading}
+                feedbackMessage={prepromptsFeedbackMessage}
                 onAdd={handleOpenAddPreprompt}
                 onEdit={handleOpenEditPreprompt}
                 onDelete={(preprompt) => setDeletingPreprompt(preprompt)}

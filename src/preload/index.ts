@@ -286,7 +286,7 @@ const api = {
     writeText: (text: string) => clipboard.writeText(text)
   },
   selectFile: () => ipcRenderer.invoke('select-file') as Promise<string>,
-  getFileIcon: (filePath: string) => ipcRenderer.invoke('get-file-icon', filePath) as Promise<string>,
+  getFavicon: (url: string) => ipcRenderer.invoke('get-favicon', url) as Promise<string>,
   launchApp: (path: string, launchArguments: string) =>
     ipcRenderer.invoke('launch-app', {
       path,

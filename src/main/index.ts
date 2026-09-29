@@ -2583,18 +2583,39 @@ ipcMain.handle('select-file', async () => {
   return result.filePaths[0]
 })
 
-ipcMain.handle('get-file-icon', async (_event, filePath: string) => {
-  const normalizedPath = typeof filePath === 'string' ? filePath.trim() : ''
-  if (!normalizedPath) {
-    throw new Error('File path is required.')
-  }
+const faviconCache = new Map<string, string>()
 
-  if (!existsSync(normalizedPath)) {
-    throw new Error('The selected file no longer exists.')
-  }
+ipcMain.handle('get-favicon', async (_event, rawUrl: unknown) => {
+  const url = typeof rawUrl === 'string' ? rawUrl.trim() : ''
+  if (!url) return ''
 
-  const icon = await app.getFileIcon(normalizedPath, { size: 'normal' })
-  return icon.isEmpty() ? '' : icon.toDataURL()
+  const cached = faviconCache.get(url)
+  if (cached) return cached
+
+  try {
+    const parsed = new URL(url)
+    const faviconUrl = `https://www.google.com/s2/favicons?domain=${parsed.hostname}&sz=32`
+
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 5000)
+    let response: Response
+    try {
+      response = await fetch(faviconUrl, { signal: controller.signal })
+    } finally {
+      clearTimeout(timeout)
+    }
+
+    if (!response.ok) return ''
+    const buffer = Buffer.from(await response.arrayBuffer())
+    if (buffer.length === 0) return ''
+
+    const contentType = response.headers.get('content-type') || 'image/png'
+    const dataUrl = `data:${contentType};base64,${buffer.toString('base64')}`
+    faviconCache.set(url, dataUrl)
+    return dataUrl
+  } catch {
+    return ''
+  }
 })
 
 ipcMain.on('launch-app', (_event, payload: { path?: string; arguments?: string }) => {

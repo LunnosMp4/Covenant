@@ -128,15 +128,6 @@ export function computeContextStats(
   }
 }
 
-export function getFaviconUrl(url: string, size = 16): string {
-  try {
-    const parsed = new URL(url)
-    return `https://www.google.com/s2/favicons?domain=${parsed.hostname}&sz=${size}`
-  } catch {
-    return ''
-  }
-}
-
 export function formatSourceUrl(url: string): string {
   try {
     const parsed = new URL(url)

@@ -13,7 +13,8 @@ import 'prismjs/components/prism-typescript'
 import 'prismjs/components/prism-powershell'
 import 'prismjs/components/prism-python'
 import { CheckIcon, CopyIcon, GlobeIcon, TerminalSendIcon } from '../icons'
-import { formatSourceDomain, getFaviconUrl } from '../../utils/chatUsage'
+import { Favicon } from '../Favicon'
+import { formatSourceDomain } from '../../utils/chatUsage'
 import type { ReasoningStep } from '../../../../shared/chat'
 
 export function preprocessLatexDelimiters(content: string): string {
@@ -66,14 +67,7 @@ export function WebSearchStepRow({
                 rel="noopener noreferrer"
                 className="chat-thinking-source"
               >
-                <img
-                  src={getFaviconUrl(source.url, 32)}
-                  alt=""
-                  className="chat-thinking-source-favicon"
-                  onError={(e) => {
-                    ;(e.currentTarget as HTMLImageElement).style.display = 'none'
-                  }}
-                />
+                <Favicon url={source.url} className="chat-thinking-source-favicon" />
                 <span className="chat-thinking-source-domain">{formatSourceDomain(source.url)}</span>
               </a>
             ))}

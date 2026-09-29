@@ -94,7 +94,7 @@ interface CovenantAPI {
     onTasksUpdated: (callback: (tasks: Task[]) => void) => () => void
   }
   selectFile: () => Promise<string>
-  getFileIcon: (filePath: string) => Promise<string>
+  getFavicon: (url: string) => Promise<string>
   launchApp: (path: string, launchArguments: string) => Promise<{ success: boolean; error?: string }>
   executeWorkflow: (workflow: Partial<Workflow>) => Promise<{ success: boolean; error?: string }>
   onWorkflowStatusUpdate: (callback: (payload: WorkflowStatusUpdatePayload) => void) => () => void

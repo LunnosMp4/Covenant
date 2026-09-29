@@ -30,7 +30,6 @@ export interface PopupItem {
   icon: PopupIcon
   subtitle?: string
   promptText?: string
-  iconDataUrl?: string
   appPath?: string
   launchArguments?: string
   appLaunchTargets?: LauncherAppTarget[]

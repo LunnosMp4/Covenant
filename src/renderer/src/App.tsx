@@ -4,6 +4,7 @@ import ModulePopup, { type ActivePopup, type PopupItem } from './components/Modu
 import TerminalView from './components/TerminalView'
 import VoiceWaveform from './components/VoiceWaveform'
 import ConfirmDeleteModal from './components/ConfirmDeleteModal'
+import { Favicon } from './components/Favicon'
 import { AssistantMarkdown, CopyButton, WebSearchStepRow } from './components/chat/AssistantMarkdown'
 import {
   ChevronDownIcon,
@@ -25,14 +26,14 @@ import {
   XIcon
 } from './components/icons'
 import { createId } from './utils/helpers'
+import { formatTargetsSummary, normalizeLaunchTargets } from './utils/launcherTargets'
 import {
   computeContextStats,
   formatConversationTimestamp,
   formatCurrency,
   formatSourceUrl,
   formatTokenCount,
-  formatUsageSummary,
-  getFaviconUrl
+  formatUsageSummary
 } from './utils/chatUsage'
 import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from './constants/terminalFonts'
 import {
@@ -97,38 +98,11 @@ function splitWorkflowLogLines(text: string): string[] {
 }
 
 function normalizeLauncherAppTargets(app: LauncherApp): LauncherAppTarget[] {
-  if (Array.isArray(app.targets) && app.targets.length > 0) {
-    return app.targets
-  }
-
-  const legacyPath = typeof app.path === 'string' ? app.path.trim() : ''
-  if (!legacyPath) {
-    return []
-  }
-
-  return [{ path: legacyPath, arguments: app.arguments ?? '' }]
+  return normalizeLaunchTargets(app.targets, app.path, app.arguments)
 }
 
 function normalizePopupLaunchTargets(item: PopupItem): LauncherAppTarget[] {
-  if (Array.isArray(item.appLaunchTargets) && item.appLaunchTargets.length > 0) {
-    return item.appLaunchTargets
-  }
-
-  const legacyPath = typeof item.appPath === 'string' ? item.appPath.trim() : ''
-  if (!legacyPath) {
-    return []
-  }
-
-  return [{ path: legacyPath, arguments: item.launchArguments ?? '' }]
-}
-
-function formatTargetsSummary(targets: LauncherAppTarget[]): string {
-  const count = targets.length
-  if (count === 0) {
-    return 'No apps'
-  }
-
-  return `${count} app${count === 1 ? '' : 's'}`
+  return normalizeLaunchTargets(item.appLaunchTargets, item.appPath, item.launchArguments)
 }
 
 interface AttachedImage {
@@ -2556,14 +2530,7 @@ export default function App(): JSX.Element {
                                                 rel="noopener noreferrer"
                                                 className="chat-source-item"
                                               >
-                                                <img
-                                                  src={getFaviconUrl(source.url)}
-                                                  alt=""
-                                                  className="chat-source-favicon"
-                                                  onError={(e) => {
-                                                    (e.currentTarget as HTMLImageElement).style.display = 'none'
-                                                  }}
-                                                />
+                                                <Favicon url={source.url} className="chat-source-favicon" />
                                                 <div className="chat-source-text">
                                                   <span className="chat-source-title">
                                                     {source.title || formatSourceUrl(source.url)}

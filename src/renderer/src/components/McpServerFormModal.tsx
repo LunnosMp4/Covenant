@@ -96,6 +96,16 @@ export default function McpServerFormModal({
       return
     }
 
+    if (authType === 'accessToken' && !accessToken.trim()) {
+      setErrorMessage('An access token is required when using token authentication.')
+      return
+    }
+
+    if (authType === 'customHeaders' && !headers.some((row) => row.name.trim())) {
+      setErrorMessage('At least one custom header name is required.')
+      return
+    }
+
     try {
       void new URL(url.trim())
     } catch {
