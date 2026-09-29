@@ -6,7 +6,6 @@ import 'prismjs/components/prism-batch'
 import 'prismjs/components/prism-javascript'
 import 'prismjs/components/prism-powershell'
 import 'prismjs/components/prism-python'
-import 'prismjs/themes/prism-tomorrow.css'
 import type { Workflow, WorkflowLanguage } from '../types/workflow'
 import ModalOverlay from './ModalOverlay'
 

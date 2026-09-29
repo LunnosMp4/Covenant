@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import Settings from './Settings'
 import './assets/index.css'
+import 'prismjs/themes/prism-tomorrow.css'
 
 function isSettingsRoute(): boolean {
   const normalizedHash = window.location.hash.toLowerCase()

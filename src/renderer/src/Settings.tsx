@@ -14,7 +14,10 @@ import {
 import {
   DEFAULT_THEME_GRADIENT,
   THEME_OPTIONS,
-  normalizeThemeGradient
+  buildCustomGradientClass,
+  isCustomGradient,
+  normalizeThemeGradient,
+  parseGradientColors
 } from './constants/theme'
 import type { AppConfig, ButtonVisibility, ReasoningEffort, ShortcutConfig } from '../../shared/config'
 import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_REASONING_EFFORT, DEFAULT_SHORTCUTS, REASONING_EFFORT_OPTIONS, modelSupportsExtendedParams, modelSupportsWebSearch } from '../../shared/config'
@@ -341,6 +344,8 @@ interface GeneralTabProps {
   onWebSearchChange: (value: boolean) => void
   autoCollapseReasoning: boolean
   onAutoCollapseReasoningChange: (value: boolean) => void
+  autoUpdate: boolean
+  onAutoUpdateChange: (value: boolean) => void
   shortcuts: ShortcutConfig
   onShortcutChange: (field: keyof ShortcutConfig, value: string) => void
 }
@@ -369,9 +374,14 @@ function GeneralTab({
   onWebSearchChange,
   autoCollapseReasoning,
   onAutoCollapseReasoningChange,
+  autoUpdate,
+  onAutoUpdateChange,
   shortcuts,
   onShortcutChange
 }: GeneralTabProps): JSX.Element {
+  const initialCustomColors = parseGradientColors(selectedTheme)
+  const [customFrom, setCustomFrom] = useState(initialCustomColors?.from ?? '#1c0f03')
+  const [customTo, setCustomTo] = useState(initialCustomColors?.to ?? '#0a0a0a')
   return (
     <div className="space-y-6">
       <SectionCard
@@ -451,9 +461,10 @@ function GeneralTab({
 
       <SectionCard
         title="Appearance"
-        description="Pick a gradient preset for the floating command bar. Changes apply instantly across windows."
+        description="Pick a gradient preset or build your own. Changes apply instantly across windows."
       >
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {THEME_OPTIONS.map((themeOption) => {
             const isActive = selectedTheme === themeOption.gradientClass
 
@@ -475,18 +486,66 @@ function GeneralTab({
             )
           })}
         </div>
+
+        <div className="mt-4 border-t border-neutral-800 pt-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-neutral-100">Custom gradient</p>
+              <p className="mt-1 text-xs text-neutral-400">Pick two colors to build your own background.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onSelectTheme(buildCustomGradientClass(customFrom, customTo))}
+              className="rounded-lg bg-neutral-100 px-3 py-1.5 text-xs font-medium text-neutral-900 transition-colors hover:bg-white"
+            >
+              Apply custom
+            </button>
+          </div>
+          <div className="mt-3 flex items-center gap-5">
+            <label className="flex items-center gap-2 text-xs text-neutral-400">
+              <input
+                type="color"
+                value={customFrom}
+                onChange={(event) => setCustomFrom(event.target.value)}
+                className="h-8 w-14 cursor-pointer rounded border border-neutral-700 bg-neutral-900"
+              />
+              From
+            </label>
+            <label className="flex items-center gap-2 text-xs text-neutral-400">
+              <input
+                type="color"
+                value={customTo}
+                onChange={(event) => setCustomTo(event.target.value)}
+                className="h-8 w-14 cursor-pointer rounded border border-neutral-700 bg-neutral-900"
+              />
+              To
+            </label>
+            {isCustomGradient(selectedTheme) ? (
+              <span className="text-xs text-emerald-300">Custom gradient active</span>
+            ) : null}
+          </div>
+        </div>
+          </div>
       </SectionCard>
 
       <SectionCard
         title="Startup"
         description="Automatically launch Covenant when you start your computer."
       >
-        <MinimalistToggle
-          checked={launchOnStartup}
-          onChange={onLaunchOnStartupChange}
-          label="Launch on startup"
-          description="Covenant will open automatically when your system starts."
-        />
+        <div className="space-y-4">
+          <MinimalistToggle
+            checked={launchOnStartup}
+            onChange={onLaunchOnStartupChange}
+            label="Launch on startup"
+            description="Covenant will open automatically when your system starts."
+          />
+          <MinimalistToggle
+            checked={autoUpdate}
+            onChange={onAutoUpdateChange}
+            label="Automatically check for updates"
+            description="Download new versions from GitHub Releases and prompt you to restart."
+          />
+        </div>
       </SectionCard>
 
       <SectionCard
@@ -1008,6 +1067,7 @@ export default function Settings(): JSX.Element {
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT)
   const [enableWebSearch, setEnableWebSearch] = useState(true)
   const [autoCollapseReasoning, setAutoCollapseReasoning] = useState(true)
+  const [autoUpdate, setAutoUpdate] = useState(true)
   const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true, tasks: true })
   const [shortcuts, setShortcuts] = useState<ShortcutConfig>({ ...DEFAULT_SHORTCUTS })
   const [mcpServers, setMcpServers] = useState<McpServer[]>([])
@@ -1063,6 +1123,7 @@ export default function Settings(): JSX.Element {
         )
         setEnableWebSearch(typeof config.enableWebSearch === 'boolean' ? config.enableWebSearch : true)
         setAutoCollapseReasoning(typeof config.autoCollapseReasoning === 'boolean' ? config.autoCollapseReasoning : true)
+        setAutoUpdate(typeof config.autoUpdate === 'boolean' ? config.autoUpdate : true)
         setButtonVisibility(config.buttonVisibility ?? { appLauncher: true, workflow: true, tasks: true })
         setShortcuts(config.shortcuts ?? { ...DEFAULT_SHORTCUTS })
       } catch {
@@ -1076,6 +1137,7 @@ export default function Settings(): JSX.Element {
         setMcpServers([])
         setChatModel(DEFAULT_CHAT_MODEL)
         setButtonVisibility({ appLauncher: true, workflow: true, tasks: true })
+        setAutoUpdate(true)
       }
     }
 
@@ -1395,6 +1457,11 @@ export default function Settings(): JSX.Element {
     window.api?.config.updateAutoCollapseReasoning?.(enabled)
   }
 
+  const handleAutoUpdateChange = (enabled: boolean): void => {
+    setAutoUpdate(enabled)
+    window.api?.config.updateAutoUpdate?.(enabled)
+  }
+
   const handleButtonVisibilityChange = (visibility: ButtonVisibility): void => {
     setButtonVisibility(visibility)
     window.api?.config.updateButtonVisibility?.(visibility)
@@ -1677,6 +1744,8 @@ export default function Settings(): JSX.Element {
                 onWebSearchChange={handleWebSearchChange}
                 autoCollapseReasoning={autoCollapseReasoning}
                 onAutoCollapseReasoningChange={handleAutoCollapseReasoningChange}
+                autoUpdate={autoUpdate}
+                onAutoUpdateChange={handleAutoUpdateChange}
                 shortcuts={shortcuts}
                 onShortcutChange={handleShortcutChange}
               />

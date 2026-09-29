@@ -90,4 +90,6 @@ export interface AppConfig {
   enableWebSearch: boolean
   autoCollapseReasoning: boolean
   shortcuts: ShortcutConfig
+  hasOnboarded?: boolean
+  autoUpdate?: boolean
 }

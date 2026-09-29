@@ -61,6 +61,8 @@ import {
   type TaskTier
 } from '../shared/gamification'
 import { evaluateTask, evaluateTaskHeuristically } from './services/taskEvaluator'
+import { openLogsFolder, setupLogger } from './logger'
+import { checkForUpdatesManually, setupAutoUpdater } from './updater'
 
 // Expose V8's garbage collector so we can force a collection on window hide.
 // Must be set before app.whenReady() — top-level module scope satisfies this.
@@ -157,7 +159,9 @@ const DEFAULT_CONFIG: AppConfig = {
   reasoningEffort: DEFAULT_REASONING_EFFORT,
   enableWebSearch: DEFAULT_ENABLE_WEB_SEARCH,
   autoCollapseReasoning: DEFAULT_AUTO_COLLAPSE_REASONING,
-  shortcuts: { ...DEFAULT_SHORTCUTS }
+  shortcuts: { ...DEFAULT_SHORTCUTS },
+  hasOnboarded: false,
+  autoUpdate: true
 }
 
 const WORKFLOW_LANGUAGE_SET = new Set<WorkflowLanguage>([
@@ -1242,6 +1246,8 @@ async function launchSavedApp(payload: { path?: string; arguments?: string }): P
 
 dotenv.config({ path: join(process.cwd(), '.env') })
 
+setupLogger()
+
 function resolveOpenAIProxyUrl(configProxyUrl?: string): string | undefined {
   const proxyCandidates = [
     configProxyUrl,
@@ -1346,7 +1352,11 @@ function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined): AppC
       typeof rawConfig?.autoCollapseReasoning === 'boolean'
         ? rawConfig.autoCollapseReasoning
         : DEFAULT_AUTO_COLLAPSE_REASONING,
-    shortcuts: normalizeShortcuts(rawConfig?.shortcuts)
+    shortcuts: normalizeShortcuts(rawConfig?.shortcuts),
+    hasOnboarded:
+      typeof rawConfig?.hasOnboarded === 'boolean' ? rawConfig.hasOnboarded : false,
+    autoUpdate:
+      typeof rawConfig?.autoUpdate === 'boolean' ? rawConfig.autoUpdate : true
   }
 }
 
@@ -2188,6 +2198,19 @@ function createTray(): void {
       },
       { type: 'separator' },
       {
+        label: 'Check for Updates…',
+        click: () => {
+          checkForUpdatesManually()
+        }
+      },
+      {
+        label: 'Open logs folder',
+        click: () => {
+          openLogsFolder()
+        }
+      },
+      { type: 'separator' },
+      {
         label: 'Quit Covenant',
         click: () => {
           app.quit()
@@ -2225,7 +2248,9 @@ app.whenReady().then(() => {
   })
 
   const config = readConfig()
-  
+
+  setupAutoUpdater(() => readConfig().autoUpdate === true)
+
   // Apply login item settings from config
   if (isWindows || process.platform === 'darwin') {
     try {
@@ -2643,6 +2668,20 @@ ipcMain.on('save-openai-settings', (_event, payload: { apiKey?: string; proxyUrl
   const apiKey = typeof payload?.apiKey === 'string' ? payload.apiKey.trim() : ''
   const proxyUrl = typeof payload?.proxyUrl === 'string' ? payload.proxyUrl.trim() : ''
   updateConfig({ apiKey, proxyUrl })
+})
+
+ipcMain.on('mark-onboarded', () => {
+  updateConfig({ hasOnboarded: true })
+})
+
+ipcMain.on('update-auto-update', (_event, enabled: unknown) => {
+  const isEnabled = enabled === true
+  updateConfig({ autoUpdate: isEnabled })
+})
+
+ipcMain.handle('check-for-updates', () => {
+  checkForUpdatesManually()
+  return true
 })
 
 ipcMain.handle('save-mcp-server', (_event, payload: Partial<McpServer>) => {

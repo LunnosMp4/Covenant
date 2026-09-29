@@ -24,6 +24,7 @@ interface CovenantAPI {
     getConfig: () => Promise<AppConfig>
     saveApiKey: (apiKey: string) => void
     saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string }) => void
+    markOnboarded: () => void
     getMcpServers: () => Promise<McpServer[]>
     saveMcpServer: (server: Partial<McpServer>) => Promise<McpServer[]>
     deleteMcpServer: (serverId: string) => Promise<McpServer[]>
@@ -37,6 +38,8 @@ interface CovenantAPI {
     updateReasoningEffort: (reasoningEffort: ReasoningEffort) => void
     updateWebSearch: (enableWebSearch: boolean) => void
     updateAutoCollapseReasoning: (autoCollapseReasoning: boolean) => void
+    updateAutoUpdate: (enabled: boolean) => void
+    checkForUpdates: () => Promise<boolean>
     updateShortcuts: (shortcuts: ShortcutConfig) => void
     getTerminalFonts: () => Promise<string[]>
     onThemeUpdated: (callback: (gradientClass: string) => void) => () => void
@@ -117,6 +120,7 @@ declare global {
       getConfig: () => Promise<AppConfig>
       saveApiKey: (apiKey: string) => void
       saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string }) => void
+      markOnboarded: () => void
       getMcpServers: () => Promise<McpServer[]>
       saveMcpServer: (server: Partial<McpServer>) => Promise<McpServer[]>
       deleteMcpServer: (serverId: string) => Promise<McpServer[]>

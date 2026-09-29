@@ -57,6 +57,7 @@ const api = {
     saveApiKey: (apiKey: string) => ipcRenderer.send('save-api-key', apiKey),
     saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string }) =>
       ipcRenderer.send('save-openai-settings', settings),
+    markOnboarded: () => ipcRenderer.send('mark-onboarded'),
     getMcpServers: () => ipcRenderer.invoke('get-mcp-servers') as Promise<McpServer[]>,
     saveMcpServer: (server: Partial<McpServer>) =>
       ipcRenderer.invoke('save-mcp-server', server) as Promise<McpServer[]>,
@@ -77,6 +78,8 @@ const api = {
       ipcRenderer.send('update-web-search', enableWebSearch),
     updateAutoCollapseReasoning: (autoCollapseReasoning: boolean) =>
       ipcRenderer.send('update-auto-collapse-reasoning', autoCollapseReasoning),
+    updateAutoUpdate: (enabled: boolean) => ipcRenderer.send('update-auto-update', enabled),
+    checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
     updateShortcuts: (shortcuts: ShortcutConfig) => ipcRenderer.send('update-shortcuts', shortcuts),
     onShortcutsUpdated: (callback: (shortcuts: ShortcutConfig) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, shortcuts: ShortcutConfig) => {
@@ -330,6 +333,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getConfig: api.config.getConfig,
   saveApiKey: api.config.saveApiKey,
   saveOpenAISettings: api.config.saveOpenAISettings,
+  markOnboarded: api.config.markOnboarded,
   getMcpServers: api.config.getMcpServers,
   saveMcpServer: api.config.saveMcpServer,
   deleteMcpServer: api.config.deleteMcpServer,

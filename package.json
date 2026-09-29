@@ -1,6 +1,6 @@
 {
   "name": "covenant",
-  "version": "1.6.2",
+  "version": "1.7.0",
   "description": "A next-generation command bar app for Windows and macOS",
   "main": "out/main/index.js",
   "scripts": {
@@ -16,6 +16,7 @@
   "build": {
     "appId": "com.covenant.app",
     "productName": "Covenant",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "files": [
       "out/**/*",
       "node_modules/**/*",
@@ -24,6 +25,13 @@
     "directories": {
       "buildResources": "build"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "LunnosMp4",
+        "repo": "Covenant"
+      }
+    ],
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico"
@@ -61,7 +69,9 @@
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",
     "dotenv": "^17.4.2",
+    "electron-log": "^5.4.4",
     "electron-store": "^11.0.2",
+    "electron-updater": "^6.8.9",
     "framer-motion": "^11.2.12",
     "https-proxy-agent": "^9.0.0",
     "katex": "^0.18.1",
