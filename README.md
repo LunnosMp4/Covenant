@@ -1,5 +1,7 @@
 # Covenant
 
+[![CI](https://github.com/LunnosMp4/Covenant/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/LunnosMp4/Covenant/actions/workflows/ci.yml)
+
 Floating command bar for Windows and macOS — prompt an OpenAI model, run terminal commands, execute workflow scripts, and launch apps from a single keyboard-driven interface.
 
 ## Key Features
