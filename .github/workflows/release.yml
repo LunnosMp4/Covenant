@@ -5,12 +5,13 @@
 #   git add package.json package-lock.json && git commit -m "chore: bump version to 1.7.0"
 #   git tag v1.7.0 && git push --tags
 #
-# The workflow builds the installers and publishes them (plus latest.yml /
-# latest-mac.yml) to a GitHub Release for that tag. Installed apps then
-# auto-update via electron-updater, which reads latest.yml from the Release.
+# A single, PUBLISHED GitHub Release is created for the tag (one release for
+# all OSes, no drafts) and every OS uploads its installer + update manifest to
+# it. Installed apps auto-update by reading latest.yml / latest-mac.yml from
+# that release. If one OS fails to build, the others still release.
 #
-# You can also trigger it manually from the Actions tab ("Run workflow"),
-# which publishes to a release tagged v<version> from package.json.
+# You can also trigger it manually from the Actions tab ("Run workflow"); the
+# release tag is then derived from the version in package.json.
 name: Release
 
 on:
@@ -23,13 +24,47 @@ permissions:
   contents: write
 
 jobs:
-  publish:
-    name: Publish (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-2022, macos-14]
-    runs-on: ${{ matrix.os }}
+  prepare:
+    name: Prepare release
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="v$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::Tag '$tag' does not match package.json version '$version'. Bump package.json first."
+            exit 1
+          fi
+
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Covenant ${{ steps.tag.outputs.tag }}
+          draft: false
+
+  publish-windows:
+    name: Windows
+    needs: prepare
+    runs-on: windows-2022
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,16 +78,43 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify tag matches package.json version
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
-        run: |
-          tag="${GITHUB_REF_NAME}"
-          version="v$(node -p "require('./package.json').version")"
-          if [ "$tag" != "$version" ]; then
-            echo "::error::Tag '$tag' does not match package.json version '$version'. Bump package.json first."
-            exit 1
-          fi
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Package
+        run: npm run dist -- --publish never
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          files: |
+            dist/*.exe
+            dist/*.blockmap
+            dist/*.yml
+
+  publish-macos:
+    name: macOS
+    needs: prepare
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Typecheck
         run: npm run typecheck
@@ -63,11 +125,18 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Package & publish to GitHub Release
-        run: npm run dist -- --publish always
+      - name: Package
+        run: npm run dist -- --publish never
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS builds are unsigned (no Developer ID cert) so they're still
-          # published as a manual-install dmg. Windows auto-update works fully.
-          # To enable macOS auto-update, add signing env vars (CSC_LINK/CSC_KEY_PASSWORD).
+          # Unsigned macOS build (no Developer ID cert) — still published as a
+          # manual-install dmg. Windows auto-update works fully.
           CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          files: |
+            dist/*.dmg
+            dist/*.blockmap
+            dist/*.yml
