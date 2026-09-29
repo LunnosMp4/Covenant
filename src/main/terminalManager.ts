@@ -1,6 +1,9 @@
 import { spawn, type IPty } from 'node-pty'
 import { existsSync } from 'fs'
 import { randomUUID } from 'crypto'
+import type { TerminalExitPayload, TerminalStartResult } from '../shared/terminal'
+
+export type { TerminalExitPayload, TerminalStartResult }
 
 const DEFAULT_COLS = 120
 const DEFAULT_ROWS = 30
@@ -12,20 +15,6 @@ const MAX_ROWS = 200
 interface ShellCandidate {
   command: string
   args: string[]
-}
-
-export interface TerminalStartResult {
-  sessionId: string
-  pid: number
-  shell: string
-  created: boolean
-  error?: string
-}
-
-export interface TerminalExitPayload {
-  sessionId: string
-  exitCode: number
-  signal?: number
 }
 
 type DataListener = (sessionId: string, data: string) => void

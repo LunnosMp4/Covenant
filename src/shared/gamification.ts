@@ -103,7 +103,7 @@ export function calculateLevelFromTotalXp(totalXp: number): LevelProgress {
 
   const xpForCurrentLevel = getXpForLevel(level)
   const xpToNext = getXpForLevel(level + 1) - xpForCurrentLevel
-  const currentXP = safeTotal - xpForCurrentLevel
+  const currentXP = Math.max(0, safeTotal - xpForCurrentLevel)
 
   return { level, currentXP, xpToNext, xpForCurrentLevel }
 }

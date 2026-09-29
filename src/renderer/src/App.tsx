@@ -1,23 +1,39 @@
-import { useState, useEffect, useMemo, useRef, useCallback, Children, type CSSProperties } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, type CSSProperties } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
-import rehypeKatex from 'rehype-katex'
-import 'katex/dist/katex.min.css'
-import Prism from 'prismjs'
-import 'prismjs/components/prism-bash'
-import 'prismjs/components/prism-batch'
-import 'prismjs/components/prism-json'
-import 'prismjs/components/prism-javascript'
-import 'prismjs/components/prism-typescript'
-import 'prismjs/components/prism-powershell'
-import 'prismjs/components/prism-python'
 import ModulePopup, { type ActivePopup, type PopupItem } from './components/ModulePopup'
 import TerminalView from './components/TerminalView'
 import VoiceWaveform from './components/VoiceWaveform'
 import ConfirmDeleteModal from './components/ConfirmDeleteModal'
+import { AssistantMarkdown, CopyButton, WebSearchStepRow } from './components/chat/AssistantMarkdown'
+import {
+  ChevronDownIcon,
+  ChevronUpIcon,
+  CodeIcon,
+  ExpandIcon,
+  GridIcon,
+  ImageIcon,
+  MenuIcon,
+  MicIcon,
+  PinIcon,
+  SearchIcon,
+  SendIcon,
+  SettingsIcon,
+  SpinnerIcon,
+  StopIcon,
+  TasksIcon,
+  TrashIcon,
+  XIcon
+} from './components/icons'
 import { createId } from './utils/helpers'
+import {
+  computeContextStats,
+  formatConversationTimestamp,
+  formatCurrency,
+  formatSourceUrl,
+  formatTokenCount,
+  formatUsageSummary,
+  getFaviconUrl
+} from './utils/chatUsage'
 import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from './constants/terminalFonts'
 import {
   DEFAULT_THEME_GRADIENT,
@@ -26,6 +42,18 @@ import {
 } from './constants/theme'
 import type { ButtonVisibility, ReasoningEffort } from '../../shared/config'
 import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_REASONING_EFFORT } from '../../shared/config'
+import type {
+  ChatConversation,
+  ChatMessage,
+  ChatRole,
+  ChatStreamEvent,
+  ChatUsage,
+  InputContent,
+  InputImageContent,
+  InputTextContent,
+  ReasoningStep,
+  Source
+} from '../../shared/chat'
 import type { LauncherApp, LauncherAppTarget } from './types/launcher-app'
 import type { Preprompt } from './types/preprompt'
 import type { Task } from './types/task'
@@ -37,76 +65,10 @@ import type {
   WorkflowStatusUpdatePayload
 } from './types/workflow'
 
-type ChatRole = 'user' | 'assistant' | 'system'
-
-type InputImageContent = { type: 'input_image'; image_url: string }
-type InputTextContent = { type: 'input_text'; text: string }
-type InputContent = InputTextContent | InputImageContent
-
-interface ChatMessage {
-  id: string
-  role: ChatRole
-  content: string
-  createdAt: number
-  reasoning?: string
-  reasoningTitle?: string
-  steps?: ReasoningStep[]
-  usage?: ChatUsage
-  model?: string
-  sources?: Source[]
-  stopped?: boolean
-  images?: { base64: string; fileName: string; mimeType: string }[]
-}
-
-interface ChatUsage {
-  promptTokens?: number
-  cachedPromptTokens?: number
-  completionTokens?: number
-  totalTokens?: number
-  reasoningTokens?: number
-}
-
-interface Source {
-  title: string
-  url: string
-}
-
-type ReasoningStep =
-  | { type: 'reasoning'; text: string }
-  | { type: 'web_search'; id: string; query: string; status: 'searching' | 'done'; sources: Source[] }
-
-interface ChatConversation {
-  id: string
-  title: string
-  createdAt: number
-  updatedAt: number
-  messages: ChatMessage[]
-  systemPrompt?: string
-}
-
 interface SelectedSystemPrompt {
   id: string
   title: string
   content: string
-}
-
-interface ChatStreamEvent {
-  id: string
-  type: 'content' | 'reasoning' | 'done' | 'error'
-    | 'reasoning-start' | 'reasoning-title' | 'reasoning-delta' | 'reasoning-end'
-    | 'tool-start' | 'tool-query' | 'sources'
-  delta?: string
-  usage?: ChatUsage
-  error?: string
-  model?: string
-  itemId?: string
-  title?: string
-  toolType?: string
-  toolName?: string
-  actionType?: string
-  query?: string
-  sources?: Source[]
-  stopped?: boolean
 }
 
 type AppMode = 'ai' | 'terminal'
@@ -167,356 +129,6 @@ function formatTargetsSummary(targets: LauncherAppTarget[]): string {
   }
 
   return `${count} app${count === 1 ? '' : 's'}`
-}
-
-const CHAT_MODEL_PRICING: Record<
-  string,
-  {
-    inputPerMillion: number
-    cachedInputPerMillion: number
-    outputPerMillion: number
-  }
-> = {
-  'gpt-5.6-luna': {
-    inputPerMillion: 0.2,
-    cachedInputPerMillion: 0.02,
-    outputPerMillion: 1.2
-  },
-  'gpt-5.6-terra': {
-    inputPerMillion: 2.00,
-    cachedInputPerMillion: 0.2,
-    outputPerMillion: 12
-  }
-}
-
-function formatTokenCount(tokens: number): string {
-  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(tokens)
-}
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 4,
-    maximumFractionDigits: 4
-  }).format(amount)
-}
-
-function formatConversationTimestamp(timestamp: number): string {
-  const date = new Date(timestamp)
-  const monthDay = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  const time = date.toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  })
-  return `${monthDay}, ${time}`
-}
-
-function formatUsageSummary(message: ChatMessage): string | undefined {
-  const usage = message.usage
-  if (!usage) {
-    return undefined
-  }
-
-  const promptTokens = usage.promptTokens ?? 0
-  const cachedPromptTokens = Math.min(usage.cachedPromptTokens ?? 0, promptTokens)
-  const completionTokens = usage.completionTokens ?? 0
-  const pricing = message.model ? CHAT_MODEL_PRICING[message.model.trim()] : undefined
-
-  const inputTokens = promptTokens - cachedPromptTokens
-  const inputCost = pricing ? (inputTokens * pricing.inputPerMillion) / 1_000_000 : 0
-  const cachedInputCost = pricing ? (cachedPromptTokens * pricing.cachedInputPerMillion) / 1_000_000 : 0
-  const outputCost = pricing ? (completionTokens * pricing.outputPerMillion) / 1_000_000 : 0
-  const totalCost = inputCost + cachedInputCost + outputCost
-
-  const parts = [
-    `>${formatTokenCount(promptTokens)}tk`,
-    `${formatTokenCount(completionTokens)}tk`
-  ]
-
-  if (pricing) {
-    parts.push(formatCurrency(totalCost))
-  } else {
-    const totalTokens = usage.totalTokens ?? promptTokens + completionTokens
-    parts.push(`${formatTokenCount(totalTokens)}tk`)
-  }
-
-  return parts.join(' · ')
-}
-
-function getFaviconUrl(url: string, size = 16): string {
-  try {
-    const parsed = new URL(url)
-    return `https://www.google.com/s2/favicons?domain=${parsed.hostname}&sz=${size}`
-  } catch {
-    return ''
-  }
-}
-
-function formatSourceUrl(url: string): string {
-  try {
-    const parsed = new URL(url)
-    return parsed.hostname.replace(/^www\./, '') + parsed.pathname.replace(/\/$/, '')
-  } catch {
-    return url
-  }
-}
-
-function formatSourceDomain(url: string): string {
-  try {
-    const parsed = new URL(url)
-    return parsed.hostname.replace(/^www\./, '')
-  } catch {
-    return url
-  }
-}
-
-function computeContextStats(
-  messages: ChatMessage[],
-  currentModel: string
-): { totalTokens: number; maxTokens: number; totalCost: number; messageCount: number; totalInputTokens: number; totalOutputTokens: number } {
-  let totalInputTokens = 0
-  let totalOutputTokens = 0
-  let totalTokens = 0
-  let totalCost = 0
-
-  for (const msg of messages) {
-    const usage = msg.usage
-    if (!usage) continue
-
-    const promptTokens = usage.promptTokens ?? 0
-    const cachedPromptTokens = Math.min(usage.cachedPromptTokens ?? 0, promptTokens)
-    const completionTokens = usage.completionTokens ?? 0
-
-    totalInputTokens += promptTokens
-    totalOutputTokens += completionTokens
-    totalTokens += usage.totalTokens ?? promptTokens + completionTokens
-
-    const pricing = msg.model ? CHAT_MODEL_PRICING[msg.model.trim()] : undefined
-    if (pricing) {
-      const inputTokens = promptTokens - cachedPromptTokens
-      const inputCost = (inputTokens * pricing.inputPerMillion) / 1_000_000
-      const cachedInputCost = (cachedPromptTokens * pricing.cachedInputPerMillion) / 1_000_000
-      const outputCost = (completionTokens * pricing.outputPerMillion) / 1_000_000
-      totalCost += inputCost + cachedInputCost + outputCost
-    }
-  }
-
-  const maxTokens = CHAT_MODEL_OPTIONS.find((m) => m.id === currentModel)?.maxContextTokens ?? 0
-
-  return {
-    totalTokens,
-    maxTokens,
-    totalCost,
-    messageCount: messages.length,
-    totalInputTokens,
-    totalOutputTokens
-  }
-}
-
-function SendIcon(): JSX.Element {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <line x1="12" y1="19" x2="12" y2="5" />
-      <polyline points="5 12 12 5 19 12" />
-    </svg>
-  )
-}
-
-function GridIcon(): JSX.Element {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <rect x="3" y="3" width="7" height="7" rx="1.5" />
-      <rect x="14" y="3" width="7" height="7" rx="1.5" />
-      <rect x="3" y="14" width="7" height="7" rx="1.5" />
-      <rect x="14" y="14" width="7" height="7" rx="1.5" />
-    </svg>
-  )
-}
-
-function CodeIcon(): JSX.Element {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-      <path d="M14.2354 7.14709C14.3167 6.74092 14.0533 6.3458 13.6471 6.26456C13.2409 6.18333 12.8458 6.44674 12.7646 6.85291L14.2354 7.14709ZM10.7646 16.8529C10.6833 17.2591 10.9467 17.6542 11.3529 17.7354C11.7591 17.8167 12.1542 17.5533 12.2354 17.1471L10.7646 16.8529ZM7.97342 15.4921C8.26837 15.7829 8.74323 15.7795 9.03406 15.4846C9.32488 15.1896 9.32153 14.7148 9.02658 14.4239L7.97342 15.4921ZM5.5 12L4.97342 11.4659C4.83048 11.6069 4.75 11.7993 4.75 12C4.75 12.2007 4.83048 12.3931 4.97342 12.5341L5.5 12ZM9.02658 9.57606C9.32153 9.28523 9.32488 8.81037 9.03406 8.51542C8.74323 8.22047 8.26837 8.21712 7.97342 8.50794L9.02658 9.57606ZM15.9773 14.3782C15.6802 14.6669 15.6735 15.1417 15.9622 15.4387C16.2509 15.7358 16.7257 15.7425 17.0227 15.4538L15.9773 14.3782ZM19.5 12L20.0227 12.5378C20.1667 12.3979 20.2486 12.2061 20.25 12.0053C20.2514 11.8046 20.1723 11.6116 20.0303 11.4697L19.5 12ZM17.0303 8.46967C16.7374 8.17678 16.2626 8.17678 15.9697 8.46967C15.6768 8.76256 15.6768 9.23744 15.9697 9.53033L17.0303 8.46967ZM12.7646 6.85291L10.7646 16.8529L12.2354 17.1471L14.2354 7.14709L12.7646 6.85291ZM9.02658 14.4239L6.02658 11.4659L4.97342 12.5341L7.97342 15.4921L9.02658 14.4239ZM6.02658 12.5341L9.02658 9.57606L7.97342 8.50794L4.97342 11.4659L6.02658 12.5341ZM17.0227 15.4538L20.0227 12.5378L18.9773 11.4622L15.9773 14.3782L17.0227 15.4538ZM20.0303 11.4697L17.0303 8.46967L15.9697 9.53033L18.9697 12.5303L20.0303 11.4697Z"/>
-    </svg>
-  )
-}
-
-function TasksIcon(): JSX.Element {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M4 6h16" />
-      <path d="M4 12h16" />
-      <path d="M4 18h10" />
-      <path d="m16 16 2 2 4-4" />
-    </svg>
-  )
-}
-
-function SpinnerIcon(): JSX.Element {
-  return (
-    <svg
-      className="animate-spin"
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      aria-hidden
-    >
-      <circle cx="12" cy="12" r="9" className="opacity-30" />
-      <path d="M21 12a9 9 0 0 0-9-9" />
-    </svg>
-  )
-}
-
-function SettingsIcon(): JSX.Element {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M22 6.5H16" stroke="currentColor" stroke-width="1.5" stroke-miterlimit="10" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M6 6.5H2" stroke="currentColor" stroke-width="1.5" stroke-miterlimit="10" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M10 10C11.933 10 13.5 8.433 13.5 6.5C13.5 4.567 11.933 3 10 3C8.067 3 6.5 4.567 6.5 6.5C6.5 8.433 8.067 10 10 10Z" stroke="currentColor" stroke-width="1.5" stroke-miterlimit="10" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M22 17.5H18" stroke="currentColor" stroke-width="1.5" stroke-miterlimit="10" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M8 17.5H2" stroke="currentColor" stroke-width="1.5" stroke-miterlimit="10" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M14 21C15.933 21 17.5 19.433 17.5 17.5C17.5 15.567 15.933 14 14 14C12.067 14 10.5 15.567 10.5 17.5C10.5 19.433 12.067 21 14 21Z" stroke="currentColor" stroke-width="1.5" stroke-miterlimit="10" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-  )
-}
-
-function MenuIcon(): JSX.Element {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <line x1="4" y1="6" x2="20" y2="6" />
-      <line x1="4" y1="12" x2="20" y2="12" />
-      <line x1="4" y1="18" x2="20" y2="18" />
-    </svg>
-  )
-}
-
-function ExpandIcon(): JSX.Element {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <polyline points="15 3 21 3 21 9" />
-      <polyline points="9 21 3 21 3 15" />
-      <line x1="21" y1="3" x2="14" y2="10" />
-      <line x1="3" y1="21" x2="10" y2="14" />
-    </svg>
-  )
-}
-
-function PinIcon({ active }: { active: boolean }): JSX.Element {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M12 17v5" />
-      <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V5a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2z" />
-    </svg>
-  )
-}
-
-function MicIcon(): JSX.Element {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
-      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-      <line x1="12" y1="19" x2="12" y2="22" />
-    </svg>
-  )
-}
-
-function StopIcon(): JSX.Element {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-      <rect x="6" y="6" width="12" height="12" rx="2" />
-    </svg>
-  )
-}
-
-function GlobeIcon({ className }: { className?: string }): JSX.Element {
-  return (
-    <svg
-      className={className}
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <circle cx="12" cy="12" r="10" />
-      <path d="M2 12h20" />
-      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-    </svg>
-  )
-}
-
-function ImageIcon(): JSX.Element {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-      <circle cx="8.5" cy="8.5" r="1.5" />
-      <polyline points="21 15 16 10 5 21" />
-    </svg>
-  )
-}
-
-function XIcon(): JSX.Element {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden>
-      <line x1="18" y1="6" x2="6" y2="18" />
-      <line x1="6" y1="6" x2="18" y2="18" />
-    </svg>
-  )
-}
-
-function SearchIcon(): JSX.Element {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <circle cx="11" cy="11" r="8" />
-      <path d="m21 21-4.35-4.35" />
-    </svg>
-  )
-}
-
-function ChevronUpIcon(): JSX.Element {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="m18 15-6-6-6 6" />
-    </svg>
-  )
-}
-
-function ChevronDownIcon(): JSX.Element {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="m6 9 6 6 6-6" />
-    </svg>
-  )
-}
-
-function TrashIcon(): JSX.Element {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M3 6h18" />
-      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-      <line x1="10" y1="11" x2="10" y2="17" />
-      <line x1="14" y1="11" x2="14" y2="17" />
-    </svg>
-  )
 }
 
 interface AttachedImage {
@@ -698,257 +310,6 @@ function applySearchHighlight(container: HTMLElement, query: string): void {
   }
 
   registry.set('chat-search', new HighlightCtor(...ranges))
-}
-
-function preprocessLatexDelimiters(content: string): string {
-  return content
-    .replace(/\\\[/g, '$$$$\n')
-    .replace(/\\\]/g, '\n$$$$')
-    .replace(/\\\(/g, '$')
-    .replace(/\\\)/g, '$')
-}
-
-function highlightMarkdownCode(code: string, language: string | undefined): string {
-  if (!language) return code
-  const grammar = Prism.languages[language]
-  if (!grammar) return code
-  return Prism.highlight(code, grammar, language)
-}
-
-const SHELL_LANGUAGES = new Set(['bash', 'sh', 'shell', 'zsh', 'powershell', 'ps1', 'cmd'])
-
-function TerminalSendIcon(): JSX.Element {
-  return (
-    <svg
-      width="10"
-      height="10"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m9 18 6-6-6-6" />
-    </svg>
-  )
-}
-
-function CopyIcon(): JSX.Element {
-  return (
-    <svg
-      width="10"
-      height="10"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect x="9" y="9" width="13" height="13" rx="2" />
-      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-    </svg>
-  )
-}
-
-function CheckIcon(): JSX.Element {
-  return (
-    <svg
-      width="10"
-      height="10"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M20 6 9 17l-5-5" />
-    </svg>
-  )
-}
-
-function WebSearchStepRow({ step }: { step: Extract<ReasoningStep, { type: 'web_search' }> }): JSX.Element {
-  const isSearching = step.status === 'searching'
-  const query = step.query?.trim()
-
-  return (
-    <div className="chat-thinking-search">
-      <GlobeIcon
-        className={`chat-thinking-search-icon${isSearching ? ' chat-thinking-search-icon--pulse' : ''}`}
-      />
-      <div className="chat-thinking-search-content">
-        <span>
-          {query ? (
-            <>
-              Searching web for <span className="chat-thinking-search-query">“{query}”</span>
-            </>
-          ) : (
-            'Searching the web…'
-          )}
-        </span>
-        {!isSearching && step.sources.length > 0 ? (
-          <div className="chat-thinking-search-sources">
-            {step.sources.slice(0, 3).map((source) => (
-              <a
-                key={source.url}
-                href={source.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="chat-thinking-source"
-              >
-                <img
-                  src={getFaviconUrl(source.url, 32)}
-                  alt=""
-                  className="chat-thinking-source-favicon"
-                  onError={(e) => {
-                    ;(e.currentTarget as HTMLImageElement).style.display = 'none'
-                  }}
-                />
-                <span className="chat-thinking-source-domain">{formatSourceDomain(source.url)}</span>
-              </a>
-            ))}
-            {step.sources.length > 3 ? (
-              <span className="chat-thinking-source-more">+{step.sources.length - 3} more</span>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  )
-}
-
-function CopyButton({ text, className }: { text: string; className?: string }): JSX.Element {
-  const [copied, setCopied] = useState(false)
-
-  const handleCopy = () => {
-    window.api?.clipboard.writeText(text)
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 2000)
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={handleCopy}
-      className={className}
-      title="Copy"
-      aria-label="Copy"
-    >
-      {copied ? <CheckIcon /> : <CopyIcon />}
-    </button>
-  )
-}
-
-function CodeBlock({
-  language,
-  code,
-  ...props
-}: { language: string | undefined; code: string } & React.HTMLAttributes<HTMLPreElement>): JSX.Element {
-  const [sent, setSent] = useState(false)
-  const [copied, setCopied] = useState(false)
-  const highlighted = highlightMarkdownCode(code, language)
-  const isShell = language != null && SHELL_LANGUAGES.has(language)
-
-  const handleSendToTerminal = async () => {
-    if (!window.api?.terminal) return
-    const result = await window.api.terminal.sendToActiveSession(code)
-    if (result.success) {
-      setSent(true)
-      setTimeout(() => setSent(false), 2000)
-    }
-  }
-
-  const handleCopy = () => {
-    window.api?.clipboard.writeText(code)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  return (
-    <div className="chat-code-block-wrapper">
-      <div className="chat-code-block-header">
-        <span className="chat-code-block-lang">{language ?? 'code'}</span>
-        <div className="chat-code-block-actions">
-          <button
-            type="button"
-            onClick={handleCopy}
-            className={`chat-code-block-btn ${copied ? 'chat-code-block-btn-sent' : ''}`}
-            title="Copy code"
-            aria-label="Copy code"
-          >
-            {copied ? <CheckIcon /> : <CopyIcon />}
-          </button>
-          {isShell && (
-            <button
-              type="button"
-              onClick={handleSendToTerminal}
-              className={`chat-code-block-btn ${sent ? 'chat-code-block-btn-sent' : ''}`}
-              title="Send to Terminal"
-              aria-label="Send code to terminal"
-            >
-              <TerminalSendIcon />
-            </button>
-          )}
-        </div>
-      </div>
-      <pre className="chat-code-block" {...props}>
-        <code
-          className={language ? `language-${language}` : undefined}
-          dangerouslySetInnerHTML={{ __html: highlighted }}
-        />
-      </pre>
-    </div>
-  )
-}
-
-function AssistantMarkdown({ content }: { content: string }): JSX.Element {
-  const query = preprocessLatexDelimiters(content)
-  return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[rehypeKatex]}
-      className="chat-markdown"
-      components={{
-        a({ href, children, ...props }) {
-          const safeHref = typeof href === 'string' ? href : undefined
-          return (
-            <a href={safeHref} target="_blank" rel="noreferrer" {...props}>
-              {children}
-            </a>
-          )
-        },
-        pre({ children, ...props }) {
-          const childArr = Children.toArray(children)
-          const codeEl = childArr[0] as { props?: { className?: string; children?: unknown } } | undefined
-          const className = codeEl?.props?.className ?? ''
-          const rawCode = codeEl?.props?.children != null ? String(codeEl.props.children).replace(/\n$/, '') : ''
-          const match = /language-(\w+)/.exec(className)
-          const language = match?.[1]
-
-          return <CodeBlock language={language} code={rawCode} {...props} />
-        },
-        code({ inline, className, children, ...props }) {
-          if (inline) {
-            return (
-              <code className="chat-code-inline" {...props}>
-                {children}
-              </code>
-            )
-          }
-
-          return (
-            <code className={className} {...props}>
-              {children}
-            </code>
-          )
-        }
-      }}
-    >
-      {query}
-    </ReactMarkdown>
-  )
 }
 
 export default function App(): JSX.Element {

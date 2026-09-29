@@ -37,6 +37,20 @@ import {
   type ShortcutConfig
 } from '../shared/config'
 import type { McpAuth, McpHeader, McpServer, McpTool } from '../shared/mcp'
+import { CHAT_ROLE_SET, type ChatConversation, type ChatRole, type ChatUsage } from '../shared/chat'
+import { normalizeConversation } from '../shared/chatNormalizers'
+import {
+  DEFAULT_TERMINAL_COLS,
+  DEFAULT_TERMINAL_ROWS,
+  MAX_TERMINAL_COLS,
+  MAX_TERMINAL_ROWS,
+  MIN_TERMINAL_COLS,
+  MIN_TERMINAL_ROWS,
+  sanitizeTerminalDimension,
+  sanitizeTerminalInput
+} from '../shared/dimensions'
+import { parseLaunchArguments } from './services/argParser'
+import { normalizeStoredMcpServer, normalizeStoredMcpServers } from './services/mcpNormalizers'
 import {
   DEFAULT_GAMIFICATION,
   applyStreakBonus,
@@ -72,48 +86,6 @@ interface Preprompt {
   id: string
   title: string
   content: string
-}
-
-type ChatRole = 'system' | 'user' | 'assistant'
-
-interface ChatMessage {
-  id: string
-  role: ChatRole
-  content: string
-  createdAt: number
-  reasoning?: string
-  reasoningTitle?: string
-  steps?: ReasoningStep[]
-  usage?: ChatUsage
-  model?: string
-  sources?: Source[]
-  stopped?: boolean
-}
-
-interface Source {
-  title: string
-  url: string
-}
-
-type ReasoningStep =
-  | { type: 'reasoning'; text: string }
-  | { type: 'web_search'; id: string; query: string; status: 'searching' | 'done'; sources: Source[] }
-
-interface ChatUsage {
-  promptTokens?: number
-  cachedPromptTokens?: number
-  completionTokens?: number
-  totalTokens?: number
-  reasoningTokens?: number
-}
-
-interface ChatConversation {
-  id: string
-  title: string
-  createdAt: number
-  updatedAt: number
-  messages: ChatMessage[]
-  systemPrompt?: string
 }
 
 type WorkflowLanguage = 'powershell' | 'cmd' | 'python' | 'nodejs' | 'shell' | 'custom'
@@ -204,42 +176,7 @@ let lastActiveSessionId: string | null = null
 const MAX_CONVERSATIONS = 20
 const CONVERSATION_TITLE_MODEL = 'gpt-4o-mini'
 const MAX_GENERATED_TITLE_LENGTH = 60
-const CHAT_ROLE_SET = new Set<ChatRole>(['system', 'user', 'assistant'])
 const activeChatStreams = new Map<string, AbortController>()
-
-const MAX_TERMINAL_INPUT_CHUNK = 8192
-const DEFAULT_TERMINAL_COLS = 120
-const DEFAULT_TERMINAL_ROWS = 30
-const MIN_TERMINAL_COLS = 20
-const MAX_TERMINAL_COLS = 400
-const MIN_TERMINAL_ROWS = 5
-const MAX_TERMINAL_ROWS = 200
-
-function sanitizeTerminalDimension(
-  rawValue: unknown,
-  fallback: number,
-  min: number,
-  max: number
-): number {
-  if (typeof rawValue !== 'number' || !Number.isFinite(rawValue)) {
-    return fallback
-  }
-
-  const integerValue = Math.floor(rawValue)
-  return Math.min(max, Math.max(min, integerValue))
-}
-
-function sanitizeTerminalInput(rawInput: unknown): string {
-  if (typeof rawInput !== 'string' || !rawInput) {
-    return ''
-  }
-
-  if (rawInput.length <= MAX_TERMINAL_INPUT_CHUNK) {
-    return rawInput
-  }
-
-  return rawInput.slice(0, MAX_TERMINAL_INPUT_CHUNK)
-}
 
 function attachTerminalSubscriber(sender: WebContents): void {
   if (sender.isDestroyed() || terminalSubscribers.has(sender)) {
@@ -796,151 +733,6 @@ function clearCompletedTasks(): ClearCompletedResult {
   }
 }
 
-function normalizeChatUsage(payload: unknown): ChatUsage | undefined {
-  if (!payload || typeof payload !== 'object') return undefined
-
-  const raw = payload as Partial<ChatUsage>
-  const promptTokens =
-    typeof raw.promptTokens === 'number' && Number.isFinite(raw.promptTokens)
-      ? raw.promptTokens
-      : undefined
-  const completionTokens =
-    typeof raw.completionTokens === 'number' && Number.isFinite(raw.completionTokens)
-      ? raw.completionTokens
-      : undefined
-  const totalTokens =
-    typeof raw.totalTokens === 'number' && Number.isFinite(raw.totalTokens)
-      ? raw.totalTokens
-      : undefined
-
-  if (promptTokens === undefined && completionTokens === undefined && totalTokens === undefined) {
-    return undefined
-  }
-
-  return {
-    promptTokens,
-    completionTokens,
-    totalTokens
-  }
-}
-
-function normalizeSources(payload: unknown): Source[] | undefined {
-  if (!Array.isArray(payload)) return undefined
-
-  const sources = payload
-    .map((item): Source | null => {
-      if (!item || typeof item !== 'object') return null
-      const raw = item as Record<string, unknown>
-      const url = typeof raw.url === 'string' ? raw.url.trim() : ''
-      if (!url) return null
-      const title = typeof raw.title === 'string' ? raw.title.trim() : ''
-      return { title, url }
-    })
-    .filter((source): source is Source => Boolean(source))
-
-  return sources.length > 0 ? sources : undefined
-}
-
-function normalizeReasoningSteps(payload: unknown): ReasoningStep[] | undefined {
-  if (!Array.isArray(payload)) return undefined
-
-  const steps = payload
-    .map((item): ReasoningStep | null => {
-      if (!item || typeof item !== 'object') return null
-      const raw = item as Record<string, unknown>
-      if (raw.type === 'reasoning') {
-        const text = typeof raw.text === 'string' ? raw.text : ''
-        if (!text) return null
-        return { type: 'reasoning', text }
-      }
-      if (raw.type === 'web_search') {
-        const id = typeof raw.id === 'string' ? raw.id : ''
-        if (!id) return null
-        const query = typeof raw.query === 'string' ? raw.query : ''
-        const status = raw.status === 'done' ? 'done' : 'searching'
-        const sources = normalizeSources(raw.sources) ?? []
-        return { type: 'web_search', id, query, status, sources }
-      }
-      return null
-    })
-    .filter((step): step is ReasoningStep => Boolean(step))
-
-  return steps.length > 0 ? steps : undefined
-}
-
-function normalizeChatMessage(payload: Partial<ChatMessage>): ChatMessage | null {
-  const role = typeof payload.role === 'string' ? payload.role.trim() : ''
-  if (!CHAT_ROLE_SET.has(role as ChatRole)) return null
-
-  const content = typeof payload.content === 'string' ? payload.content.trim() : ''
-  if (!content) return null
-
-  const createdAt =
-    typeof payload.createdAt === 'number' && Number.isFinite(payload.createdAt)
-      ? payload.createdAt
-      : Date.now()
-
-  const id = typeof payload.id === 'string' && payload.id.trim() ? payload.id.trim() : randomUUID()
-
-  const reasoning =
-    typeof payload.reasoning === 'string' && payload.reasoning.trim() ? payload.reasoning.trim() : undefined
-  const reasoningTitle =
-    typeof payload.reasoningTitle === 'string' && payload.reasoningTitle.trim()
-      ? payload.reasoningTitle.trim()
-      : undefined
-  const steps = normalizeReasoningSteps(payload.steps)
-  const usage = normalizeChatUsage(payload.usage)
-  const model = typeof payload.model === 'string' && payload.model.trim() ? payload.model.trim() : undefined
-  const sources = normalizeSources(payload.sources)
-  const stopped = payload.stopped === true ? true : undefined
-
-  return {
-    id,
-    role: role as ChatRole,
-    content,
-    createdAt,
-    reasoning,
-    reasoningTitle,
-    steps,
-    usage,
-    model,
-    sources,
-    stopped
-  }
-}
-
-function normalizeConversation(payload: Partial<ChatConversation>): ChatConversation {
-  const id = typeof payload.id === 'string' && payload.id.trim() ? payload.id.trim() : randomUUID()
-  const title = typeof payload.title === 'string' ? payload.title.trim() : ''
-  const normalizedTitle = title || 'New chat'
-  const createdAt =
-    typeof payload.createdAt === 'number' && Number.isFinite(payload.createdAt)
-      ? payload.createdAt
-      : Date.now()
-  const updatedAt =
-    typeof payload.updatedAt === 'number' && Number.isFinite(payload.updatedAt)
-      ? payload.updatedAt
-      : createdAt
-  const systemPrompt =
-    typeof payload.systemPrompt === 'string' && payload.systemPrompt.trim()
-      ? payload.systemPrompt.trim()
-      : undefined
-
-  const rawMessages = Array.isArray(payload.messages) ? payload.messages : []
-  const normalizedMessages = rawMessages
-    .map((message) => normalizeChatMessage(message))
-    .filter((message): message is ChatMessage => Boolean(message))
-
-  return {
-    id,
-    title: normalizedTitle,
-    createdAt,
-    updatedAt,
-    messages: normalizedMessages,
-    systemPrompt
-  }
-}
-
 function getConversations(): ChatConversation[] {
   const conversations = appStore.get('conversations', [])
   return [...conversations].sort((a, b) => b.updatedAt - a.updatedAt)
@@ -1188,23 +980,6 @@ function deleteWorkflow(id: string): Workflow[] {
   const nextWorkflows = getWorkflows().filter((item) => item.id !== normalizedId)
   appStore.set('workflows', nextWorkflows)
   return nextWorkflows
-}
-
-function parseLaunchArguments(rawArguments: string): string[] {
-  if (!rawArguments.trim()) {
-    return []
-  }
-
-  const args: string[] = []
-  const tokenPattern = /"([^"]*)"|'([^']*)'|([^\s]+)/g
-  let match: RegExpExecArray | null = tokenPattern.exec(rawArguments)
-
-  while (match !== null) {
-    args.push(match[1] ?? match[2] ?? match[3])
-    match = tokenPattern.exec(rawArguments)
-  }
-
-  return args
 }
 
 function resolveWorkflowRuntime(workflow: Workflow): {
@@ -1615,115 +1390,6 @@ function updateConfig(configPatch: Partial<AppConfig>): AppConfig {
   return merged
 }
 
-function normalizeMcpHeaders(rawHeaders: unknown): McpHeader[] {
-  if (!Array.isArray(rawHeaders)) {
-    return []
-  }
-
-  return rawHeaders
-    .map((header) => {
-      const name = typeof header?.name === 'string' ? header.name.trim() : ''
-      const value = typeof header?.value === 'string' ? header.value.trim() : ''
-      if (!name) return null
-      return { name, value }
-    })
-    .filter((header): header is McpHeader => Boolean(header))
-}
-
-function normalizeMcpAuth(rawAuth: unknown): McpAuth {
-  if (!rawAuth || typeof rawAuth !== 'object') {
-    return { type: 'none' }
-  }
-
-  const authType = typeof (rawAuth as { type?: unknown }).type === 'string'
-    ? (rawAuth as { type?: string }).type
-    : 'none'
-
-  if (authType === 'accessToken') {
-    const token = typeof (rawAuth as { token?: unknown }).token === 'string'
-      ? (rawAuth as { token?: string }).token.trim()
-      : ''
-    return { type: 'accessToken', token }
-  }
-
-  if (authType === 'customHeaders') {
-    return { type: 'customHeaders', headers: normalizeMcpHeaders((rawAuth as { headers?: unknown }).headers) }
-  }
-
-  return { type: 'none' }
-}
-
-function normalizeMcpTools(rawTools: unknown): McpTool[] {
-  if (!Array.isArray(rawTools)) {
-    return []
-  }
-
-  return rawTools
-    .map((tool) => {
-      const name = typeof tool?.name === 'string' ? tool.name.trim() : ''
-      if (!name) return null
-      const description = typeof tool?.description === 'string' ? tool.description.trim() : ''
-      const inputSchema =
-        tool && typeof tool === 'object' && tool.inputSchema && typeof tool.inputSchema === 'object'
-          ? (tool.inputSchema as Record<string, unknown>)
-          : undefined
-      const enabled = typeof tool?.enabled === 'boolean' ? tool.enabled : true
-
-      return {
-        name,
-        description,
-        inputSchema,
-        enabled
-      }
-    })
-    .filter((tool): tool is McpTool => Boolean(tool))
-}
-
-function normalizeStoredMcpServer(rawServer: Partial<McpServer> | null | undefined): McpServer | null {
-  if (!rawServer || typeof rawServer !== 'object') {
-    return null
-  }
-
-  const name = typeof rawServer.name === 'string' ? rawServer.name.trim() : ''
-  const url = typeof rawServer.url === 'string' ? rawServer.url.trim() : ''
-
-  if (!name || !url) {
-    return null
-  }
-
-  const id = typeof rawServer.id === 'string' && rawServer.id.trim() ? rawServer.id.trim() : randomUUID()
-  const description = typeof rawServer.description === 'string' ? rawServer.description.trim() : ''
-  const active = typeof rawServer.active === 'boolean' ? rawServer.active : false
-
-  return {
-    id,
-    name,
-    url,
-    description,
-    active,
-    auth: normalizeMcpAuth(rawServer.auth),
-    tools: normalizeMcpTools(rawServer.tools),
-    lastSyncedAt:
-      typeof rawServer.lastSyncedAt === 'number' && Number.isFinite(rawServer.lastSyncedAt)
-        ? rawServer.lastSyncedAt
-        : undefined,
-    lastError:
-      typeof rawServer.lastError === 'string' && rawServer.lastError.trim()
-        ? rawServer.lastError.trim()
-        : undefined
-  }
-}
-
-function normalizeStoredMcpServers(rawServers: unknown): McpServer[] {
-  if (!Array.isArray(rawServers)) {
-    return []
-  }
-
-  return rawServers
-    .map((server) => normalizeStoredMcpServer(server))
-    .filter((server): server is McpServer => Boolean(server))
-}
-
 function getMcpServers(): McpServer[] {
   return readConfig().mcpServers
 }
@@ -1871,26 +1537,25 @@ async function refreshMcpServerTools(server: McpServer): Promise<McpServer> {
     | { result?: { tools?: unknown } }
     | { tools?: unknown }
   const rawTools = (response as { result?: { tools?: unknown } }).result?.tools ?? (response as { tools?: unknown }).tools
-  const discoveredTools = Array.isArray(rawTools)
-    ? rawTools
-        .map((tool) => {
-          const name = typeof tool?.name === 'string' ? tool.name.trim() : ''
-          if (!name) return null
-
-          return {
-            name,
-            description: typeof tool?.description === 'string' ? tool.description.trim() : '',
-            inputSchema:
-              tool && typeof tool === 'object' && tool.inputSchema && typeof tool.inputSchema === 'object'
-                ? (tool.inputSchema as Record<string, unknown>)
-                : undefined
-          }
-        })
-        .filter(
-          (tool): tool is { name: string; description: string; inputSchema?: Record<string, unknown> } =>
-            Boolean(tool)
-        )
-    : []
+  const discoveredTools: Array<{
+    name: string
+    description: string
+    inputSchema?: Record<string, unknown>
+  }> = []
+  if (Array.isArray(rawTools)) {
+    for (const rawTool of rawTools) {
+      if (!rawTool || typeof rawTool !== 'object') continue
+      const tool = rawTool as Record<string, unknown>
+      const name = typeof tool.name === 'string' ? tool.name.trim() : ''
+      if (!name) continue
+      const description = typeof tool.description === 'string' ? tool.description.trim() : ''
+      const inputSchema =
+        tool.inputSchema && typeof tool.inputSchema === 'object'
+          ? (tool.inputSchema as Record<string, unknown>)
+          : undefined
+      discoveredTools.push({ name, description, inputSchema })
+    }
+  }
 
   const existingToolsByName = new Map(server.tools.map((tool) => [tool.name, tool]))
   const hadPriorTools = server.tools.length > 0
@@ -2108,7 +1773,10 @@ async function completeChatWithMcp(
       tool_calls: message.tool_calls
     })
 
-    for (const toolCall of message.tool_calls) {
+    for (const toolCall of message.tool_calls as Array<{
+      id: string
+      function: { name: string; arguments: string }
+    }>) {
       const resolvedEntry = toolRegistry.find((entry) => entry.qualifiedName === toolCall.function.name)
       if (!resolvedEntry) {
         openAiMessages.push({
