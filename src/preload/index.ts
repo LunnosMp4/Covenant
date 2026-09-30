@@ -8,6 +8,7 @@ import type { Preprompt } from '../shared/preprompt'
 import type { TerminalExitPayload, TerminalStartResult } from '../shared/terminal'
 import type { ClearCompletedResult, Task } from '../shared/task'
 import type { GamificationState } from '../shared/gamification'
+import type { UpdateStatus } from '../shared/update'
 import type {
   Workflow,
   WorkflowLogPayload,
@@ -100,7 +101,20 @@ const api = {
     updateAutoCollapseReasoning: (autoCollapseReasoning: boolean) =>
       ipcRenderer.send('update-auto-collapse-reasoning', autoCollapseReasoning),
     updateAutoUpdate: (enabled: boolean) => ipcRenderer.send('update-auto-update', enabled),
-    checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+    checkForUpdates: () => ipcRenderer.invoke('check-for-updates') as Promise<UpdateStatus>,
+    getUpdateStatus: () => ipcRenderer.invoke('get-update-status') as Promise<UpdateStatus>,
+    installUpdate: () => ipcRenderer.send('install-update'),
+    onUpdateStatus: (callback: (status: UpdateStatus) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: UpdateStatus) => {
+        callback(status)
+      }
+
+      ipcRenderer.on('update-status', listener)
+
+      return () => {
+        ipcRenderer.removeListener('update-status', listener)
+      }
+    },
     updateShortcuts: (shortcuts: ShortcutConfig) => ipcRenderer.send('update-shortcuts', shortcuts),
     onShortcutsUpdated: (callback: (shortcuts: ShortcutConfig) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, shortcuts: ShortcutConfig) => {
@@ -369,6 +383,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateReasoningEffort: api.config.updateReasoningEffort,
   updateWebSearch: api.config.updateWebSearch,
   updateAutoCollapseReasoning: api.config.updateAutoCollapseReasoning,
+  updateAutoUpdate: api.config.updateAutoUpdate,
+  checkForUpdates: api.config.checkForUpdates,
+  getUpdateStatus: api.config.getUpdateStatus,
+  installUpdate: api.config.installUpdate,
+  onUpdateStatus: api.config.onUpdateStatus,
   updateShortcuts: api.config.updateShortcuts,
   getTerminalFonts: api.config.getTerminalFonts,
   onThemeUpdated: api.config.onThemeUpdated,

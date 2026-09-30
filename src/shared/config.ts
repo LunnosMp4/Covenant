@@ -16,13 +16,26 @@ export interface ChatModelOption {
 }
 
 export const CHAT_MODEL_OPTIONS: ChatModelOption[] = [
-  { id: 'gpt-5.6-luna', label: 'GPT-5.6 Luna', supportsExtendedParams: true, maxContextTokens: 1050000 },
-  { id: 'gpt-5.6-terra', label: 'GPT-5.6 Terra', supportsExtendedParams: true, maxContextTokens: 1050000 }
+  { id: 'gpt-6-luna', label: 'GPT-6 Luna', supportsExtendedParams: true, maxContextTokens: 1050000 },
+  { id: 'gpt-6.1-sol', label: 'GPT-6.1 Sol', supportsExtendedParams: true, maxContextTokens: 1050000 }
 ]
 
 export const REASONING_EFFORT_OPTIONS: ReasoningEffort[] = ['low', 'medium', 'high']
 
-export const DEFAULT_CHAT_MODEL = 'gpt-5.6-luna'
+export const DEFAULT_CHAT_MODEL = 'gpt-6-luna'
+
+const LEGACY_CHAT_MODEL_IDS: Record<string, string> = {
+  'gpt-5.6-luna': 'gpt-6-luna',
+  'gpt-5.6-terra': 'gpt-6.1-sol'
+}
+
+export function normalizeChatModelId(modelId: string | undefined): string {
+  if (typeof modelId !== 'string' || !modelId.trim()) {
+    return DEFAULT_CHAT_MODEL
+  }
+  const trimmed = modelId.trim()
+  return LEGACY_CHAT_MODEL_IDS[trimmed] ?? trimmed
+}
 export const DEFAULT_REASONING_EFFORT: ReasoningEffort = 'low'
 export const DEFAULT_ENABLE_WEB_SEARCH = true
 export const DEFAULT_AUTO_COLLAPSE_REASONING = true
@@ -41,7 +54,7 @@ export function modelSupportsExtendedParams(modelId: string): boolean {
   return getModelCapabilities(modelId)?.supportsExtendedParams ?? false
 }
 
-const REASONING_MODEL_PREFIXES = ['gpt-5', 'o1', 'o3', 'o4']
+const REASONING_MODEL_PREFIXES = ['gpt-5', 'gpt-6', 'o1', 'o3', 'o4']
 
 export function modelDoesReasoning(modelId: string): boolean {
   const lower = modelId.toLowerCase()

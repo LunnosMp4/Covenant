@@ -43,6 +43,7 @@ import {
 } from './constants/theme'
 import type { ButtonVisibility, ReasoningEffort } from '../../shared/config'
 import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_REASONING_EFFORT } from '../../shared/config'
+import type { UpdateStatus } from '../../shared/update'
 import type {
   ChatConversation,
   ChatMessage,
@@ -327,6 +328,7 @@ export default function App(): JSX.Element {
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT)
   const [enableWebSearch, setEnableWebSearch] = useState(true)
   const [autoCollapseReasoning, setAutoCollapseReasoning] = useState(true)
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
   const [isPinned, setIsPinned] = useState(false)
   const [sourcesPanelMessageId, setSourcesPanelMessageId] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -479,6 +481,31 @@ export default function App(): JSX.Element {
       if (typeof unsubscribeAutoCollapseReasoningListener === 'function') {
         unsubscribeAutoCollapseReasoningListener()
       }
+    }
+  }, [])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadUpdateStatus = async (): Promise<void> => {
+      if (!window.api?.config.getUpdateStatus) return
+      try {
+        const status = await window.api.config.getUpdateStatus()
+        if (isMounted) setUpdateStatus(status)
+      } catch {
+        // Ignore — updates will arrive via the subscription below.
+      }
+    }
+
+    void loadUpdateStatus()
+
+    const unsubscribe = window.api?.config.onUpdateStatus?.((status) => {
+      setUpdateStatus(status)
+    })
+
+    return () => {
+      isMounted = false
+      if (typeof unsubscribe === 'function') unsubscribe()
     }
   }, [])
 
@@ -2097,6 +2124,55 @@ export default function App(): JSX.Element {
       onClick={handleOverlayClick}
       onKeyDownCapture={handleRootKeyDownCapture}
     >
+      {updateStatus &&
+      (updateStatus.state === 'available' ||
+        updateStatus.state === 'downloading' ||
+        updateStatus.state === 'downloaded') ? (
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-50 flex justify-center px-4 pt-3">
+          <div className="pointer-events-auto flex w-[750px] max-w-full items-center gap-3 rounded-2xl border border-white/10 bg-neutral-900/95 px-4 py-3 shadow-xl shadow-black/40">
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-amber-400/15 text-amber-300">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path d="M12 3v12" />
+                <path d="m7 10 5 5 5-5" />
+                <path d="M5 21h14" />
+              </svg>
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-medium text-neutral-100">
+                {updateStatus.state === 'downloaded'
+                  ? `Covenant v${updateStatus.version} is ready to install`
+                  : updateStatus.state === 'downloading'
+                    ? `Downloading Covenant v${updateStatus.version}…`
+                    : `Covenant v${updateStatus.version} update found`}
+              </p>
+              {typeof updateStatus.percent === 'number' && updateStatus.state !== 'available' ? (
+                <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className={`h-full rounded-full transition-all duration-200 ${
+                      updateStatus.state === 'downloaded' ? 'bg-emerald-400' : 'bg-amber-400'
+                    }`}
+                    style={{ width: `${Math.min(Math.max(updateStatus.percent, 0), 100)}%` }}
+                  />
+                </div>
+              ) : null}
+            </div>
+            {updateStatus.state === 'downloaded' ? (
+              <button
+                type="button"
+                onClick={() => window.api?.config.installUpdate?.()}
+                className="flex-shrink-0 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-emerald-950 transition-colors hover:bg-emerald-400"
+              >
+                Restart &amp; install
+              </button>
+            ) : (
+              <span className="flex-shrink-0 text-xs tabular-nums text-neutral-400">
+                {typeof updateStatus.percent === 'number' ? `${Math.round(updateStatus.percent)}%` : '…'}
+              </span>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       {/*
         isAppVisible tracks whether the visible command bar has finished its
         exit animation. Heavy transient UI such as popups should respect it,

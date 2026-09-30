@@ -21,6 +21,7 @@ import {
 } from './constants/theme'
 import type { AppConfig, ButtonVisibility, ReasoningEffort, ShortcutConfig } from '../../shared/config'
 import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_REASONING_EFFORT, DEFAULT_SHORTCUTS, REASONING_EFFORT_OPTIONS, modelSupportsExtendedParams, modelSupportsWebSearch } from '../../shared/config'
+import type { UpdateStatus } from '../../shared/update'
 import type { McpServer } from '../../shared/mcp'
 import type { LauncherApp } from './types/launcher-app'
 import type { Preprompt } from './types/preprompt'
@@ -323,6 +324,33 @@ function getAppTargetsSummary(app: LauncherApp): string {
   return formatTargetsSummary(targets)
 }
 
+function formatUpdateBytes(bytes?: number): string {
+  if (!bytes || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  const value = bytes / Math.pow(1024, exponent)
+  return `${value.toFixed(value >= 100 || exponent === 0 ? 0 : 1)} ${units[exponent]}`
+}
+
+function getUpdateStatusLabel(status: UpdateStatus): string {
+  switch (status.state) {
+    case 'checking':
+      return 'Checking for updates…'
+    case 'available':
+      return `Version ${status.version ?? ''} found. Downloading…`
+    case 'downloading':
+      return `Downloading version ${status.version ?? ''}…`
+    case 'downloaded':
+      return `Version ${status.version ?? ''} is ready. Restart to finish installing.`
+    case 'not-available':
+      return 'You are on the latest version.'
+    case 'error':
+      return `Update check failed${status.error ? `: ${status.error}` : '.'}`
+    default:
+      return 'No update check has run yet.'
+  }
+}
+
 interface GeneralTabProps {
   apiKey: string
   onApiKeyChange: (value: string) => void
@@ -349,6 +377,9 @@ interface GeneralTabProps {
   onAutoCollapseReasoningChange: (value: boolean) => void
   autoUpdate: boolean
   onAutoUpdateChange: (value: boolean) => void
+  updateStatus: UpdateStatus
+  onCheckForUpdates: () => void
+  onInstallUpdate: () => void
   shortcuts: ShortcutConfig
   onShortcutChange: (field: keyof ShortcutConfig, value: string) => void
 }
@@ -379,6 +410,9 @@ function GeneralTab({
   onAutoCollapseReasoningChange,
   autoUpdate,
   onAutoUpdateChange,
+  updateStatus,
+  onCheckForUpdates,
+  onInstallUpdate,
   shortcuts,
   onShortcutChange
 }: GeneralTabProps): JSX.Element {
@@ -542,12 +576,72 @@ function GeneralTab({
             label="Launch on startup"
             description="Covenant will open automatically when your system starts."
           />
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Updates"
+        description="Covenant checks GitHub Releases for new versions in the background."
+      >
+        <div className="space-y-4">
           <MinimalistToggle
             checked={autoUpdate}
             onChange={onAutoUpdateChange}
             label="Automatically check for updates"
             description="Download new versions from GitHub Releases and prompt you to restart."
           />
+
+          <div className="rounded-xl border border-neutral-800 bg-neutral-950/70 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-neutral-200">
+                  Covenant v{updateStatus.currentVersion}
+                </p>
+                <p className={`mt-1 text-xs ${updateStatus.state === 'error' ? 'text-red-400' : 'text-neutral-400'}`}>
+                  {getUpdateStatusLabel(updateStatus)}
+                </p>
+              </div>
+
+              {updateStatus.state === 'downloaded' ? (
+                <button
+                  type="button"
+                  onClick={onInstallUpdate}
+                  className="flex-shrink-0 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-emerald-950 transition-colors hover:bg-emerald-400"
+                >
+                  Restart & install
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onCheckForUpdates}
+                  disabled={updateStatus.state === 'checking' || updateStatus.state === 'downloading'}
+                  className="flex-shrink-0 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-neutral-200 transition-colors hover:border-neutral-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {updateStatus.state === 'checking' ? 'Checking…' : 'Check for updates'}
+                </button>
+              )}
+            </div>
+
+            {typeof updateStatus.percent === 'number' &&
+            (updateStatus.state === 'downloading' || updateStatus.state === 'downloaded') ? (
+              <div className="mt-3">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-800">
+                  <div
+                    className={`h-full rounded-full transition-all duration-200 ${
+                      updateStatus.state === 'downloaded' ? 'bg-emerald-400' : 'bg-amber-400'
+                    }`}
+                    style={{ width: `${Math.min(Math.max(updateStatus.percent, 0), 100)}%` }}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-neutral-500">
+                  {Math.round(updateStatus.percent)}%
+                  {updateStatus.state === 'downloading' && updateStatus.bytesPerSecond
+                    ? ` · ${formatUpdateBytes(updateStatus.transferred)} / ${formatUpdateBytes(updateStatus.total)} · ${formatUpdateBytes(updateStatus.bytesPerSecond)}/s`
+                    : ''}
+                </p>
+              </div>
+            ) : null}
+          </div>
         </div>
       </SectionCard>
 
@@ -1071,6 +1165,7 @@ export default function Settings(): JSX.Element {
   const [enableWebSearch, setEnableWebSearch] = useState(true)
   const [autoCollapseReasoning, setAutoCollapseReasoning] = useState(true)
   const [autoUpdate, setAutoUpdate] = useState(true)
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: 'idle', currentVersion: '' })
   const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true, tasks: true })
   const [shortcuts, setShortcuts] = useState<ShortcutConfig>({ ...DEFAULT_SHORTCUTS })
   const [mcpServers, setMcpServers] = useState<McpServer[]>([])
@@ -1186,6 +1281,31 @@ export default function Settings(): JSX.Element {
         setActiveTab(tab as SettingsTab)
       }
     })
+  }, [])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadUpdateStatus = async (): Promise<void> => {
+      if (!window.api?.config.getUpdateStatus) return
+      try {
+        const status = await window.api.config.getUpdateStatus()
+        if (isMounted) setUpdateStatus(status)
+      } catch {
+        // Ignore — the listener will provide updates when available.
+      }
+    }
+
+    void loadUpdateStatus()
+
+    const unsubscribe = window.api?.config.onUpdateStatus?.((status) => {
+      setUpdateStatus(status)
+    })
+
+    return () => {
+      isMounted = false
+      if (typeof unsubscribe === 'function') unsubscribe()
+    }
   }, [])
 
   useEffect(() => {
@@ -1569,6 +1689,15 @@ const handleMinimizeWindow = (): void => {
     window.api?.config.updateAutoUpdate?.(enabled)
   }
 
+  const handleCheckForUpdates = (): void => {
+    setUpdateStatus((prev) => ({ ...prev, state: 'checking' }))
+    void window.api?.config.checkForUpdates?.()
+  }
+
+  const handleInstallUpdate = (): void => {
+    window.api?.config.installUpdate?.()
+  }
+
   const handleButtonVisibilityChange = (visibility: ButtonVisibility): void => {
     setButtonVisibility(visibility)
     window.api?.config.updateButtonVisibility?.(visibility)
@@ -1861,6 +1990,9 @@ const handleMinimizeWindow = (): void => {
                 onAutoCollapseReasoningChange={handleAutoCollapseReasoningChange}
                 autoUpdate={autoUpdate}
                 onAutoUpdateChange={handleAutoUpdateChange}
+                updateStatus={updateStatus}
+                onCheckForUpdates={handleCheckForUpdates}
+                onInstallUpdate={handleInstallUpdate}
                 shortcuts={shortcuts}
                 onShortcutChange={handleShortcutChange}
               />

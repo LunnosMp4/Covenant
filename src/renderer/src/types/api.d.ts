@@ -7,6 +7,7 @@ import type { Task } from './task'
 import type { ClearCompletedResult, GamificationState } from './gamification'
 import type { ChatConversation, ChatRole, ChatStreamEvent, InputContent } from '../../../shared/chat'
 import type { TerminalExitPayload, TerminalStartResult } from '../../../shared/terminal'
+import type { UpdateStatus } from '../../../shared/update'
 
 interface CovenantAPI {
   window: {
@@ -46,7 +47,10 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     updateWebSearch: (enableWebSearch: boolean) => void
     updateAutoCollapseReasoning: (autoCollapseReasoning: boolean) => void
     updateAutoUpdate: (enabled: boolean) => void
-    checkForUpdates: () => Promise<boolean>
+    checkForUpdates: () => Promise<UpdateStatus>
+    getUpdateStatus: () => Promise<UpdateStatus>
+    installUpdate: () => void
+    onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void
     updateShortcuts: (shortcuts: ShortcutConfig) => void
     getTerminalFonts: () => Promise<string[]>
     onThemeUpdated: (callback: (gradientClass: string) => void) => () => void
@@ -147,6 +151,11 @@ refreshMcpServerTools: (serverId: string) => Promise<McpServer[]>
       updateReasoningEffort: (reasoningEffort: ReasoningEffort) => void
       updateWebSearch: (enableWebSearch: boolean) => void
       updateAutoCollapseReasoning: (autoCollapseReasoning: boolean) => void
+      updateAutoUpdate: (enabled: boolean) => void
+      checkForUpdates: () => Promise<UpdateStatus>
+      getUpdateStatus: () => Promise<UpdateStatus>
+      installUpdate: () => void
+      onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void
       updateShortcuts: (shortcuts: ShortcutConfig) => void
       getTerminalFonts: () => Promise<string[]>
       onThemeUpdated: (callback: (gradientClass: string) => void) => () => void

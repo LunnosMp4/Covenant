@@ -4,19 +4,22 @@ import { CHAT_MODEL_OPTIONS } from '../../../shared/config'
 interface ModelPricing {
   inputPerMillion: number
   cachedInputPerMillion: number
+  cacheWritePerMillion: number
   outputPerMillion: number
 }
 
 export const CHAT_MODEL_PRICING: Record<string, ModelPricing> = {
-  'gpt-5.6-luna': {
-    inputPerMillion: 0.2,
-    cachedInputPerMillion: 0.02,
-    outputPerMillion: 1.2
+  'gpt-6-luna': {
+    inputPerMillion: 0.1,
+    cachedInputPerMillion: 0.01,
+    cacheWritePerMillion: 0.125,
+    outputPerMillion: 0.5
   },
-  'gpt-5.6-terra': {
+  'gpt-6.1-sol': {
     inputPerMillion: 2.0,
-    cachedInputPerMillion: 0.2,
-    outputPerMillion: 12
+    cachedInputPerMillion: 0.1,
+    cacheWritePerMillion: 2.5,
+    outputPerMillion: 10
   }
 }
 
@@ -52,14 +55,16 @@ export function formatUsageSummary(message: ChatMessage): string | undefined {
 
   const promptTokens = usage.promptTokens ?? 0
   const cachedPromptTokens = Math.min(usage.cachedPromptTokens ?? 0, promptTokens)
+  const cacheWritePromptTokens = Math.min(usage.cacheWritePromptTokens ?? 0, Math.max(promptTokens - cachedPromptTokens, 0))
   const completionTokens = usage.completionTokens ?? 0
   const pricing = message.model ? CHAT_MODEL_PRICING[message.model.trim()] : undefined
 
-  const inputTokens = promptTokens - cachedPromptTokens
+  const inputTokens = Math.max(promptTokens - cachedPromptTokens - cacheWritePromptTokens, 0)
   const inputCost = pricing ? (inputTokens * pricing.inputPerMillion) / 1_000_000 : 0
   const cachedInputCost = pricing ? (cachedPromptTokens * pricing.cachedInputPerMillion) / 1_000_000 : 0
+  const cacheWriteCost = pricing ? (cacheWritePromptTokens * pricing.cacheWritePerMillion) / 1_000_000 : 0
   const outputCost = pricing ? (completionTokens * pricing.outputPerMillion) / 1_000_000 : 0
-  const totalCost = inputCost + cachedInputCost + outputCost
+  const totalCost = inputCost + cachedInputCost + cacheWriteCost + outputCost
 
   const parts = [
     `>${formatTokenCount(promptTokens)}tk`,
@@ -100,6 +105,7 @@ export function computeContextStats(
 
     const promptTokens = usage.promptTokens ?? 0
     const cachedPromptTokens = Math.min(usage.cachedPromptTokens ?? 0, promptTokens)
+    const cacheWritePromptTokens = Math.min(usage.cacheWritePromptTokens ?? 0, Math.max(promptTokens - cachedPromptTokens, 0))
     const completionTokens = usage.completionTokens ?? 0
 
     totalInputTokens += promptTokens
@@ -108,11 +114,12 @@ export function computeContextStats(
 
     const pricing = msg.model ? CHAT_MODEL_PRICING[msg.model.trim()] : undefined
     if (pricing) {
-      const inputTokens = promptTokens - cachedPromptTokens
+      const inputTokens = Math.max(promptTokens - cachedPromptTokens - cacheWritePromptTokens, 0)
       const inputCost = (inputTokens * pricing.inputPerMillion) / 1_000_000
       const cachedInputCost = (cachedPromptTokens * pricing.cachedInputPerMillion) / 1_000_000
+      const cacheWriteCost = (cacheWritePromptTokens * pricing.cacheWritePerMillion) / 1_000_000
       const outputCost = (completionTokens * pricing.outputPerMillion) / 1_000_000
-      totalCost += inputCost + cachedInputCost + outputCost
+      totalCost += inputCost + cachedInputCost + cacheWriteCost + outputCost
     }
   }
 

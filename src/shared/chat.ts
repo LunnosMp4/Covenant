@@ -31,6 +31,7 @@ export type ReasoningStep =
 export interface ChatUsage {
   promptTokens?: number
   cachedPromptTokens?: number
+  cacheWritePromptTokens?: number
   completionTokens?: number
   totalTokens?: number
   reasoningTokens?: number

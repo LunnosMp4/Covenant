@@ -32,6 +32,7 @@ import {
   DEFAULT_SHORTCUTS,
   modelDoesReasoning,
   modelSupportsWebSearch,
+  normalizeChatModelId,
   normalizeShortcuts,
   type ShortcutConfig
 } from '../shared/config'
@@ -71,7 +72,7 @@ import {
 } from '../shared/gamification'
 import { evaluateTask, evaluateTaskHeuristically } from './services/taskEvaluator'
 import { openLogsFolder, setupLogger } from './logger'
-import { checkForUpdatesManually, setupAutoUpdater } from './updater'
+import { checkForUpdatesManually, getUpdateStatus, quitAndInstallUpdate, setupAutoUpdater } from './updater'
 
 // Expose V8's garbage collector so we can force a collection on window hide.
 // Must be set before app.whenReady() — top-level module scope satisfies this.
@@ -1364,10 +1365,7 @@ function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined): AppC
         : DEFAULT_CONFIG.preferredShell,
     mcpServers: normalizeStoredMcpServers(rawConfig?.mcpServers),
     buttonVisibility: normalizeButtonVisibility(rawConfig?.buttonVisibility),
-    chatModel:
-      typeof rawConfig?.chatModel === 'string' && rawConfig.chatModel.trim()
-        ? rawConfig.chatModel.trim()
-        : DEFAULT_CHAT_MODEL,
+    chatModel: normalizeChatModelId(rawConfig?.chatModel),
     reasoningEffort:
       typeof rawConfig?.reasoningEffort === 'string' && ['low', 'medium', 'high'].includes(rawConfig.reasoningEffort)
         ? rawConfig.reasoningEffort as AppConfig['reasoningEffort']
@@ -1847,7 +1845,9 @@ async function runStreamingChat(
                 input_tokens?: number
                 output_tokens?: number
                 total_tokens?: number
-                input_tokens_details?: { cached_tokens?: number }
+                cache_creation_input_tokens?: number
+                cache_write_tokens?: number
+                input_tokens_details?: { cached_tokens?: number; cache_creation_tokens?: number }
                 output_tokens_details?: { reasoning_tokens?: number }
               }
             }
@@ -1856,6 +1856,10 @@ async function runStreamingChat(
               ? {
                   promptTokens: usage.input_tokens,
                   cachedPromptTokens: usage.input_tokens_details?.cached_tokens,
+                  cacheWritePromptTokens:
+                    usage.input_tokens_details?.cache_creation_tokens ??
+                    usage.cache_creation_input_tokens ??
+                    usage.cache_write_tokens,
                   completionTokens: usage.output_tokens,
                   totalTokens: usage.total_tokens,
                   reasoningTokens: usage.output_tokens_details?.reasoning_tokens
@@ -2856,11 +2860,22 @@ ipcMain.on('mark-onboarded', () => {
 ipcMain.on('update-auto-update', (_event, enabled: unknown) => {
   const isEnabled = enabled === true
   updateConfig({ autoUpdate: isEnabled })
+  if (isEnabled) {
+    checkForUpdatesManually()
+  }
 })
 
 ipcMain.handle('check-for-updates', () => {
   checkForUpdatesManually()
-  return true
+  return getUpdateStatus()
+})
+
+ipcMain.handle('get-update-status', () => {
+  return getUpdateStatus()
+})
+
+ipcMain.on('install-update', () => {
+  quitAndInstallUpdate()
 })
 
 ipcMain.handle('save-mcp-server', (_event, payload: Partial<McpServer>) => {

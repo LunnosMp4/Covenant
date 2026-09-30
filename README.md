@@ -6,7 +6,7 @@ Floating command bar for Windows and macOS — prompt an OpenAI model, run termi
 
 ## Key Features
 
-- AI chat via OpenAI Responses API (streaming SSE) with configurable models (GPT-5.6 Terra, GPT-5.6 Luna, GPT-5.4 Nano, GPT-4o Mini)
+- AI chat via OpenAI Responses API (streaming SSE) with configurable models (GPT-6.1 Sol, GPT-6 Luna, GPT-5.4 Nano, GPT-4o Mini)
 - Collapsible reasoning display with shimmer animation during streaming
 - Web search with source citations (auto-detected per model capability)
 - Voice transcription (gpt-4o-mini-transcribe) with animated mic input
