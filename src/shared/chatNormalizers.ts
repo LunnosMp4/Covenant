@@ -74,6 +74,16 @@ export function normalizeReasoningSteps(payload: unknown): ReasoningStep[] | und
         const sources = normalizeSources(raw.sources) ?? []
         return { type: 'web_search', id, query, status, sources }
       }
+      if (raw.type === 'tool') {
+        const id = typeof raw.id === 'string' ? raw.id : ''
+        const name = typeof raw.name === 'string' ? raw.name : ''
+        if (!id || !name) return null
+        const status = raw.status === 'done' || raw.status === 'error' ? raw.status : 'running'
+        const serverName = typeof raw.serverName === 'string' && raw.serverName.trim() ? raw.serverName.trim() : undefined
+        const query = typeof raw.query === 'string' && raw.query.trim() ? raw.query.trim() : undefined
+        const content = typeof raw.content === 'string' && raw.content.trim() ? raw.content.trim() : undefined
+        return { type: 'tool', id, name, serverName, query, status, content }
+      }
       return null
     })
     .filter((step): step is ReasoningStep => Boolean(step))

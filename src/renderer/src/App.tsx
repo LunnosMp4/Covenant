@@ -5,7 +5,7 @@ import TerminalView from './components/TerminalView'
 import VoiceWaveform from './components/VoiceWaveform'
 import ConfirmDeleteModal from './components/ConfirmDeleteModal'
 import { Favicon } from './components/Favicon'
-import { AssistantMarkdown, CopyButton, WebSearchStepRow } from './components/chat/AssistantMarkdown'
+import { AssistantMarkdown, CopyButton, ToolStepRow, WebSearchStepRow } from './components/chat/AssistantMarkdown'
 import {
   ChevronDownIcon,
   ChevronUpIcon,
@@ -1239,6 +1239,25 @@ export default function App(): JSX.Element {
               }
             ]
           }))
+        } else if (event.toolType === 'mcp' && event.itemId) {
+          const toolItemId = event.itemId
+          const toolName = event.toolName ?? event.query ?? 'MCP tool'
+          const serverName = event.serverName
+          const query = event.query
+          updateConversationMessage(conversationId, messageId, (message) => ({
+            ...message,
+            steps: [
+              ...(message.steps ?? []),
+              {
+                type: 'tool',
+                id: toolItemId,
+                name: toolName,
+                serverName,
+                query,
+                status: 'running'
+              }
+            ]
+          }))
         }
         return
       }
@@ -1249,9 +1268,34 @@ export default function App(): JSX.Element {
         updateConversationMessage(conversationId, messageId, (message) => {
           const steps = message.steps ?? []
           const nextSteps = steps.map((step) => {
-            if (step.type !== 'web_search' || step.id !== event.itemId) return step
-            if (step.query) return step
-            return { ...step, query }
+            if (step.type === 'web_search' && step.id === event.itemId) {
+              if (step.query) return step
+              return { ...step, query }
+            }
+            if (step.type === 'tool' && step.id === event.itemId) {
+              if (step.query) return step
+              return { ...step, query }
+            }
+            return step
+          })
+          return { ...message, steps: nextSteps }
+        })
+        return
+      }
+
+      if (event.type === 'tool-result' && event.itemId) {
+        updateConversationMessage(conversationId, messageId, (message) => {
+          const steps = message.steps ?? []
+          const nextSteps = steps.map((step) => {
+            if (step.type !== 'tool' || step.id !== event.itemId) return step
+            if (event.status === 'running') {
+              return { ...step, status: 'running' as const }
+            }
+            return {
+              ...step,
+              status: event.status === 'error' ? ('error' as const) : ('done' as const),
+              content: event.content
+            }
           })
           return { ...message, steps: nextSteps }
         })
@@ -1299,7 +1343,9 @@ export default function App(): JSX.Element {
                   steps: (message.steps ?? []).map((step) =>
                     step.type === 'web_search' && step.status === 'searching'
                       ? { ...step, status: 'done' as const }
-                      : step
+                      : step.type === 'tool' && step.status === 'running'
+                        ? { ...step, status: 'done' as const }
+                        : step
                   )
                 }
               : message
@@ -2473,6 +2519,9 @@ export default function App(): JSX.Element {
                                                 ) : null}
                                               </p>
                                             )
+                                          }
+                                          if (step.type === 'tool') {
+                                            return <ToolStepRow key={step.id} step={step} />
                                           }
                                           return <WebSearchStepRow key={step.id} step={step} />
                                         })

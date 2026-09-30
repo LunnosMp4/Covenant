@@ -4,6 +4,12 @@ import type { McpAuth, McpHeader, McpServer } from '../../../shared/mcp'
 
 interface McpServerFormModalProps {
   initialData?: McpServer
+  seed?: {
+    name: string
+    url: string
+    description: string
+    authType: McpAuth['type']
+  }
   onCancel: () => void
   onSave: (payload: {
     id?: string
@@ -12,7 +18,14 @@ interface McpServerFormModalProps {
     description: string
     active: boolean
     auth: McpAuth
+    appendMcpSuffix: boolean
   }) => void
+}
+
+interface TestResult {
+  ok: boolean
+  message: string
+  toolCount: number
 }
 
 type HeaderRow = McpHeader & { id: string }
@@ -41,6 +54,7 @@ function getInitialHeaders(initialData?: McpServer): HeaderRow[] {
 
 export default function McpServerFormModal({
   initialData,
+  seed,
   onCancel,
   onSave
 }: McpServerFormModalProps): JSX.Element {
@@ -48,23 +62,28 @@ export default function McpServerFormModal({
   const [url, setUrl] = useState('')
   const [description, setDescription] = useState('')
   const [active, setActive] = useState(false)
+  const [appendMcpSuffix, setAppendMcpSuffix] = useState(true)
   const [authType, setAuthType] = useState<AuthType>('none')
   const [accessToken, setAccessToken] = useState('')
   const [headers, setHeaders] = useState<HeaderRow[]>([createHeaderRow()])
   const [errorMessage, setErrorMessage] = useState('')
+  const [isTesting, setIsTesting] = useState(false)
+  const [testResult, setTestResult] = useState<TestResult | undefined>(undefined)
 
   useEffect(() => {
-    setName(initialData?.name ?? '')
-    setUrl(initialData?.url ?? '')
-    setDescription(initialData?.description ?? '')
+    setName(initialData?.name ?? seed?.name ?? '')
+    setUrl(initialData?.url ?? seed?.url ?? '')
+    setDescription(initialData?.description ?? seed?.description ?? '')
     setActive(initialData?.active ?? false)
+    setAppendMcpSuffix(initialData?.appendMcpSuffix ?? true)
 
     const auth = initialData?.auth ?? { type: 'none' as const }
-    setAuthType(auth.type)
+    setAuthType(initialData ? auth.type : (seed?.authType ?? 'none'))
     setAccessToken(auth.type === 'accessToken' ? auth.token : '')
     setHeaders(getInitialHeaders(initialData))
     setErrorMessage('')
-  }, [initialData])
+    setTestResult(undefined)
+  }, [initialData, seed])
 
   const isEditMode = Boolean(initialData)
   const isCustomHeaders = authType === 'customHeaders'
@@ -83,6 +102,51 @@ export default function McpServerFormModal({
     setHeaders((current) =>
       current.map((row) => (row.id === rowId ? { ...row, [field]: value } : row))
     )
+  }
+
+  const handleTest = async (): Promise<void> => {
+    if (!window.api?.config.testMcpServer) return
+
+    if (!url.trim()) {
+      setErrorMessage('MCP server URL is required to test the connection.')
+      return
+    }
+
+    try {
+      void new URL(url.trim())
+    } catch {
+      setErrorMessage('Enter a valid URL before testing.')
+      return
+    }
+
+    setIsTesting(true)
+    setTestResult(undefined)
+    setErrorMessage('')
+
+    try {
+      const result = await window.api.config.testMcpServer({
+        name: name.trim() || 'MCP Server',
+        url: url.trim(),
+        auth:
+          authType === 'accessToken'
+            ? { type: 'accessToken', token: accessToken.trim() }
+            : authType === 'customHeaders'
+            ? {
+                type: 'customHeaders',
+                headers: headers
+                  .map((row) => ({ name: row.name.trim(), value: row.value.trim() }))
+                  .filter((row) => row.name)
+              }
+            : { type: 'none' },
+        appendMcpSuffix
+      })
+      setTestResult({ ok: result.ok, message: result.message, toolCount: result.toolCount })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to test connection.'
+      setTestResult({ ok: false, message, toolCount: 0 })
+    } finally {
+      setIsTesting(false)
+    }
   }
 
   const handleSave = (): void => {
@@ -132,18 +196,19 @@ export default function McpServerFormModal({
       url: url.trim(),
       description: description.trim(),
       active,
+      appendMcpSuffix,
       auth
     })
   }
 
   return (
     <ModalOverlay onClose={onCancel} contentClassName="max-w-2xl h-[640px]">
-      <div className="rounded-2xl border border-neutral-800 bg-neutral-900/95 p-5 shadow-[0_22px_60px_rgba(0,0,0,0.55)]">
+      <div className="flex h-full max-h-[640px] flex-col rounded-2xl border border-neutral-800 bg-neutral-900/95 p-5 shadow-[0_22px_60px_rgba(0,0,0,0.55)]">
         <h3 className="text-lg font-semibold text-neutral-100">
           {isEditMode ? 'Edit MCP Server' : 'Add MCP Server'}
         </h3>
 
-        <div className="mt-4 space-y-4">
+        <div className="mt-4 flex-1 space-y-4 overflow-y-auto pr-1">
           <div className="grid gap-3 md:grid-cols-[1.1fr_1.4fr]">
             <div>
               <label htmlFor="mcp-name" className="mb-1.5 block text-xs font-medium uppercase tracking-[0.08em] text-neutral-400">
@@ -174,6 +239,7 @@ export default function McpServerFormModal({
                 onChange={(event) => {
                   setUrl(event.target.value)
                   setErrorMessage('')
+                  setTestResult(undefined)
                 }}
                 placeholder="https://mcp.example.com"
                 className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-neutral-500 focus:outline-none"
@@ -229,6 +295,29 @@ export default function McpServerFormModal({
                 </span>
               </label>
             </div>
+          </div>
+
+          <div className="rounded-xl border border-neutral-800 bg-neutral-950/70 p-3">
+            <label className="flex cursor-pointer items-center justify-between gap-3">
+              <span>
+                <span className="block text-xs font-medium uppercase tracking-[0.08em] text-neutral-400">Auto-append /mcp</span>
+                <span className="mt-1 block text-xs text-neutral-500">
+                  Streamable HTTP MCP endpoints usually live at /mcp. Disable if your URL is the full endpoint path.
+                </span>
+              </span>
+              <span className={`relative inline-flex h-7 w-12 flex-shrink-0 rounded-full border transition-all ${appendMcpSuffix ? 'border-emerald-500/40 bg-emerald-500/20' : 'border-neutral-700 bg-neutral-800'}`}>
+                <input
+                  type="checkbox"
+                  checked={appendMcpSuffix}
+                  onChange={(event) => {
+                    setAppendMcpSuffix(event.target.checked)
+                    setTestResult(undefined)
+                  }}
+                  className="peer absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                />
+                <span className={`pointer-events-none inline-block h-6 w-6 translate-x-0.5 rounded-full bg-neutral-100 transition-transform ${appendMcpSuffix ? 'translate-x-5' : ''}`} />
+              </span>
+            </label>
           </div>
 
           {isAccessToken ? (
@@ -299,9 +388,21 @@ export default function McpServerFormModal({
           <p className="text-xs text-neutral-500">HTTP Streamable MCP endpoints are expected to live at /mcp.</p>
 
           {errorMessage ? <p className="text-xs text-red-300">{errorMessage}</p> : null}
+
+          {testResult ? (
+            <p className={`text-xs ${testResult.ok ? 'text-emerald-300' : 'text-red-300'}`}>{testResult.message}</p>
+          ) : null}
         </div>
 
         <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => void handleTest()}
+            disabled={isTesting || !url.trim()}
+            className="mr-auto rounded-xl border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isTesting ? 'Testing…' : 'Test Connection'}
+          </button>
           <button
             type="button"
             onClick={onCancel}

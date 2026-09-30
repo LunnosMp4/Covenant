@@ -27,9 +27,15 @@ interface CovenantAPI {
     markOnboarded: () => void
     getMcpServers: () => Promise<McpServer[]>
     saveMcpServer: (server: Partial<McpServer>) => Promise<McpServer[]>
-    deleteMcpServer: (serverId: string) => Promise<McpServer[]>
-    refreshMcpServerTools: (serverId: string) => Promise<McpServer[]>
-    updateTheme: (gradientClass: string) => void
+deleteMcpServer: (serverId: string) => Promise<McpServer[]>
+      refreshMcpServerTools: (serverId: string) => Promise<McpServer[]>
+      testMcpServer: (payload: {
+        name: string
+        url: string
+        auth: McpServer['auth']
+        appendMcpSuffix?: boolean
+      }) => Promise<{ ok: boolean; message: string; toolCount: number; lastError?: string }>
+      updateTheme: (gradientClass: string) => void
     updateStartupSetting: (launchOnStartup: boolean) => void
     updateTerminalFont: (terminalFont: string) => void
     updatePreferredShell: (preferredShell: string) => void
@@ -124,7 +130,13 @@ declare global {
       getMcpServers: () => Promise<McpServer[]>
       saveMcpServer: (server: Partial<McpServer>) => Promise<McpServer[]>
       deleteMcpServer: (serverId: string) => Promise<McpServer[]>
-      refreshMcpServerTools: (serverId: string) => Promise<McpServer[]>
+refreshMcpServerTools: (serverId: string) => Promise<McpServer[]>
+    testMcpServer: (payload: {
+      name: string
+      url: string
+      auth: McpServer['auth']
+      appendMcpSuffix?: boolean
+    }) => Promise<{ ok: boolean; message: string; toolCount: number; lastError?: string }>
       updateTheme: (gradientClass: string) => void
       updateStartupSetting: (launchOnStartup: boolean) => void
       updateTerminalFont: (terminalFont: string) => void

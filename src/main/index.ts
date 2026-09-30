@@ -31,12 +31,11 @@ import {
   DEFAULT_REASONING_EFFORT,
   DEFAULT_SHORTCUTS,
   modelDoesReasoning,
-  modelSupportsExtendedParams,
   modelSupportsWebSearch,
   normalizeShortcuts,
   type ShortcutConfig
 } from '../shared/config'
-import type { McpAuth, McpHeader, McpServer, McpTool } from '../shared/mcp'
+import type { McpServer } from '../shared/mcp'
 import { CHAT_ROLE_SET, type ChatConversation, type ChatRole, type ChatUsage } from '../shared/chat'
 import { normalizeConversation } from '../shared/chatNormalizers'
 import {
@@ -51,6 +50,16 @@ import {
 } from '../shared/dimensions'
 import { parseLaunchArguments } from './services/argParser'
 import { normalizeStoredMcpServer, normalizeStoredMcpServers } from './services/mcpNormalizers'
+import {
+  buildOpenAIToolDefinitions,
+  callMcpTool,
+  configureMcpClient,
+  forgetMcpSession,
+  normalizeMcpToolNameSegment,
+  refreshMcpServerTools,
+  testMcpServer,
+  type McpToolRegistryEntry
+} from './services/mcpClient'
 import {
   DEFAULT_GAMIFICATION,
   applyStreakBonus,
@@ -174,7 +183,6 @@ const WORKFLOW_LANGUAGE_SET = new Set<WorkflowLanguage>([
 ])
 
 const runningWorkflowIds = new Set<string>()
-const mcpSessionIds = new Map<string, string>()
 const terminalSubscribers = new Set<WebContents>()
 let lastActiveSessionId: string | null = null
 const MAX_CONVERSATIONS = 20
@@ -1432,156 +1440,10 @@ function deleteMcpServer(id: string): McpServer[] {
     return getMcpServers()
   }
 
-  mcpSessionIds.delete(normalizedId)
+  forgetMcpSession(normalizedId)
   const nextServers = getMcpServers().filter((item) => item.id !== normalizedId)
   updateConfig({ mcpServers: nextServers })
   return nextServers
-}
-
-function resolveMcpEndpointUrl(rawUrl: string): string {
-  const parsed = new URL(rawUrl)
-  if (parsed.pathname.endsWith('/mcp')) {
-    return parsed.toString()
-  }
-
-  parsed.pathname = parsed.pathname.endsWith('/') ? `${parsed.pathname}mcp` : `${parsed.pathname}/mcp`
-  return parsed.toString()
-}
-
-function buildMcpHeaders(server: McpServer): Headers {
-  const headers = new Headers()
-  headers.set('Content-Type', 'application/json')
-  headers.set('Accept', 'application/json, text/event-stream')
-
-  if (server.auth.type === 'accessToken' && server.auth.token.trim()) {
-    headers.set('Authorization', `Bearer ${server.auth.token.trim()}`)
-  }
-
-  if (server.auth.type === 'customHeaders') {
-    server.auth.headers.forEach((header) => {
-      if (header.name.trim()) {
-        headers.set(header.name.trim(), header.value.trim())
-      }
-    })
-  }
-
-  const sessionId = mcpSessionIds.get(server.id)
-  if (sessionId) {
-    headers.set('mcp-session-id', sessionId)
-  }
-
-  return headers
-}
-
-function extractMcpJsonResponse(text: string): unknown {
-  const trimmed = text.trim()
-  if (!trimmed) {
-    return null
-  }
-
-  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-    return JSON.parse(trimmed) as unknown
-  }
-
-  const dataMatches = [...trimmed.matchAll(/^data:\s*(.+)$/gm)]
-  if (dataMatches.length > 0) {
-    const lastData = dataMatches[dataMatches.length - 1]?.[1]
-    if (lastData) {
-      return JSON.parse(lastData) as unknown
-    }
-  }
-
-  throw new Error('Unable to parse MCP response.')
-}
-
-async function sendMcpRequest(
-  server: McpServer,
-  method: string,
-  params?: Record<string, unknown>
-): Promise<unknown> {
-  const response = await fetch(resolveMcpEndpointUrl(server.url), {
-    method: 'POST',
-    headers: buildMcpHeaders(server),
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: randomUUID(),
-      method,
-      params
-    })
-  })
-
-  const sessionId = response.headers.get('mcp-session-id')
-  if (sessionId) {
-    mcpSessionIds.set(server.id, sessionId)
-  }
-
-  const responseText = await response.text()
-  if (!response.ok) {
-    throw new Error(responseText.trim() || `MCP request failed with status ${response.status}.`)
-  }
-
-  return extractMcpJsonResponse(responseText)
-}
-
-async function initializeMcpServer(server: McpServer): Promise<void> {
-  await sendMcpRequest(server, 'initialize', {
-    protocolVersion: '2024-11-05',
-    capabilities: {},
-    clientInfo: {
-      name: 'Covenant',
-      version: app.getVersion()
-    }
-  })
-
-  try {
-    await sendMcpRequest(server, 'notifications/initialized')
-  } catch {
-    // Optional notification.
-  }
-}
-
-async function refreshMcpServerTools(server: McpServer): Promise<McpServer> {
-  await initializeMcpServer(server)
-
-  const response = (await sendMcpRequest(server, 'tools/list', {})) as
-    | { result?: { tools?: unknown } }
-    | { tools?: unknown }
-  const rawTools = (response as { result?: { tools?: unknown } }).result?.tools ?? (response as { tools?: unknown }).tools
-  const discoveredTools: Array<{
-    name: string
-    description: string
-    inputSchema?: Record<string, unknown>
-  }> = []
-  if (Array.isArray(rawTools)) {
-    for (const rawTool of rawTools) {
-      if (!rawTool || typeof rawTool !== 'object') continue
-      const tool = rawTool as Record<string, unknown>
-      const name = typeof tool.name === 'string' ? tool.name.trim() : ''
-      if (!name) continue
-      const description = typeof tool.description === 'string' ? tool.description.trim() : ''
-      const inputSchema =
-        tool.inputSchema && typeof tool.inputSchema === 'object'
-          ? (tool.inputSchema as Record<string, unknown>)
-          : undefined
-      discoveredTools.push({ name, description, inputSchema })
-    }
-  }
-
-  const existingToolsByName = new Map(server.tools.map((tool) => [tool.name, tool]))
-  const hadPriorTools = server.tools.length > 0
-  const normalizedTools = discoveredTools.map((tool) => ({
-    name: tool.name,
-    description: tool.description,
-    inputSchema: tool.inputSchema,
-    enabled: existingToolsByName.get(tool.name)?.enabled ?? !hadPriorTools
-  }))
-
-  return {
-    ...server,
-    tools: normalizedTools,
-    lastSyncedAt: Date.now(),
-    lastError: undefined
-  }
 }
 
 async function refreshMcpServerToolsById(serverId: string): Promise<McpServer[]> {
@@ -1611,17 +1473,6 @@ async function refreshMcpServerToolsById(serverId: string): Promise<McpServer[]>
   }
 }
 
-interface McpToolRegistryEntry {
-  server: McpServer
-  tool: McpTool
-  qualifiedName: string
-}
-
-function normalizeMcpToolNameSegment(value: string): string {
-  const normalized = value.trim().replace(/[^a-zA-Z0-9_]/g, '_')
-  return normalized || 'tool'
-}
-
 function getActiveMcpToolRegistry(): McpToolRegistryEntry[] {
   const servers = getMcpServers().filter((server) => server.active)
   const registry: McpToolRegistryEntry[] = []
@@ -1641,97 +1492,49 @@ function getActiveMcpToolRegistry(): McpToolRegistryEntry[] {
   return registry
 }
 
-function parseMcpToolResultContent(result: unknown): string {
-  if (typeof result === 'string') {
-    return result
+type SanitizedMessage = { role: ChatRole; content: string | Array<{ type: string; text?: string; image_url?: string }> }
+
+const MAX_MCP_TOOL_ROUNDS = 5
+const MAX_TOOL_RESULT_DISPLAY_LENGTH = 1200
+
+const COVENANT_INSTRUCTIONS =
+  "You are Covenant, a helpful, concise AI assistant integrated into a user's operating system. Keep your answers brief and to the point."
+
+function truncateMcpResult(content: string): string {
+  const trimmed = content.trim()
+  if (trimmed.length <= MAX_TOOL_RESULT_DISPLAY_LENGTH) {
+    return trimmed
   }
-
-  if (!result || typeof result !== 'object') {
-    return JSON.stringify(result)
-  }
-
-  const content = (result as { content?: unknown }).content
-  if (typeof content === 'string') {
-    return content
-  }
-
-  if (Array.isArray(content)) {
-    const textSegments = content
-      .map((part) => {
-        if (typeof part === 'string') {
-          return part
-        }
-
-        if (part && typeof part === 'object') {
-          const typedPart = part as { type?: unknown; text?: unknown; content?: unknown }
-          if (typedPart.type === 'text' && typeof typedPart.text === 'string') {
-            return typedPart.text
-          }
-
-          if (typeof typedPart.content === 'string') {
-            return typedPart.content
-          }
-        }
-
-        return ''
-      })
-      .filter((segment) => Boolean(segment))
-
-    if (textSegments.length > 0) {
-      return textSegments.join('\n')
-    }
-  }
-
-  return JSON.stringify(result)
+  return `${trimmed.slice(0, MAX_TOOL_RESULT_DISPLAY_LENGTH)}\n… (truncated)`
 }
 
-async function callMcpTool(entry: McpToolRegistryEntry, rawArguments: string | undefined): Promise<string> {
-  let parsedArguments: Record<string, unknown> = {}
-
-  if (typeof rawArguments === 'string' && rawArguments.trim()) {
-    try {
-      parsedArguments = JSON.parse(rawArguments) as Record<string, unknown>
-    } catch {
-      parsedArguments = { input: rawArguments }
-    }
-  }
-
-  const response = (await sendMcpRequest(entry.server, 'tools/call', {
-    name: entry.tool.name,
-    arguments: parsedArguments
-  })) as { result?: unknown } | unknown
-
-  const resultPayload = typeof response === 'object' && response !== null && 'result' in response
-    ? (response as { result?: unknown }).result
-    : response
-
-  return parseMcpToolResultContent(resultPayload)
+function buildResponsesInput(sanitizedMessages: SanitizedMessage[]): Array<Record<string, unknown>> {
+  return sanitizedMessages.map((message) => ({
+    role:
+      message.role === 'assistant'
+        ? ('assistant' as const)
+        : message.role === 'system'
+          ? ('developer' as const)
+          : (message.role as string),
+    content: message.content
+  }))
 }
 
-function buildExtendedModelParams(model: string, reasoningEffort: string): Record<string, unknown> {
-  if (!modelSupportsExtendedParams(model)) {
-    return {}
-  }
-
+function buildResponseParams(storedConfig: AppConfig, model: string): Record<string, unknown> {
   const params: Record<string, unknown> = {
-    verbosity: 'medium'
+    instructions: COVENANT_INSTRUCTIONS
   }
 
-  if (['low', 'medium', 'high'].includes(reasoningEffort)) {
-    params.reasoning_effort = reasoningEffort
+  if (modelDoesReasoning(model)) {
+    params.reasoning = {
+      effort: storedConfig.reasoningEffort || DEFAULT_REASONING_EFFORT,
+      summary: 'auto'
+    }
+  } else {
+    params.temperature = 0.7
   }
 
   return params
-}
-
-type SanitizedMessage = { role: ChatRole; content: string | Array<{ type: string; text?: string; image_url?: string }> }
-
-function extractMessageText(content: string | Array<{ type: string; text?: string; image_url?: string }>): string {
-  if (typeof content === 'string') return content
-  return content
-    .filter((part) => part.type === 'input_text' && typeof part.text === 'string')
-    .map((part) => part.text!)
-    .join('\n')
 }
 
 async function completeChatWithMcp(
@@ -1740,73 +1543,409 @@ async function completeChatWithMcp(
   toolRegistry: McpToolRegistryEntry[],
   model: string
 ): Promise<string> {
-  const openAiMessages: Array<Record<string, unknown>> = [
-    {
-      role: 'system',
-      content:
-        "You are Covenant, a helpful, concise AI assistant integrated into a user's operating system. Keep your answers brief and to the point."
-    },
-    ...sanitizedMessages.map((m) => ({
-      role: m.role,
-      content: extractMessageText(m.content)
-    }))
-  ]
+  const storedConfig = readConfig()
+  const params = buildResponseParams(storedConfig, model)
+  const tools = buildOpenAIToolDefinitions(toolRegistry)
 
-  const openAiTools = toolRegistry.map((entry) => ({
-    type: 'function' as const,
-    function: {
-      name: entry.qualifiedName,
-      description: entry.tool.description || undefined,
-      parameters: entry.tool.inputSchema ?? { type: 'object', additionalProperties: true }
-    }
-  }))
+  let input = buildResponsesInput(sanitizedMessages)
 
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const completion = await client.chat.completions.create({
+  for (let attempt = 0; attempt < MAX_MCP_TOOL_ROUNDS; attempt += 1) {
+    const response = (await client.responses.create({
       model,
-      messages: openAiMessages as any,
-      tools: openAiTools as any,
-      tool_choice: openAiTools.length > 0 ? 'auto' : undefined,
-      ...buildExtendedModelParams(model, readConfig().reasoningEffort)
-    })
-
-    const message = completion.choices[0]?.message
-    const assistantContent = typeof message?.content === 'string' ? message.content.trim() : ''
-
-    if (!message?.tool_calls || message.tool_calls.length === 0) {
-      return assistantContent || 'No response from model.'
+      input: input as unknown[],
+      tools: tools as unknown[],
+      ...(params as Record<string, unknown>)
+    } as any)) as unknown as {
+      output?: Array<Record<string, unknown>>
+      output_text?: unknown
     }
 
-    openAiMessages.push({
-      role: 'assistant',
-      content: assistantContent,
-      tool_calls: message.tool_calls
-    })
+    const output = response?.output ?? []
+    const functionCalls = output.filter(
+      (item) => item.type === 'function_call' && typeof item.call_id === 'string'
+    ) as Array<{ call_id: string; name: string; arguments: string }>
 
-    for (const toolCall of message.tool_calls as Array<{
-      id: string
-      function: { name: string; arguments: string }
-    }>) {
-      const resolvedEntry = toolRegistry.find((entry) => entry.qualifiedName === toolCall.function.name)
-      if (!resolvedEntry) {
-        openAiMessages.push({
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          content: `Tool ${toolCall.function.name} is unavailable.`
+    if (functionCalls.length === 0) {
+      return (typeof response?.output_text === 'string' ? response.output_text : '').trim() || 'No response from model.'
+    }
+
+    const continuation: Array<Record<string, unknown>> = [...output]
+    for (const call of functionCalls) {
+      const entry = toolRegistry.find((e) => e.qualifiedName === call.name)
+      if (!entry) {
+        continuation.push({
+          type: 'function_call_output',
+          call_id: call.call_id,
+          output: `Tool ${call.name} is unavailable.`
+        })
+        continue
+      }
+      const result = await callMcpTool(entry.server, entry.tool, call.arguments)
+      continuation.push({ type: 'function_call_output', call_id: call.call_id, output: result.content })
+    }
+
+    input = [...input, ...continuation]
+  }
+
+  return 'The model requested too many tool calls without finishing.'
+}
+
+interface StreamingChatContext {
+  client: OpenAI
+  streamId: string
+  sender: WebContents
+  model: string
+  sendStreamEvent: (payload: { id: string } & Record<string, unknown>) => void
+  signal: AbortSignal
+}
+
+function extractWebSearchQuery(action: Record<string, unknown> | undefined): string {
+  if (!action) return ''
+  if (Array.isArray(action.queries) && action.queries.length > 0) return String(action.queries[0])
+  if (typeof action.query === 'string' && action.query.trim()) return action.query
+  if (typeof action.pattern === 'string' && action.pattern.trim()) return action.pattern
+  if (typeof action.url === 'string' && action.url.trim()) return action.url
+  return ''
+}
+
+async function runStreamingChat(
+  ctx: StreamingChatContext,
+  initialInput: Array<Record<string, unknown>>,
+  tools: Array<Record<string, unknown>>,
+  baseParams: Record<string, unknown>,
+  toolRegistry: McpToolRegistryEntry[]
+): Promise<void> {
+  const reasoningBufferMap = new Map<string, string>()
+  const reasoningTitleParsed = new Set<string>()
+  const reasoningTitleById = new Map<string, string>()
+  const functionArgsById = new Map<string, string>()
+  const functionMetaById = new Map<string, { name: string; callId: string }>()
+
+  let currentInput = initialInput
+
+  for (let round = 0; round < MAX_MCP_TOOL_ROUNDS + 1; round += 1) {
+    if (ctx.signal.aborted) break
+
+    const streamBody: Record<string, unknown> = {
+      ...baseParams,
+      model: ctx.model,
+      input: currentInput as unknown[],
+      stream: true
+    }
+    if (tools.length > 0) {
+      streamBody.tools = tools as unknown[]
+    }
+
+    const stream = ctx.client.responses.stream(streamBody as any, { signal: ctx.signal })
+
+    let finalUsage: ChatUsage | undefined
+    let streamError: string | undefined
+    let stopped = false
+
+    try {
+      for await (const streamEvent of stream) {
+        switch (streamEvent.type) {
+          case 'response.output_item.added': {
+            const item = streamEvent.item as unknown as Record<string, unknown>
+            if (item.type === 'reasoning') {
+              reasoningBufferMap.set(item.id as string, '')
+              ctx.sendStreamEvent({ id: ctx.streamId, type: 'reasoning-start', itemId: item.id })
+            } else if (item.type === 'web_search_call') {
+              const action = item.action as Record<string, unknown> | undefined
+              ctx.sendStreamEvent({
+                id: ctx.streamId,
+                type: 'tool-start',
+                itemId: item.id,
+                toolType: 'web_search',
+                toolName: 'Web Search',
+                actionType: typeof action?.type === 'string' ? action.type : 'search',
+                query: extractWebSearchQuery(action)
+              })
+            } else if (item.type === 'function_call') {
+              const itemId = item.id as string
+              const callId = typeof item.call_id === 'string' ? item.call_id : itemId
+              const name = typeof item.name === 'string' ? item.name : ''
+              functionArgsById.set(itemId, '')
+              functionMetaById.set(itemId, { name, callId })
+              const entry = toolRegistry.find((e) => e.qualifiedName === name)
+              ctx.sendStreamEvent({
+                id: ctx.streamId,
+                type: 'tool-start',
+                itemId,
+                toolType: 'mcp',
+                toolName: entry ? `${entry.server.name} › ${entry.tool.name}` : name,
+                serverName: entry?.server.name,
+                query: name,
+                actionType: 'call'
+              })
+            }
+            break
+          }
+
+          case 'response.function_call_arguments.delta': {
+            const itemId = streamEvent.item_id
+            const delta = typeof streamEvent.delta === 'string' ? streamEvent.delta : ''
+            if (itemId) {
+              functionArgsById.set(itemId, (functionArgsById.get(itemId) ?? '') + delta)
+            }
+            break
+          }
+
+          case 'response.function_call_arguments.done': {
+            const itemId = streamEvent.item_id
+            const args = typeof streamEvent.arguments === 'string'
+              ? streamEvent.arguments
+              : (functionArgsById.get(itemId) ?? '')
+            const meta = itemId ? functionMetaById.get(itemId) : undefined
+            if (itemId && meta) {
+              functionArgsById.set(itemId, args)
+              ctx.sendStreamEvent({ id: ctx.streamId, type: 'tool-query', itemId, query: meta.name })
+            }
+            break
+          }
+
+          case 'response.reasoning_summary_text.delta': {
+            const deltaStr = typeof streamEvent.delta === 'string' ? streamEvent.delta : ''
+            const itemId = streamEvent.item_id
+            if (!deltaStr || !itemId) break
+
+            const buffer = (reasoningBufferMap.get(itemId) || '') + deltaStr
+            reasoningBufferMap.set(itemId, buffer)
+
+            if (!reasoningTitleParsed.has(itemId)) {
+              const match = /^\*\*([^*\n]+)\*\*\n\n([\s\S]*)$/.exec(buffer)
+              if (match) {
+                reasoningTitleParsed.add(itemId)
+                reasoningTitleById.set(itemId, match[1])
+                ctx.sendStreamEvent({ id: ctx.streamId, type: 'reasoning-title', itemId, title: match[1] })
+                if (match[2]) {
+                  ctx.sendStreamEvent({ id: ctx.streamId, type: 'reasoning-delta', itemId, delta: match[2] })
+                }
+                break
+              }
+            }
+
+            if (reasoningTitleParsed.has(itemId)) {
+              ctx.sendStreamEvent({ id: ctx.streamId, type: 'reasoning-delta', itemId, delta: deltaStr })
+            }
+            break
+          }
+
+          case 'response.output_item.done': {
+            const doneItem = streamEvent.item as unknown as Record<string, unknown>
+            if (doneItem.type === 'reasoning') {
+              const itemId = doneItem.id as string
+              if (!reasoningTitleParsed.has(itemId)) {
+                const buffer = reasoningBufferMap.get(itemId) || ''
+                const match = /^\*\*([^*\n]+)\*\*\n\n([\s\S]*)$/.exec(buffer)
+                const fallbackTitle = match ? match[1] : 'Thinking...'
+                reasoningTitleParsed.add(itemId)
+                reasoningTitleById.set(itemId, fallbackTitle)
+                ctx.sendStreamEvent({ id: ctx.streamId, type: 'reasoning-title', itemId, title: fallbackTitle })
+                if (match && match[2]) {
+                  ctx.sendStreamEvent({ id: ctx.streamId, type: 'reasoning-delta', itemId, delta: match[2] })
+                } else if (!match && buffer) {
+                  ctx.sendStreamEvent({ id: ctx.streamId, type: 'reasoning-delta', itemId, delta: buffer })
+                }
+              }
+              ctx.sendStreamEvent({
+                id: ctx.streamId,
+                type: 'reasoning-end',
+                itemId,
+                title: reasoningTitleById.get(itemId) || 'Thinking...'
+              })
+            } else if (doneItem.type === 'web_search_call') {
+              const action = (doneItem as Record<string, unknown>).action as Record<string, unknown> | undefined
+              const query = extractWebSearchQuery(action)
+
+              ctx.sendStreamEvent({
+                id: ctx.streamId,
+                type: 'tool-query',
+                itemId: doneItem.id,
+                query
+              })
+
+              const rawSources: Array<Record<string, unknown>> = []
+              if (Array.isArray(action?.sources)) {
+                rawSources.push(...action.sources as Array<Record<string, unknown>>)
+              } else if (Array.isArray((action as Record<string, unknown> | undefined)?.['results'])) {
+                const rawResults = (action as Record<string, unknown>)['results'] as Array<Record<string, unknown>>
+                for (const entry of rawResults) {
+                  if (Array.isArray(entry.results)) {
+                    rawSources.push(...entry.results as Array<Record<string, unknown>>)
+                  } else if (Array.isArray(entry.sources)) {
+                    rawSources.push(...entry.sources as Array<Record<string, unknown>>)
+                  }
+                }
+              }
+
+              const sources = rawSources
+                .map((src) => ({
+                  title: (typeof src.title === 'string' ? src.title : '')
+                    || (typeof src.name === 'string' ? src.name : '')
+                    || '',
+                  url: (typeof src.url === 'string' ? src.url : '')
+                    || (typeof src.link === 'string' ? src.link : '')
+                    || (typeof src.href === 'string' ? src.href : '')
+                    || ''
+                }))
+                .filter((src) => src.url.length > 0)
+
+              if (sources.length > 0) {
+                ctx.sendStreamEvent({
+                  id: ctx.streamId,
+                  type: 'sources',
+                  itemId: doneItem.id,
+                  sources,
+                  query
+                })
+              }
+            } else if (doneItem.type === 'function_call') {
+              const itemId = doneItem.id as string
+              if (itemId) {
+                const args =
+                  typeof doneItem.arguments === 'string'
+                    ? doneItem.arguments
+                    : (functionArgsById.get(itemId) ?? '')
+                functionArgsById.set(itemId, args)
+              }
+            }
+            break
+          }
+
+          case 'response.output_text.delta': {
+            const textDelta = typeof streamEvent.delta === 'string' ? streamEvent.delta : ''
+            if (textDelta) {
+              ctx.sendStreamEvent({ id: ctx.streamId, type: 'content', delta: textDelta })
+            }
+            break
+          }
+
+          case 'response.completed': {
+            const response = streamEvent.response as unknown as {
+              usage?: {
+                input_tokens?: number
+                output_tokens?: number
+                total_tokens?: number
+                input_tokens_details?: { cached_tokens?: number }
+                output_tokens_details?: { reasoning_tokens?: number }
+              }
+            }
+            const usage = response?.usage
+            finalUsage = usage
+              ? {
+                  promptTokens: usage.input_tokens,
+                  cachedPromptTokens: usage.input_tokens_details?.cached_tokens,
+                  completionTokens: usage.output_tokens,
+                  totalTokens: usage.total_tokens,
+                  reasoningTokens: usage.output_tokens_details?.reasoning_tokens
+                }
+              : undefined
+            break
+          }
+        }
+      }
+    } catch (error) {
+      if (ctx.signal.aborted) {
+        stopped = true
+      } else {
+        streamError = error instanceof Error ? error.message : 'Unable to fetch AI response.'
+      }
+    }
+
+    if (streamError) {
+      ctx.sendStreamEvent({ id: ctx.streamId, type: 'error', error: streamError })
+      return
+    }
+    if (stopped) {
+      ctx.sendStreamEvent({ id: ctx.streamId, type: 'done', usage: finalUsage, model: ctx.model, stopped: true })
+      return
+    }
+
+    const finalResponse = (await stream.finalResponse().catch(() => null)) as unknown as {
+      output?: Array<Record<string, unknown>>
+    } | null
+    const output = finalResponse?.output ?? []
+    const functionCalls = output.filter(
+      (item) => item.type === 'function_call' && typeof item.call_id === 'string'
+    ) as Array<{ id: string; call_id: string; name: string; arguments: string }>
+
+    if (functionCalls.length === 0) {
+      ctx.sendStreamEvent({ id: ctx.streamId, type: 'done', usage: finalUsage, model: ctx.model })
+      return
+    }
+
+    const continuation: Array<Record<string, unknown>> = [...output]
+    for (const call of functionCalls) {
+      const entry = toolRegistry.find((e) => e.qualifiedName === call.name)
+      ctx.sendStreamEvent({
+        id: ctx.streamId,
+        type: 'tool-result',
+        itemId: call.id,
+        toolType: 'mcp',
+        toolName: call.name,
+        serverName: entry?.server.name,
+        status: 'running'
+      })
+
+      if (!entry) {
+        continuation.push({
+          type: 'function_call_output',
+          call_id: call.call_id,
+          output: `Tool ${call.name} is unavailable.`
+        })
+        ctx.sendStreamEvent({
+          id: ctx.streamId,
+          type: 'tool-result',
+          itemId: call.id,
+          toolType: 'mcp',
+          toolName: call.name,
+          status: 'error',
+          content: 'Tool unavailable.'
         })
         continue
       }
 
-      const toolOutput = await callMcpTool(resolvedEntry, toolCall.function.arguments)
-      openAiMessages.push({
-        role: 'tool',
-        tool_call_id: toolCall.id,
-        content: toolOutput
-      })
+      try {
+        const result = await callMcpTool(entry.server, entry.tool, call.arguments, { signal: ctx.signal })
+        continuation.push({ type: 'function_call_output', call_id: call.call_id, output: result.content })
+        ctx.sendStreamEvent({
+          id: ctx.streamId,
+          type: 'tool-result',
+          itemId: call.id,
+          toolType: 'mcp',
+          toolName: call.name,
+          serverName: entry.server.name,
+          status: result.isError ? 'error' : 'done',
+          content: truncateMcpResult(result.content)
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'MCP tool call failed.'
+        continuation.push({ type: 'function_call_output', call_id: call.call_id, output: `Error: ${message}` })
+        ctx.sendStreamEvent({
+          id: ctx.streamId,
+          type: 'tool-result',
+          itemId: call.id,
+          toolType: 'mcp',
+          toolName: call.name,
+          serverName: entry.server.name,
+          status: 'error',
+          content: message
+        })
+      }
+
+      if (ctx.signal.aborted) break
     }
+
+    if (ctx.signal.aborted) {
+      ctx.sendStreamEvent({ id: ctx.streamId, type: 'done', usage: undefined, model: ctx.model, stopped: true })
+      return
+    }
+
+    currentInput = [...currentInput, ...continuation]
   }
 
-  return 'The model requested too many tool calls without finishing.'
+  ctx.sendStreamEvent({ id: ctx.streamId, type: 'done', usage: undefined, model: ctx.model, stopped: true })
 }
 
 function normalizeGeneratedTitle(rawTitle: unknown): string | null {
@@ -2248,6 +2387,8 @@ app.whenReady().then(() => {
   })
 
   const config = readConfig()
+
+  configureMcpClient({ name: 'Covenant', version: app.getVersion() })
 
   setupAutoUpdater(() => readConfig().autoUpdate === true)
 
@@ -2696,6 +2837,27 @@ ipcMain.handle('refresh-mcp-server-tools', async (_event, serverId: string) => {
   return refreshMcpServerToolsById(serverId)
 })
 
+ipcMain.handle('test-mcp-server', async (_event, payload: {
+  name?: string
+  url?: string
+  auth?: McpServer['auth']
+  appendMcpSuffix?: boolean
+}) => {
+  const name = typeof payload?.name === 'string' ? payload.name.trim() : ''
+  const url = typeof payload?.url === 'string' ? payload.url.trim() : ''
+  if (!name || !url) {
+    return { ok: false, message: 'Server name and URL are required.', toolCount: 0 }
+  }
+
+  return testMcpServer({
+    name,
+    url,
+    auth: payload?.auth ?? { type: 'none' },
+    appendMcpSuffix: payload?.appendMcpSuffix ?? true,
+    timeoutMs: 15_000
+  })
+})
+
 ipcMain.on('update-theme', (_event, gradientClass: string) => {
   const nextTheme =
     typeof gradientClass === 'string' && gradientClass.trim()
@@ -2899,232 +3061,31 @@ ipcMain.handle('covenant:chat-stream', async (event, rawMessages: Array<{ role?:
   }
 
   const toolRegistry = getActiveMcpToolRegistry()
-
-  if (toolRegistry.length > 0) {
-    const chatModel = storedConfig.chatModel || DEFAULT_CHAT_MODEL
-    const responseText = await completeChatWithMcp(client, sanitizedMessages, toolRegistry, chatModel)
-
-    void (async () => {
-      sendStreamEvent({ id: streamId, type: 'content', delta: responseText })
-      sendStreamEvent({ id: streamId, type: 'done', usage: undefined, model: chatModel })
-    })()
-
-    return { id: streamId }
-  }
-
-  const model = storedConfig.chatModel || DEFAULT_CHAT_MODEL
+  const chatModel = storedConfig.chatModel || DEFAULT_CHAT_MODEL
   const enableWebSearch = storedConfig.enableWebSearch ?? DEFAULT_ENABLE_WEB_SEARCH
-  const autoCollapseReasoning = storedConfig.autoCollapseReasoning ?? DEFAULT_AUTO_COLLAPSE_REASONING
-  const doesReasoning = modelDoesReasoning(model)
-  const doesWebSearch = enableWebSearch && modelSupportsWebSearch(model)
+  const doesWebSearch = enableWebSearch && modelSupportsWebSearch(chatModel)
 
-  const input = sanitizedMessages.map((message) => ({
-    role: message.role === 'assistant' ? 'assistant' as const
-      : message.role === 'system' ? 'developer' as const
-      : message.role as string,
-    content: message.content
-  }))
-
-  const params: Record<string, unknown> = {
-    model,
-    input: input as unknown[],
-    instructions:
-      "You are Covenant, a helpful, concise AI assistant integrated into a user's operating system. Keep your answers brief and to the point.",
-    stream: true
-  }
-
-  if (doesReasoning) {
-    params.reasoning = {
-      effort: storedConfig.reasoningEffort || DEFAULT_REASONING_EFFORT,
-      summary: 'auto'
-    }
-  } else {
-    params.temperature = 0.7
-  }
-
+  const tools: Array<Record<string, unknown>> = []
   if (doesWebSearch) {
-    params.tools = [{ type: 'web_search' }]
+    tools.push({ type: 'web_search' })
   }
+  tools.push(...buildOpenAIToolDefinitions(toolRegistry))
+
+  const input = buildResponsesInput(sanitizedMessages)
+  const params = buildResponseParams(storedConfig, chatModel)
 
   const controller = new AbortController()
   activeChatStreams.set(streamId, controller)
 
-  const stream = client.responses.stream(params as any, { signal: controller.signal })
-
-  const extractWebSearchQuery = (action: Record<string, unknown> | undefined): string => {
-    if (!action) return ''
-    if (Array.isArray(action.queries) && action.queries.length > 0) return String(action.queries[0])
-    if (typeof action.query === 'string' && action.query.trim()) return action.query
-    if (typeof action.pattern === 'string' && action.pattern.trim()) return action.pattern
-    if (typeof action.url === 'string' && action.url.trim()) return action.url
-    return ''
-  }
-
-  void (async () => {
-    const reasoningBufferMap = new Map<string, string>()
-    const reasoningTitleParsed = new Set<string>()
-    const reasoningTitleById = new Map<string, string>()
-
-    try {
-      for await (const streamEvent of stream) {
-        switch (streamEvent.type) {
-          case 'response.output_item.added': {
-            const item = streamEvent.item as unknown as Record<string, unknown>
-            if (item.type === 'reasoning') {
-              reasoningBufferMap.set(item.id as string, '')
-              sendStreamEvent({ id: streamId, type: 'reasoning-start', itemId: item.id })
-            } else if (item.type === 'web_search_call') {
-              const action = item.action as Record<string, unknown> | undefined
-              sendStreamEvent({
-                id: streamId,
-                type: 'tool-start',
-                itemId: item.id,
-                toolType: 'web_search',
-                toolName: 'Web Search',
-                actionType: typeof action?.type === 'string' ? action.type : 'search',
-                query: extractWebSearchQuery(action)
-              })
-            }
-            break
-          }
-
-          case 'response.reasoning_summary_text.delta': {
-            const deltaStr = typeof streamEvent.delta === 'string' ? streamEvent.delta : ''
-            const itemId = streamEvent.item_id
-            if (!deltaStr || !itemId) break
-
-            const buffer = (reasoningBufferMap.get(itemId) || '') + deltaStr
-            reasoningBufferMap.set(itemId, buffer)
-
-            if (!reasoningTitleParsed.has(itemId)) {
-              const match = /^\*\*([^*\n]+)\*\*\n\n([\s\S]*)$/.exec(buffer)
-              if (match) {
-                reasoningTitleParsed.add(itemId)
-                reasoningTitleById.set(itemId, match[1])
-                sendStreamEvent({ id: streamId, type: 'reasoning-title', itemId, title: match[1] })
-                if (match[2]) {
-                  sendStreamEvent({ id: streamId, type: 'reasoning-delta', itemId, delta: match[2] })
-                }
-                break
-              }
-            }
-
-            if (reasoningTitleParsed.has(itemId)) {
-              sendStreamEvent({ id: streamId, type: 'reasoning-delta', itemId, delta: deltaStr })
-            }
-            break
-          }
-
-          case 'response.output_item.done': {
-            const doneItem = streamEvent.item as unknown as Record<string, unknown>
-            if (doneItem.type === 'reasoning') {
-              const itemId = doneItem.id as string
-              if (!reasoningTitleParsed.has(itemId)) {
-                const buffer = reasoningBufferMap.get(itemId) || ''
-                const match = /^\*\*([^*\n]+)\*\*\n\n([\s\S]*)$/.exec(buffer)
-                const fallbackTitle = match ? match[1] : 'Thinking...'
-                reasoningTitleParsed.add(itemId)
-                reasoningTitleById.set(itemId, fallbackTitle)
-                sendStreamEvent({ id: streamId, type: 'reasoning-title', itemId, title: fallbackTitle })
-                if (match && match[2]) {
-                  sendStreamEvent({ id: streamId, type: 'reasoning-delta', itemId, delta: match[2] })
-                } else if (!match && buffer) {
-                  sendStreamEvent({ id: streamId, type: 'reasoning-delta', itemId, delta: buffer })
-                }
-              }
-              sendStreamEvent({
-                id: streamId,
-                type: 'reasoning-end',
-                itemId,
-                title: reasoningTitleById.get(itemId) || 'Thinking...'
-              })
-            } else if (doneItem.type === 'web_search_call') {
-              const action = (doneItem as Record<string, unknown>).action as Record<string, unknown> | undefined
-              const query = extractWebSearchQuery(action)
-
-              sendStreamEvent({
-                id: streamId,
-                type: 'tool-query',
-                itemId: doneItem.id,
-                query
-              })
-
-              const rawSources: Array<Record<string, unknown>> = []
-              if (Array.isArray(action?.sources)) {
-                rawSources.push(...action.sources as Array<Record<string, unknown>>)
-              } else if (Array.isArray((action as Record<string, unknown> | undefined)?.['results'])) {
-                const rawResults = (action as Record<string, unknown>)['results'] as Array<Record<string, unknown>>
-                for (const entry of rawResults) {
-                  if (Array.isArray(entry.results)) {
-                    rawSources.push(...entry.results as Array<Record<string, unknown>>)
-                  } else if (Array.isArray(entry.sources)) {
-                    rawSources.push(...entry.sources as Array<Record<string, unknown>>)
-                  }
-                }
-              }
-
-              const sources = rawSources
-                .map((src) => ({
-                  title: (typeof src.title === 'string' ? src.title : '')
-                    || (typeof src.name === 'string' ? src.name : '')
-                    || '',
-                  url: (typeof src.url === 'string' ? src.url : '')
-                    || (typeof src.link === 'string' ? src.link : '')
-                    || (typeof src.href === 'string' ? src.href : '')
-                    || ''
-                }))
-                .filter((src) => src.url.length > 0)
-
-              if (sources.length > 0) {
-                sendStreamEvent({
-                  id: streamId,
-                  type: 'sources',
-                  itemId: doneItem.id,
-                  sources,
-                  query
-                })
-              }
-            }
-            break
-          }
-
-          case 'response.output_text.delta': {
-            const textDelta = typeof streamEvent.delta === 'string' ? streamEvent.delta : ''
-            if (textDelta) {
-              sendStreamEvent({ id: streamId, type: 'content', delta: textDelta })
-            }
-            break
-          }
-
-          case 'response.completed': {
-            const response = streamEvent.response
-            const usage = response?.usage
-            const finalUsage: ChatUsage | undefined = usage
-              ? {
-                  promptTokens: (usage as unknown as Record<string, number>).input_tokens,
-                  cachedPromptTokens: ((usage as unknown as Record<string, unknown>).input_tokens_details as Record<string, number> | undefined)?.cached_tokens,
-                  completionTokens: (usage as unknown as Record<string, number>).output_tokens,
-                  totalTokens: (usage as unknown as Record<string, number>).total_tokens,
-                  reasoningTokens: ((usage as unknown as Record<string, unknown>).output_tokens_details as Record<string, number> | undefined)?.reasoning_tokens
-                }
-              : undefined
-
-            sendStreamEvent({ id: streamId, type: 'done', usage: finalUsage, model })
-            break
-          }
-        }
-      }
-    } catch (error) {
-      if (controller.signal.aborted) {
-        sendStreamEvent({ id: streamId, type: 'done', usage: undefined, model, stopped: true })
-      } else {
-        const message = error instanceof Error ? error.message : 'Unable to fetch AI response.'
-        sendStreamEvent({ id: streamId, type: 'error', error: message })
-      }
-    } finally {
-      activeChatStreams.delete(streamId)
-    }
-  })()
+  void runStreamingChat(
+    { client, streamId, sender, model: chatModel, sendStreamEvent, signal: controller.signal },
+    input,
+    tools,
+    params,
+    toolRegistry
+  ).finally(() => {
+    activeChatStreams.delete(streamId)
+  })
 
   return { id: streamId }
 })
@@ -3178,31 +3139,14 @@ ipcMain.handle('covenant:chat', async (_event, rawMessages: Array<{ role?: strin
     return completeChatWithMcp(client, sanitizedMessages, toolRegistry, chatModel)
   }
 
-  const input = sanitizedMessages.map((message) => ({
-    role: message.role === 'assistant' ? 'assistant' as const
-      : message.role === 'system' ? 'developer' as const
-      : message.role as string,
-    content: message.content
-  }))
+  const input = buildResponsesInput(sanitizedMessages)
+  const params = buildResponseParams(storedConfig, chatModel)
 
-  const params: Record<string, unknown> = {
+  const response = await client.responses.create({
     model: chatModel,
     input: input as unknown[],
-    instructions:
-      "You are Covenant, a helpful, concise AI assistant integrated into a user's operating system. Keep your answers brief and to the point."
-  }
-
-  const doesReasoning = modelDoesReasoning(chatModel)
-  if (doesReasoning) {
-    params.reasoning = {
-      effort: storedConfig.reasoningEffort || DEFAULT_REASONING_EFFORT,
-      summary: 'auto'
-    }
-  } else {
-    params.temperature = 0.7
-  }
-
-  const response = await client.responses.create(params as any)
+    ...(params as Record<string, unknown>)
+  } as any)
   return (response as any).output_text?.trim() || 'No response from model.'
 })
 

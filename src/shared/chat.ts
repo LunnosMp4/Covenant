@@ -18,6 +18,15 @@ export interface Source {
 export type ReasoningStep =
   | { type: 'reasoning'; text: string }
   | { type: 'web_search'; id: string; query: string; status: 'searching' | 'done'; sources: Source[] }
+  | {
+      type: 'tool'
+      id: string
+      name: string
+      serverName?: string
+      query?: string
+      status: 'running' | 'done' | 'error'
+      content?: string
+    }
 
 export interface ChatUsage {
   promptTokens?: number
@@ -62,6 +71,7 @@ export type ChatStreamEventType =
   | 'reasoning-end'
   | 'tool-start'
   | 'tool-query'
+  | 'tool-result'
   | 'sources'
 
 export interface ChatStreamEvent {
@@ -77,6 +87,9 @@ export interface ChatStreamEvent {
   toolName?: string
   actionType?: string
   query?: string
+  serverName?: string
+  status?: 'running' | 'done' | 'error'
+  content?: string
   sources?: Source[]
   stopped?: boolean
 }

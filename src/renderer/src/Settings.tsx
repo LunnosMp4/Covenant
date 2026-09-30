@@ -4,7 +4,7 @@ import AppFormModal from './components/AppFormModal'
 import ConfirmDeleteModal from './components/ConfirmDeleteModal'
 import CustomSelect from './components/CustomSelect'
 import McpServerFormModal from './components/McpServerFormModal'
-import McpServersTab from './components/McpServersTab'
+import McpServersTab, { type McpPreset } from './components/McpServersTab'
 import PrepromptFormModal from './components/PrepromptFormModal'
 import WorkflowFormModal from './components/WorkflowFormModal'
 import {
@@ -1075,6 +1075,12 @@ export default function Settings(): JSX.Element {
   const [mcpFeedbackMessage, setMcpFeedbackMessage] = useState('')
   const [isMcpFormOpen, setIsMcpFormOpen] = useState(false)
   const [editingMcpServer, setEditingMcpServer] = useState<McpServer | undefined>(undefined)
+  const [mcpFormSeed, setMcpFormSeed] = useState<{
+    name: string
+    url: string
+    description: string
+    authType: McpServer['auth']['type']
+  } | undefined>(undefined)
   const [deletingMcpServer, setDeletingMcpServer] = useState<McpServer | undefined>(undefined)
   const [apps, setApps] = useState<LauncherApp[]>([])
   const [isAppsLoading, setIsAppsLoading] = useState(false)
@@ -1321,12 +1327,14 @@ export default function Settings(): JSX.Element {
 
   const handleOpenAddMcpServer = (): void => {
     setEditingMcpServer(undefined)
+    setMcpFormSeed(undefined)
     setMcpFeedbackMessage('')
     setIsMcpFormOpen(true)
   }
 
   const handleOpenEditMcpServer = (server: McpServer): void => {
     setEditingMcpServer(server)
+    setMcpFormSeed(undefined)
     setMcpFeedbackMessage('')
     setIsMcpFormOpen(true)
   }
@@ -1334,6 +1342,7 @@ export default function Settings(): JSX.Element {
   const handleCloseMcpForm = (): void => {
     setIsMcpFormOpen(false)
     setEditingMcpServer(undefined)
+    setMcpFormSeed(undefined)
   }
 
   const handleSaveMcpServer = async (payload: {
@@ -1343,6 +1352,7 @@ export default function Settings(): JSX.Element {
     description: string
     active: boolean
     auth: McpServer['auth']
+    appendMcpSuffix: boolean
   }): Promise<void> => {
     if (!window.api?.config.saveMcpServer) return
 
@@ -1355,8 +1365,25 @@ export default function Settings(): JSX.Element {
       setMcpServers(updatedServers)
       setIsMcpFormOpen(false)
       setEditingMcpServer(undefined)
-      setMcpFeedbackMessage('MCP server saved.')
-      window.setTimeout(() => setMcpFeedbackMessage(''), 1600)
+      setMcpFormSeed(undefined)
+
+      const savedServer = payload.id
+        ? updatedServers.find((server) => server.id === payload.id)
+        : updatedServers.find((server) => server.name === payload.name && server.url === payload.url)
+
+      if (savedServer && savedServer.active) {
+        setMcpFeedbackMessage('MCP server saved. Fetching tools…')
+        try {
+          const refreshedServers = await window.api.config.refreshMcpServerTools(savedServer.id)
+          setMcpServers(refreshedServers)
+          setMcpFeedbackMessage('MCP server saved and tools fetched.')
+        } catch {
+          setMcpFeedbackMessage('MCP server saved, but tools could not be fetched.')
+        }
+      } else {
+        setMcpFeedbackMessage('MCP server saved.')
+      }
+      window.setTimeout(() => setMcpFeedbackMessage(''), 1800)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to save MCP server.'
       setMcpFeedbackMessage(message)
@@ -1372,6 +1399,18 @@ export default function Settings(): JSX.Element {
         active
       })
       setMcpServers(updatedServers)
+
+      if (active && server.tools.length === 0) {
+        setMcpFeedbackMessage('Server activated. Fetching tools…')
+        try {
+          const refreshedServers = await window.api.config.refreshMcpServerTools(server.id)
+          setMcpServers(refreshedServers)
+          setMcpFeedbackMessage('Server activated and tools fetched.')
+          window.setTimeout(() => setMcpFeedbackMessage(''), 1800)
+        } catch {
+          // Keep the server active; the connection chip will surface the error.
+        }
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to update MCP server.'
       setMcpFeedbackMessage(message)
@@ -1408,6 +1447,46 @@ export default function Settings(): JSX.Element {
       const message = error instanceof Error ? error.message : 'Unable to refresh MCP tools.'
       setMcpFeedbackMessage(message)
     }
+  }
+
+  const handleTestMcpServer = async (server: McpServer): Promise<void> => {
+    if (!window.api?.config.testMcpServer) return
+
+    setMcpFeedbackMessage(`Testing ${server.name}…`)
+    try {
+      const result = await window.api.config.testMcpServer({
+        name: server.name,
+        url: server.url,
+        auth: server.auth,
+        appendMcpSuffix: server.appendMcpSuffix ?? true
+      })
+      if (result.ok) {
+        setMcpFeedbackMessage(result.message)
+      } else {
+        setMcpFeedbackMessage(result.message)
+        const updatedServers = await window.api.config.saveMcpServer({
+          ...server,
+          lastError: result.lastError
+        })
+        setMcpServers(updatedServers)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to test connection.'
+      setMcpFeedbackMessage(message)
+    }
+    window.setTimeout(() => setMcpFeedbackMessage(''), 2500)
+  }
+
+  const handleApplyMcpPreset = (preset: McpPreset): void => {
+    setMcpFeedbackMessage('')
+    setEditingMcpServer(undefined)
+    setMcpFormSeed({
+      name: preset.name,
+      url: preset.url,
+      description: preset.description,
+      authType: preset.authType
+    })
+    setIsMcpFormOpen(true)
   }
 
   const handleDeleteMcpServer = async (): Promise<void> => {
@@ -1799,6 +1878,8 @@ export default function Settings(): JSX.Element {
                 onToggleActive={handleToggleMcpServerActive}
                 onToggleTool={handleToggleMcpTool}
                 onRefreshTools={handleRefreshMcpTools}
+                onTest={handleTestMcpServer}
+                onApplyPreset={handleApplyMcpPreset}
               />
             )}
           </main>
@@ -1884,6 +1965,7 @@ export default function Settings(): JSX.Element {
         {isMcpFormOpen ? (
           <McpServerFormModal
             initialData={editingMcpServer}
+            seed={mcpFormSeed}
             onCancel={handleCloseMcpForm}
             onSave={(payload) => {
               void handleSaveMcpServer(payload)

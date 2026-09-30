@@ -281,6 +281,64 @@ body[data-window='settings'] *::-webkit-scrollbar {
   opacity: 0.8;
 }
 
+.chat-thinking-tool {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 6px;
+  align-items: start;
+  margin: 0 0 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--chat-meta-text);
+}
+
+.chat-thinking-tool:last-child {
+  margin-bottom: 0;
+}
+
+.chat-thinking-tool-icon {
+  flex-shrink: 0;
+  margin-top: 3px;
+  color: var(--chat-meta-text);
+}
+
+.chat-thinking-tool-icon--running {
+  animation: chat-thinking-pulse 1.4s ease-in-out infinite;
+}
+
+.chat-thinking-tool-icon--error {
+  color: #f87171;
+}
+
+.chat-thinking-tool-content {
+  min-width: 0;
+}
+
+.chat-thinking-tool-name {
+  color: rgba(255, 255, 255, 0.65);
+  word-break: break-word;
+}
+
+.chat-thinking-tool-server {
+  opacity: 0.7;
+}
+
+.chat-thinking-tool-result {
+  margin-top: 4px;
+  max-height: 120px;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--chat-meta-text);
+}
+
+.chat-thinking-tool-result--error {
+  color: #f87171;
+}
+
 .chat-sources-wrapper {
   margin-bottom: 10px;
 }

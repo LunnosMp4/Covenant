@@ -65,6 +65,18 @@ const api = {
       ipcRenderer.invoke('delete-mcp-server', serverId) as Promise<McpServer[]>,
     refreshMcpServerTools: (serverId: string) =>
       ipcRenderer.invoke('refresh-mcp-server-tools', serverId) as Promise<McpServer[]>,
+    testMcpServer: (payload: {
+      name: string
+      url: string
+      auth: McpServer['auth']
+      appendMcpSuffix?: boolean
+    }) =>
+      ipcRenderer.invoke('test-mcp-server', payload) as Promise<{
+        ok: boolean
+        message: string
+        toolCount: number
+        lastError?: string
+      }>,
     updateTheme: (gradientClass: string) => ipcRenderer.send('update-theme', gradientClass),
     updateStartupSetting: (launchOnStartup: boolean) => ipcRenderer.send('update-startup-setting', launchOnStartup),
     updateTerminalFont: (terminalFont: string) => ipcRenderer.send('update-terminal-font', terminalFont),
@@ -338,6 +350,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveMcpServer: api.config.saveMcpServer,
   deleteMcpServer: api.config.deleteMcpServer,
   refreshMcpServerTools: api.config.refreshMcpServerTools,
+  testMcpServer: api.config.testMcpServer,
   updateTheme: api.config.updateTheme,
   updateStartupSetting: api.config.updateStartupSetting,
   updateTerminalFont: api.config.updateTerminalFont,

@@ -34,6 +34,7 @@ export interface McpServer {
   active: boolean
   auth: McpAuth
   tools: McpTool[]
+  appendMcpSuffix?: boolean
   lastSyncedAt?: number
   lastError?: string
 }

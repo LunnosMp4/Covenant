@@ -77,6 +77,8 @@ export function normalizeStoredMcpServer(rawServer: Partial<McpServer> | null | 
   const id = typeof rawServer.id === 'string' && rawServer.id.trim() ? rawServer.id.trim() : randomUUID()
   const description = typeof rawServer.description === 'string' ? rawServer.description.trim() : ''
   const active = typeof rawServer.active === 'boolean' ? rawServer.active : false
+  const appendMcpSuffix =
+    typeof rawServer.appendMcpSuffix === 'boolean' ? rawServer.appendMcpSuffix : true
 
   return {
     id,
@@ -84,6 +86,7 @@ export function normalizeStoredMcpServer(rawServer: Partial<McpServer> | null | 
     url,
     description,
     active,
+    appendMcpSuffix,
     auth: normalizeMcpAuth(rawServer.auth),
     tools: normalizeMcpTools(rawServer.tools),
     lastSyncedAt:

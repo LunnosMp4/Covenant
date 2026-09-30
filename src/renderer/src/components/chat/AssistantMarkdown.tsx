@@ -12,7 +12,7 @@ import 'prismjs/components/prism-javascript'
 import 'prismjs/components/prism-typescript'
 import 'prismjs/components/prism-powershell'
 import 'prismjs/components/prism-python'
-import { CheckIcon, CopyIcon, GlobeIcon, TerminalSendIcon } from '../icons'
+import { CheckIcon, CopyIcon, GlobeIcon, SpinnerIcon, TerminalSendIcon, ToolIcon } from '../icons'
 import { Favicon } from '../Favicon'
 import { formatSourceDomain } from '../../utils/chatUsage'
 import type { ReasoningStep } from '../../../../shared/chat'
@@ -74,6 +74,42 @@ export function WebSearchStepRow({
             {step.sources.length > 3 ? (
               <span className="chat-thinking-source-more">+{step.sources.length - 3} more</span>
             ) : null}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+export function ToolStepRow({
+  step
+}: {
+  step: Extract<ReasoningStep, { type: 'tool' }>
+}): JSX.Element {
+  const isRunning = step.status === 'running'
+  const isError = step.status === 'error'
+  const label = step.serverName ? `${step.serverName} › ${step.name}` : step.name
+
+  return (
+    <div className="chat-thinking-tool">
+      {isRunning ? (
+        <SpinnerIcon />
+      ) : (
+        <ToolIcon className={`chat-thinking-tool-icon${isError ? ' chat-thinking-tool-icon--error' : ''}`} />
+      )}
+      <div className="chat-thinking-tool-content">
+        <span className="chat-thinking-tool-name">
+          {step.query ? (
+            <>
+              Using <span className="chat-thinking-tool-server">{label}</span>
+            </>
+          ) : (
+            label
+          )}
+        </span>
+        {!isRunning && step.content ? (
+          <div className={`chat-thinking-tool-result${isError ? ' chat-thinking-tool-result--error' : ''}`}>
+            {step.content}
           </div>
         ) : null}
       </div>
