@@ -31,6 +31,15 @@ const api = {
         ipcRenderer.removeListener('navigate-settings-tab', listener)
       }
     },
+    onSettingsShown: (callback: (isRestore: boolean) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, isRestore: boolean) => {
+        callback(isRestore)
+      }
+      ipcRenderer.on('settings-shown', listener)
+      return () => {
+        ipcRenderer.removeListener('settings-shown', listener)
+      }
+    },
     onToggleVisibility: (callback: (visible: boolean, terminalMode?: boolean) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, visible: boolean, terminalMode?: boolean) => {
         callback(visible, terminalMode)

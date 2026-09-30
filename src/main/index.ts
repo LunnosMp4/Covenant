@@ -1286,6 +1286,26 @@ function getWindowPosition(): { x: number; y: number } {
   }
 }
 
+function getSettingsWindowPosition(): { x: number; y: number } {
+  // Anchor on the main Covenant window when it is visible, otherwise the cursor.
+  let anchorPoint = screen.getCursorScreenPoint()
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+    const bounds = mainWindow.getBounds()
+    anchorPoint = {
+      x: Math.round(bounds.x + bounds.width / 2),
+      y: Math.round(bounds.y + bounds.height / 2)
+    }
+  }
+
+  const display = screen.getDisplayNearestPoint(anchorPoint)
+  const { x: workAreaX, y: workAreaY, width: workAreaWidth, height: workAreaHeight } = display.workArea
+
+  return {
+    x: Math.max(workAreaX, Math.round(workAreaX + (workAreaWidth - SETTINGS_WINDOW_WIDTH) / 2)),
+    y: Math.max(workAreaY, Math.round(workAreaY + (workAreaHeight - SETTINGS_WINDOW_HEIGHT) / 2))
+  }
+}
+
 function getConfigPath(): string {
   return join(app.getPath('userData'), 'config.json')
 }
@@ -2093,14 +2113,24 @@ function createSettingsWindow(tab?: string): void {
     if (tab) {
       settingsWindow.webContents.send('navigate-settings-tab', tab)
     }
-    settingsWindow.show()
+    const { x, y } = getSettingsWindowPosition()
+    settingsWindow.setPosition(x, y)
+    if (settingsWindow.isMinimized()) {
+      settingsWindow.restore()
+    } else {
+      settingsWindow.show()
+    }
     settingsWindow.focus()
     return
   }
 
+  const { x, y } = getSettingsWindowPosition()
+
   settingsWindow = new BrowserWindow({
     width: SETTINGS_WINDOW_WIDTH,
     height: SETTINGS_WINDOW_HEIGHT,
+    x,
+    y,
     minWidth: 800,
     minHeight: 450,
     title: 'Covenant Settings',
@@ -2122,6 +2152,14 @@ function createSettingsWindow(tab?: string): void {
   settingsWindow.on('ready-to-show', () => {
     settingsWindow?.show()
     settingsWindow?.focus()
+  })
+
+  settingsWindow.on('show', () => {
+    settingsWindow?.webContents.send('settings-shown', false)
+  })
+
+  settingsWindow.on('restore', () => {
+    settingsWindow?.webContents.send('settings-shown', true)
   })
 
   settingsWindow.on('closed', () => {

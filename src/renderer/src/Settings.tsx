@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { AnimatePresence } from 'framer-motion'
+import { AnimatePresence, motion, useAnimationControls, type Transition } from 'framer-motion'
 import AppFormModal from './components/AppFormModal'
 import ConfirmDeleteModal from './components/ConfirmDeleteModal'
 import CustomSelect from './components/CustomSelect'
@@ -31,6 +31,9 @@ import { formatTargetsSummary, normalizeLaunchTargets } from './utils/launcherTa
 type SettingsTab = 'general' | 'terminal' | 'appLauncher' | 'workflow' | 'preprompts' | 'mcp'
 
 const VALID_SETTINGS_TABS: readonly SettingsTab[] = ['general', 'terminal', 'appLauncher', 'workflow', 'preprompts', 'mcp']
+
+const SETTINGS_WINDOW_ENTER_TRANSITION: Transition = { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
+const SETTINGS_WINDOW_EXIT_TRANSITION: Transition = { duration: 0.16, ease: [0.22, 1, 0.36, 1] }
 
 function isSettingsTab(tab: string | null): tab is SettingsTab {
   return typeof tab === 'string' && VALID_SETTINGS_TABS.includes(tab as SettingsTab)
@@ -1100,6 +1103,9 @@ export default function Settings(): JSX.Element {
   const [isPrepromptFormOpen, setIsPrepromptFormOpen] = useState(false)
   const [editingPreprompt, setEditingPreprompt] = useState<Preprompt | undefined>(undefined)
   const [deletingPreprompt, setDeletingPreprompt] = useState<Preprompt | undefined>(undefined)
+  const [isClosing, setIsClosing] = useState(false)
+
+  const windowControls = useAnimationControls()
 
   const dragRegionStyle = { WebkitAppRegion: 'drag' } as CSSProperties
   const noDragRegionStyle = { WebkitAppRegion: 'no-drag' } as CSSProperties
@@ -1181,6 +1187,28 @@ export default function Settings(): JSX.Element {
       }
     })
   }, [])
+
+  useEffect(() => {
+    void windowControls.start({
+      opacity: 1,
+      scale: 1,
+      y: 0,
+      transition: SETTINGS_WINDOW_ENTER_TRANSITION
+    })
+  }, [windowControls])
+
+  useEffect(() => {
+    return window.api?.window.onSettingsShown?.((isRestore) => {
+      if (!isRestore) return
+      void windowControls.set({ opacity: 0, scale: 0.96, y: 8 })
+      void windowControls.start({
+        opacity: 1,
+        scale: 1,
+        y: 0,
+        transition: SETTINGS_WINDOW_ENTER_TRANSITION
+      })
+    })
+  }, [windowControls])
 
   useEffect(() => {
     let isMounted = true
@@ -1290,12 +1318,12 @@ export default function Settings(): JSX.Element {
     }
   }, [])
 
-  const handleMinimizeWindow = (): void => {
+const handleMinimizeWindow = (): void => {
     window.api?.window.minimizeSettings?.()
   }
 
   const handleCloseWindow = (): void => {
-    window.api?.window.closeSettings?.()
+    setIsClosing(true)
   }
 
   const handleSaveOpenAISettings = (): void => {
@@ -1722,7 +1750,15 @@ export default function Settings(): JSX.Element {
   }, [activeTab])
 
   return (
-    <div className="h-screen w-screen bg-transparent font-sans text-neutral-200">
+    <AnimatePresence onExitComplete={() => window.api?.window.closeSettings?.()}>
+      {!isClosing && (
+        <motion.div
+          key="settings-window"
+          initial={{ opacity: 0, scale: 0.96, y: 8 }}
+          animate={windowControls}
+          exit={{ opacity: 0, scale: 0.97, y: 6, transition: SETTINGS_WINDOW_EXIT_TRANSITION }}
+          className="h-screen w-screen bg-transparent font-sans text-neutral-200"
+        >
       <div className="h-full overflow-hidden rounded-xl border border-neutral-800/85 bg-neutral-900/95">
         <div className="relative h-10 w-full">
           <div className="absolute inset-0 border-b border-neutral-800/80 bg-neutral-900/40" style={dragRegionStyle}>
@@ -1986,6 +2022,8 @@ export default function Settings(): JSX.Element {
           />
         ) : null}
       </AnimatePresence>
-    </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 }

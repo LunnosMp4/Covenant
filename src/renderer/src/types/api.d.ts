@@ -17,6 +17,7 @@ interface CovenantAPI {
     minimizeSettings: () => void
     setExpanded: (expanded: boolean) => void
     onNavigateSettingsTab: (callback: (tab: string) => void) => () => void
+    onSettingsShown: (callback: (isRestore: boolean) => void) => () => void
     onToggleVisibility: (callback: (visible: boolean, terminalMode?: boolean) => void) => () => void
     onOpenTasks: (callback: () => void) => () => void
   }

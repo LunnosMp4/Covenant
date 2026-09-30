@@ -3,7 +3,6 @@
 @tailwind utilities;
 
 * {
-  -webkit-app-region: no-drag;
   box-sizing: border-box;
 }
 
@@ -37,6 +36,20 @@ body[data-window='settings'] *::-webkit-scrollbar {
   display: none;
   width: 0;
   height: 0;
+}
+
+/* Settings window behaves like a native panel: no text selection or I-beam cursor. */
+body[data-window='settings'] {
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+
+body[data-window='settings'] input,
+body[data-window='settings'] textarea,
+body[data-window='settings'] [contenteditable='true'] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* Custom scrollbar styling for xterm */
