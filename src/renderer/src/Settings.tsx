@@ -486,7 +486,8 @@ function GeneralTab({
                 autoComplete="off"
               />
               <p className="mt-2 text-xs text-neutral-500">
-                Use this when your company routes outbound traffic through a proxy. Leave empty for direct access.
+                Use this when your company routes outbound traffic through a proxy. Applies to OpenAI requests and MCP
+                server connections. Leave empty for direct access.
               </p>
             </div>
           ) : null}

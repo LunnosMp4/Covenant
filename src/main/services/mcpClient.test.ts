@@ -8,6 +8,7 @@ import {
   normalizeMcpToolNameSegment,
   resolveMcpEndpointUrl,
   sanitizeMcpToolSchema,
+  sanitizeResponseOutputForInput,
   testMcpServer
 } from './mcpClient'
 
@@ -135,6 +136,68 @@ describe('buildOpenAIToolDefinitions', () => {
         parameters: { type: 'object', properties: { path: { type: 'string' } }, additionalProperties: true }
       }
     ])
+  })
+})
+
+describe('sanitizeResponseOutputForInput', () => {
+  it('strips parsed_arguments from function_call items', () => {
+    const result = sanitizeResponseOutputForInput([
+      {
+        type: 'function_call',
+        id: 'fc_1',
+        call_id: 'call_1',
+        name: 'echo',
+        arguments: '{"value":"hi"}',
+        status: 'completed',
+        parsed_arguments: { value: 'hi' }
+      }
+    ])
+
+    expect(result).toEqual([
+      {
+        type: 'function_call',
+        id: 'fc_1',
+        call_id: 'call_1',
+        name: 'echo',
+        arguments: '{"value":"hi"}',
+        status: 'completed'
+      }
+    ])
+    expect('parsed_arguments' in (result[0] as Record<string, unknown>)).toBe(false)
+  })
+
+  it('strips parsed from message content parts', () => {
+    const result = sanitizeResponseOutputForInput([
+      {
+        type: 'message',
+        id: 'msg_1',
+        role: 'assistant',
+        content: [
+          { type: 'output_text', text: 'hello', annotations: [], parsed: null }
+        ]
+      }
+    ])
+
+    expect(result).toEqual([
+      {
+        type: 'message',
+        id: 'msg_1',
+        role: 'assistant',
+        content: [{ type: 'output_text', text: 'hello', annotations: [] }]
+      }
+    ])
+  })
+
+  it('leaves non-parseable items untouched', () => {
+    const reasoning = { type: 'reasoning', id: 'rs_1', summary: [], encrypted_content: 'abc' }
+    expect(sanitizeResponseOutputForInput([reasoning])).toEqual([reasoning])
+  })
+
+  it('removes parsed_arguments even when it is null', () => {
+    const result = sanitizeResponseOutputForInput([
+      { type: 'function_call', call_id: 'call_1', name: 'x', arguments: '{}', parsed_arguments: null }
+    ])
+    expect(result[0]).not.toHaveProperty('parsed_arguments')
   })
 })
 

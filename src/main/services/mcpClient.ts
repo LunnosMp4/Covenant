@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto'
+import { ProxyAgent, type Dispatcher } from 'undici'
 import type { McpAuth, McpHeader, McpServer, McpTool } from '../../shared/mcp'
 
 const DEFAULT_MCP_PROTOCOL_VERSION = '2024-11-05'
@@ -14,6 +15,24 @@ let clientInfo: ClientInfo = { name: 'Covenant', version: '0.0.0' }
 
 export function configureMcpClient(info: ClientInfo): void {
   clientInfo = { ...info }
+}
+
+let mcpProxyUrl: string | undefined
+let mcpProxyAgent: ProxyAgent | undefined
+
+export function configureMcpProxy(proxyUrl?: string): void {
+  const normalized = proxyUrl?.trim() || undefined
+  if (normalized === mcpProxyUrl) {
+    return
+  }
+
+  const previousAgent = mcpProxyAgent
+  mcpProxyUrl = normalized
+  mcpProxyAgent = normalized ? new ProxyAgent(normalized) : undefined
+
+  if (previousAgent) {
+    void previousAgent.close().catch(() => undefined)
+  }
 }
 
 const mcpSessionIds = new Map<string, string>()
@@ -37,6 +56,7 @@ export interface McpRequestOptions {
   timeoutMs?: number
   signal?: AbortSignal
   retried?: boolean
+  dispatcher?: Dispatcher
 }
 
 interface JsonRpcEnvelope {
@@ -69,6 +89,8 @@ function buildMcpHeaders(server: McpServerConnection): Headers {
   const headers = new Headers()
   headers.set('Content-Type', 'application/json')
   headers.set('Accept', 'application/json, text/event-stream')
+  // A descriptive User-Agent avoids bot/WAF blocks (e.g. Cloudflare) that reject the default Node/undici UA.
+  headers.set('User-Agent', `${clientInfo.name}/${clientInfo.version}`)
 
   if (server.auth.type === 'accessToken' && server.auth.token.trim()) {
     headers.set('Authorization', `Bearer ${server.auth.token.trim()}`)
@@ -88,6 +110,14 @@ function buildMcpHeaders(server: McpServerConnection): Headers {
   }
 
   return headers
+}
+
+function buildMcpFetchInit(base: RequestInit, dispatcher?: Dispatcher): RequestInit {
+  const effective = dispatcher ?? mcpProxyAgent
+  if (!effective) {
+    return base
+  }
+  return { ...base, dispatcher: effective } as RequestInit
 }
 
 function parseSseEvents(text: string): string[] {
@@ -163,6 +193,12 @@ function cleanMcpErrorText(body: string, status: number): string {
       return `MCP error: ${parsed.error.message}`
     }
   }
+
+  if (/^<(?:!doctype|html)/i.test(trimmed)) {
+    const blockedBy = /cloudflare/i.test(trimmed) ? ' (Cloudflare)' : ''
+    return `MCP request was blocked${blockedBy} with status ${status}. The server or a proxy returned an HTML page instead of JSON, which usually means the request was denied by a firewall or needs a different proxy/authentication.`
+  }
+
   const shortened = trimmed.length > MAX_MCP_ERROR_BODY_LENGTH ? `${trimmed.slice(0, MAX_MCP_ERROR_BODY_LENGTH)}…` : trimmed
   return shortened || `MCP request failed with status ${status}.`
 }
@@ -195,12 +231,18 @@ async function sendMcpRaw(
       body.params = params
     }
 
-    const response = await fetch(resolveMcpEndpointUrl(server.url, server.appendMcpSuffix ?? true), {
-      method: 'POST',
-      headers: buildMcpHeaders(server),
-      body: JSON.stringify(body),
-      signal: controller.signal
-    })
+    const response = await fetch(
+      resolveMcpEndpointUrl(server.url, server.appendMcpSuffix ?? true),
+      buildMcpFetchInit(
+        {
+          method: 'POST',
+          headers: buildMcpHeaders(server),
+          body: JSON.stringify(body),
+          signal: controller.signal
+        },
+        options.dispatcher
+      )
+    )
 
     const sessionId = response.headers.get('mcp-session-id')
     if (sessionId) {
@@ -248,17 +290,24 @@ async function sendMcpRequest(
 async function sendMcpNotification(
   server: McpServerConnection,
   method: string,
-  params?: Record<string, unknown>
+  params?: Record<string, unknown>,
+  options: McpRequestOptions = {}
 ): Promise<void> {
   const controller = new AbortController()
   const timeoutHandle = setTimeout(() => controller.abort(), 5000)
   try {
-    await fetch(resolveMcpEndpointUrl(server.url, server.appendMcpSuffix ?? true), {
-      method: 'POST',
-      headers: buildMcpHeaders(server),
-      body: JSON.stringify({ jsonrpc: '2.0', method, ...(params ? { params } : {}) }),
-      signal: controller.signal
-    }).catch(() => undefined)
+    await fetch(
+      resolveMcpEndpointUrl(server.url, server.appendMcpSuffix ?? true),
+      buildMcpFetchInit(
+        {
+          method: 'POST',
+          headers: buildMcpHeaders(server),
+          body: JSON.stringify({ jsonrpc: '2.0', method, ...(params ? { params } : {}) }),
+          signal: controller.signal
+        },
+        options.dispatcher
+      )
+    ).catch(() => undefined)
   } finally {
     clearTimeout(timeoutHandle)
   }
@@ -280,7 +329,7 @@ export async function initializeMcpServer(
   )) as { protocolVersion?: string; capabilities?: Record<string, unknown>; serverInfo?: Record<string, unknown> } | undefined
 
   try {
-    await sendMcpNotification(server, 'notifications/initialized')
+    await sendMcpNotification(server, 'notifications/initialized', undefined, options)
   } catch {
     // Optional notification — failures are non-fatal.
   }
@@ -461,6 +510,26 @@ export function buildOpenAIToolDefinitions(
   }))
 }
 
+export function sanitizeResponseOutputForInput(
+  output: Array<Record<string, unknown>>
+): Array<Record<string, unknown>> {
+  return output.map((item) => {
+    const { parsed_arguments: _parsedArguments, ...rest } = item
+
+    if (rest.type === 'message' && Array.isArray(rest.content)) {
+      return {
+        ...rest,
+        content: (rest.content as Array<Record<string, unknown>>).map((part) => {
+          const { parsed: _parsed, ...partRest } = part
+          return partRest
+        })
+      }
+    }
+
+    return rest
+  })
+}
+
 export interface McpConnectionTestResult {
   ok: boolean
   message: string
@@ -474,6 +543,7 @@ export async function testMcpServer(input: {
   auth: McpAuth
   appendMcpSuffix?: boolean
   timeoutMs?: number
+  dispatcher?: Dispatcher
 }): Promise<McpConnectionTestResult> {
   const connection: McpServerConnection = {
     id: `test-${randomUUID()}`,
@@ -483,8 +553,14 @@ export async function testMcpServer(input: {
   }
 
   try {
-    const result = await initializeMcpServer(connection, { timeoutMs: input.timeoutMs })
-    const listResult = (await sendMcpRequest(connection, 'tools/list', {}, { timeoutMs: input.timeoutMs })) as {
+    const result = await initializeMcpServer(connection, {
+      timeoutMs: input.timeoutMs,
+      dispatcher: input.dispatcher
+    })
+    const listResult = (await sendMcpRequest(connection, 'tools/list', {}, {
+      timeoutMs: input.timeoutMs,
+      dispatcher: input.dispatcher
+    })) as {
       tools?: unknown
     }
     const toolCount = Array.isArray(listResult?.tools) ? (listResult.tools as unknown[]).length : 0

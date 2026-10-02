@@ -55,9 +55,11 @@ import {
   buildOpenAIToolDefinitions,
   callMcpTool,
   configureMcpClient,
+  configureMcpProxy,
   forgetMcpSession,
   normalizeMcpToolNameSegment,
   refreshMcpServerTools,
+  sanitizeResponseOutputForInput,
   testMcpServer,
   type McpToolRegistryEntry
 } from './services/mcpClient'
@@ -417,11 +419,14 @@ const appStore = new StoreClass<AppStoreSchema>({
                     type: 'object',
                     additionalProperties: false,
                     properties: {
-                      type: { type: 'string', enum: ['reasoning', 'web_search'] },
+                      type: { type: 'string', enum: ['reasoning', 'web_search', 'tool'] },
                       text: { type: 'string' },
                       id: { type: 'string' },
+                      name: { type: 'string' },
+                      serverName: { type: 'string' },
                       query: { type: 'string' },
-                      status: { type: 'string', enum: ['searching', 'done'] },
+                      status: { type: 'string', enum: ['searching', 'running', 'done', 'error'] },
+                      content: { type: 'string' },
                       sources: {
                         type: 'array',
                         items: {
@@ -1587,7 +1592,7 @@ async function completeChatWithMcp(
       return (typeof response?.output_text === 'string' ? response.output_text : '').trim() || 'No response from model.'
     }
 
-    const continuation: Array<Record<string, unknown>> = [...output]
+    const continuation: Array<Record<string, unknown>> = [...sanitizeResponseOutputForInput(output)]
     for (const call of functionCalls) {
       const entry = toolRegistry.find((e) => e.qualifiedName === call.name)
       if (!entry) {
@@ -1899,7 +1904,7 @@ async function runStreamingChat(
       return
     }
 
-    const continuation: Array<Record<string, unknown>> = [...output]
+    const continuation: Array<Record<string, unknown>> = [...sanitizeResponseOutputForInput(output)]
     for (const call of functionCalls) {
       const entry = toolRegistry.find((e) => e.qualifiedName === call.name)
       ctx.sendStreamEvent({
@@ -2431,6 +2436,7 @@ app.whenReady().then(() => {
   const config = readConfig()
 
   configureMcpClient({ name: 'Covenant', version: app.getVersion() })
+  configureMcpProxy(resolveOpenAIProxyUrl(config.proxyUrl))
 
   setupAutoUpdater(() => readConfig().autoUpdate === true)
 
@@ -2851,6 +2857,7 @@ ipcMain.on('save-openai-settings', (_event, payload: { apiKey?: string; proxyUrl
   const apiKey = typeof payload?.apiKey === 'string' ? payload.apiKey.trim() : ''
   const proxyUrl = typeof payload?.proxyUrl === 'string' ? payload.proxyUrl.trim() : ''
   updateConfig({ apiKey, proxyUrl })
+  configureMcpProxy(resolveOpenAIProxyUrl(proxyUrl))
 })
 
 ipcMain.on('mark-onboarded', () => {
