@@ -2,22 +2,26 @@
 
 [![CI](https://github.com/LunnosMp4/Covenant/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/LunnosMp4/Covenant/actions/workflows/ci.yml)
 
-Floating command bar for Windows and macOS — prompt an OpenAI model, run terminal commands, execute workflow scripts, and launch apps from a single keyboard-driven interface.
+Floating command bar for Windows and macOS — chat with OpenAI models, run terminal commands, execute saved workflows, capture tasks, launch apps, and browse your clipboard from a single keyboard-driven interface.
 
 ## Key Features
 
-- AI chat via OpenAI Responses API (streaming SSE) with configurable models (GPT-6.1 Sol, GPT-6 Luna, GPT-5.4 Nano, GPT-4o Mini)
-- Collapsible reasoning display with shimmer animation during streaming
-- Web search with source citations (auto-detected per model capability)
-- Voice transcription (gpt-4o-mini-transcribe) with animated mic input
-- Built-in terminal (xterm + node-pty) with configurable shell and font
-- Workflow script runner (PowerShell, CMD, Python, Node.js, Shell, custom)
-- App launcher with file-pick and icon extraction
-- MCP server integration with tool discovery and auto-calling
-- Conversation history (last 20), global instructions, and reusable instruction templates
-- Per-message token usage and cost breakdown (client-side pricing table)
-- Frosted glass UI with Tailwind CSS, spring animations (Framer Motion)
-- System tray icon with context menu, always-on-top floating window
+- **AI chat** via the OpenAI Responses API (streaming SSE) with selectable models (GPT-6 Luna, GPT-6.1 Sol)
+- **Reasoning display** — collapsible panel with shimmer animation, configurable effort (low/medium/high) per model
+- **Web search** with source citations and favicons (auto-detected per model capability)
+- **Voice input** — push-to-talk transcription (gpt-4o-mini-transcribe) with an animated waveform
+- **Conversation history** with auto-generated titles, plus global instructions and reusable instruction templates
+- **Context & cost tracking** — per-message token usage and client-side cost breakdown (cached/cache-write aware)
+- **Built-in terminal** — multi-session xterm + node-pty, configurable shell and font, shell hooks
+- **Workflow runner** — PowerShell, CMD, Python, Node.js, Shell, or a fully custom command
+- **App launcher** — fuzzy-searched installed apps, manual launcher entries with file pick and icon extraction, toggleable Windows system apps
+- **Tasks** with AI evaluation and gamification — XP, levels, rank titles, streaks, and difficulty tiers
+- **Paste Manager** — searchable clipboard history for text/rich text/images/links/files, pinning, link previews, optional OCR, and retention limits
+- **MCP integration** — JSON-RPC over HTTP with one-click presets (GitHub, Slack, Brave Search), tool discovery, per-tool toggles, and auth modes
+- **Themes** — four gradient presets (two dark, two light) plus custom gradients and a film-grain texture overlay
+- **Auto-update** via electron-updater against GitHub Releases, with download progress
+- **System tray**, global configurable shortcuts, always-on-top floating window, and first-run onboarding
+- Frosted-glass UI with Tailwind CSS and spring animations (Framer Motion)
 
 ## Tech Stack
 
@@ -28,16 +32,18 @@ Floating command bar for Windows and macOS — prompt an OpenAI model, run termi
 | Styling | Tailwind CSS 3 |
 | Animations | Framer Motion 11 |
 | Build | electron-vite 5 + Vite 7 |
+| Testing | Vitest 4, Testing Library |
 | Terminal | node-pty, xterm, xterm-addon-fit |
-| Markdown | react-markdown, remark-gfm, prismjs |
+| Markdown | react-markdown, remark-gfm, remark-math, rehype-katex, prismjs |
 | Storage | electron-store |
-| AI SDK | openai (Node.js), undici proxy agent |
+| AI SDK | openai (Node.js), undici, https-proxy-agent |
+| Updates | electron-updater |
 
 ## Setup
 
 ### Prerequisites
 
-- Node.js >= 18
+- Node.js >= 22
 - npm >= 9
 
 ### Install
@@ -58,6 +64,15 @@ npm run dev
 npm run build       # outputs to out/
 npm run dist        # packages installer via electron-builder
 ```
+
+### Quality Checks
+
+```bash
+npm run typecheck   # tsc --noEmit
+npm test            # vitest run
+```
+
+CI runs typecheck, tests, and a build on Windows, macOS, and Linux.
 
 ## Configuration
 
@@ -81,19 +96,37 @@ HTTPS_PROXY=http://your-proxy:8080
 HTTP_PROXY=http://your-proxy:8080
 ```
 
+A proxy URL can also be configured under **Settings > General > Advanced settings**, and applies to both OpenAI requests and MCP server connections.
+
 ### Model selection
 
-Choose from four models via **Settings > Model**. Each model auto-detects whether it supports reasoning (effort: low/medium/high) and web search.
+Choose between GPT-6 Luna and GPT-6.1 Sol under **Settings > General**. Both support reasoning effort and web search. Input/output pricing is tracked client-side for cost estimates.
+
+### Settings
+
+Settings live in a dedicated window with the following tabs: **General** (API key, proxy, startup, updates, chat model, shortcuts), **Appearance** (theme, texture, bar buttons), **Terminal** (shell, font), **App Launcher**, **Workflows**, **Instructions**, **MCP Servers**, and **Clipboard** (Paste Manager).
 
 ## Usage
+
+### Global shortcuts (configurable)
 
 | Shortcut | Action |
 |---|---|
 | `Alt+Space` | Toggle the command bar open/close |
+| `Alt+T` | Open directly in terminal mode |
+| `Alt+L` | Open the Tasks quick-capture list |
+| `Ctrl+Alt+V` | Open the Paste Manager window |
+
+### In-app shortcuts
+
+| Shortcut | Action |
+|---|---|
 | `Tab` | Switch between AI chat and terminal mode |
-| `Ctrl+Tab` | Toggle conversation history panel |
-| `Escape` | Dismiss popups, close bar, or exit terminal mode |
+| `Ctrl+Tab` / `Ctrl+\`` | Toggle conversation history |
+| `Escape` | Dismiss popups, close the bar, or exit terminal mode |
 | `Enter` | Send prompt |
 | `Shift+Enter` | Newline in prompt input |
 
-Token usage and estimated cost display under each assistant message. Cost is calculated client-side using hardcoded per-model pricing — no Admin API key required.
+The command bar unifies multiple result kinds — apps, workflows, tasks, commands, and AI actions — behind a single fuzzy-ranked search. Token usage and estimated cost display under each assistant message, calculated client-side with no Admin API key required.
+
+Config (`AppConfig`) is persisted to `userData/config.json`; larger app data (preprompts, apps, workflows, conversations, paste history) is stored via electron-store.

@@ -69,76 +69,12 @@ export const THEME_OPTIONS: ThemeOption[] = [
     }
   },
   {
-    id: 'blue-depth',
-    label: 'Blue Depth',
-    description: 'Cool steel tone',
-    mode: 'dark',
-    gradientClass: 'from-slate-900 to-[#071726]',
-    preview: { from: '#0f172a', to: '#071726' },
-    palette: {
-      accent: '#60a5fa',
-      accentSoft: 'rgba(96, 165, 250, 0.16)',
-      accentStrong: 'rgba(96, 165, 250, 0.38)',
-      onAccent: '#071726',
-      userText: '#e0f2fe',
-      assistantText: '#f8fafc',
-      assistantBg: 'rgba(6, 10, 18, 0.74)',
-      assistantBorder: 'rgba(148, 163, 184, 0.2)',
-      scrollbarThumb: 'rgba(96, 165, 250, 0.35)',
-      scrollbarThumbHover: 'rgba(96, 165, 250, 0.55)',
-      metaText: 'rgba(226, 232, 240, 0.55)',
-      gamification: {
-        tierColors: {
-          TRIVIAL: '#94a3b8',
-          EASY: '#38bdf8',
-          MEDIUM: '#60a5fa',
-          HARD: '#818cf8',
-          EPIC: '#a78bfa'
-        },
-        levelColor: '#60a5fa',
-        streakColor: '#38bdf8'
-      }
-    }
-  },
-  {
-    id: 'violet-focus',
-    label: 'Violet Focus',
-    description: 'Focused creative mood',
-    mode: 'dark',
-    gradientClass: 'from-zinc-900 to-[#1a1026]',
-    preview: { from: '#18181b', to: '#1a1026' },
-    palette: {
-      accent: '#a78bfa',
-      accentSoft: 'rgba(167, 139, 250, 0.16)',
-      accentStrong: 'rgba(167, 139, 250, 0.38)',
-      onAccent: '#1a1026',
-      userText: '#ede9fe',
-      assistantText: '#f5f3ff',
-      assistantBg: 'rgba(18, 12, 26, 0.74)',
-      assistantBorder: 'rgba(196, 181, 253, 0.2)',
-      scrollbarThumb: 'rgba(167, 139, 250, 0.35)',
-      scrollbarThumbHover: 'rgba(167, 139, 250, 0.55)',
-      metaText: 'rgba(221, 214, 254, 0.55)',
-      gamification: {
-        tierColors: {
-          TRIVIAL: '#a1a1aa',
-          EASY: '#a5b4fc',
-          MEDIUM: '#a78bfa',
-          HARD: '#c084fc',
-          EPIC: '#f0abfc'
-        },
-        levelColor: '#a78bfa',
-        streakColor: '#c084fc'
-      }
-    }
-  },
-  {
     id: 'emerald-night',
     label: 'Emerald Night',
     description: 'Dark green accent',
     mode: 'dark',
-    gradientClass: 'from-neutral-900 to-[#0a1f17]',
-    preview: { from: '#171717', to: '#0a1f17' },
+    gradientClass: 'from-neutral-900 to-[#18332e]',
+    preview: { from: '#171717', to: '#18332e' },
     palette: {
       accent: '#34d399',
       accentSoft: 'rgba(52, 211, 153, 0.16)',
@@ -165,34 +101,34 @@ export const THEME_OPTIONS: ThemeOption[] = [
     }
   },
   {
-    id: 'paper',
-    label: 'Paper',
+    id: 'paper-sky',
+    label: 'Paper Sky',
     description: 'Clean neutral light',
     mode: 'light',
-    gradientClass: 'from-[#fdfdfd] to-[#e8e8e8]',
-    preview: { from: '#fdfdfd', to: '#e8e8e8' },
+    gradientClass: 'from-[#fdfdfd] to-[#badaff]',
+    preview: { from: '#fdfdfd', to: '#badaff' },
     palette: {
-      accent: '#18181b',
-      accentSoft: 'rgba(24, 24, 27, 0.08)',
-      accentStrong: 'rgba(24, 24, 27, 0.22)',
+      accent: '#0284c7',
+      accentSoft: 'rgba(2, 132, 199, 0.12)',
+      accentStrong: 'rgba(2, 132, 199, 0.3)',
       onAccent: '#ffffff',
-      userText: '#18181b',
-      assistantText: '#1f2937',
-      assistantBg: 'rgba(255, 255, 255, 0.8)',
-      assistantBorder: 'rgba(15, 23, 42, 0.1)',
-      scrollbarThumb: 'rgba(24, 24, 27, 0.22)',
-      scrollbarThumbHover: 'rgba(24, 24, 27, 0.38)',
-      metaText: 'rgba(15, 23, 42, 0.5)',
+      userText: '#0c4a6e',
+      assistantText: '#1e293b',
+      assistantBg: 'rgba(250, 253, 255, 0.85)',
+      assistantBorder: 'rgba(12, 74, 110, 0.12)',
+      scrollbarThumb: 'rgba(2, 132, 199, 0.3)',
+      scrollbarThumbHover: 'rgba(2, 132, 199, 0.48)',
+      metaText: 'rgba(12, 74, 110, 0.55)',
       gamification: {
         tierColors: {
-          TRIVIAL: '#64748b',
-          EASY: '#0ea5e9',
-          MEDIUM: '#f59e0b',
-          HARD: '#f97316',
-          EPIC: '#e11d48'
+          TRIVIAL: '#94a3b8',
+          EASY: '#38bdf8',
+          MEDIUM: '#0284c7',
+          HARD: '#6366f1',
+          EPIC: '#f43f5e'
         },
-        levelColor: '#18181b',
-        streakColor: '#525252'
+        levelColor: '#0284c7',
+        streakColor: '#0369a1'
       }
     }
   },
@@ -201,8 +137,8 @@ export const THEME_OPTIONS: ThemeOption[] = [
     label: 'Warm Sand',
     description: 'Creamy warm light',
     mode: 'light',
-    gradientClass: 'from-[#fdf8f1] to-[#f0e2cd]',
-    preview: { from: '#fdf8f1', to: '#f0e2cd' },
+    gradientClass: 'from-[#fcf7e8] to-[#cfb28f]',
+    preview: { from: '#fcf7e8', to: '#cfb28f' },
     palette: {
       accent: '#d97706',
       accentSoft: 'rgba(217, 119, 6, 0.12)',
