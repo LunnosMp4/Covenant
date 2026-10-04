@@ -39,6 +39,7 @@ export function normalizeChatModelId(modelId: string | undefined): string {
 export const DEFAULT_REASONING_EFFORT: ReasoningEffort = 'low'
 export const DEFAULT_ENABLE_WEB_SEARCH = true
 export const DEFAULT_AUTO_COLLAPSE_REASONING = true
+export const DEFAULT_LAUNCHER_SHOW_SYSTEM_APPS = false
 
 export const DEFAULT_BUTTON_VISIBILITY: ButtonVisibility = {
   appLauncher: true,
@@ -102,6 +103,7 @@ export interface AppConfig {
   reasoningEffort: ReasoningEffort
   enableWebSearch: boolean
   autoCollapseReasoning: boolean
+  launcherShowSystemApps: boolean
   shortcuts: ShortcutConfig
   hasOnboarded?: boolean
   autoUpdate?: boolean

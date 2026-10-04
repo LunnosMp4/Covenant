@@ -356,14 +356,20 @@ interface AppearanceTabProps {
   onSelectTheme: (gradientClass: string) => void
   buttonVisibility: ButtonVisibility
   onButtonVisibilityChange: (value: ButtonVisibility) => void
+  launcherShowSystemApps: boolean
+  onLauncherShowSystemAppsChange: (value: boolean) => void
 }
 
 function AppearanceTab({
   selectedTheme,
   onSelectTheme,
   buttonVisibility,
-  onButtonVisibilityChange
+  onButtonVisibilityChange,
+  launcherShowSystemApps,
+  onLauncherShowSystemAppsChange
 }: AppearanceTabProps): JSX.Element {
+  const isWindows = window.api?.platform === 'win32'
+
   return (
     <div className="space-y-6">
       <SectionCard
@@ -419,6 +425,20 @@ function AppearanceTab({
           />
         </div>
       </SectionCard>
+
+      {isWindows && (
+        <SectionCard
+          title="App Launcher"
+          description="Control which installed applications appear in the command bar search."
+        >
+          <MinimalistToggle
+            checked={launcherShowSystemApps}
+            onChange={onLauncherShowSystemAppsChange}
+            label="Show Windows system apps"
+            description="Include built-in Windows utilities, administrative tools and documentation shortcuts. Leave off to only see the apps you installed."
+          />
+        </SectionCard>
+      )}
     </div>
   )
 }
@@ -1185,6 +1205,7 @@ export default function Settings(): JSX.Element {
   const [autoUpdate, setAutoUpdate] = useState(true)
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: 'idle', currentVersion: '' })
   const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true, tasks: true })
+  const [launcherShowSystemApps, setLauncherShowSystemApps] = useState(false)
   const [shortcuts, setShortcuts] = useState<ShortcutConfig>({ ...DEFAULT_SHORTCUTS })
   const [mcpServers, setMcpServers] = useState<McpServer[]>([])
   const [isMcpServersLoading, setIsMcpServersLoading] = useState(false)
@@ -1256,6 +1277,7 @@ export default function Settings(): JSX.Element {
         setAutoCollapseReasoning(typeof config.autoCollapseReasoning === 'boolean' ? config.autoCollapseReasoning : true)
         setAutoUpdate(typeof config.autoUpdate === 'boolean' ? config.autoUpdate : true)
         setButtonVisibility(config.buttonVisibility ?? { appLauncher: true, workflow: true, tasks: true })
+        setLauncherShowSystemApps(config.launcherShowSystemApps === true)
         setShortcuts(config.shortcuts ?? { ...DEFAULT_SHORTCUTS })
       } catch {
         if (!isMounted) return
@@ -1268,6 +1290,7 @@ export default function Settings(): JSX.Element {
         setMcpServers([])
         setChatModel(DEFAULT_CHAT_MODEL)
         setButtonVisibility({ appLauncher: true, workflow: true, tasks: true })
+        setLauncherShowSystemApps(false)
         setAutoUpdate(true)
       }
     }
@@ -1744,6 +1767,11 @@ const handleMinimizeWindow = (): void => {
     window.api?.config.updateButtonVisibility?.(visibility)
   }
 
+  const handleLauncherShowSystemAppsChange = (showSystemApps: boolean): void => {
+    setLauncherShowSystemApps(showSystemApps)
+    window.api?.config.updateLauncherShowSystemApps?.(showSystemApps)
+  }
+
   const handleShortcutChange = (field: keyof ShortcutConfig, value: string): void => {
     setShortcuts((prev) => {
       const next = { ...prev, [field]: value }
@@ -2061,6 +2089,8 @@ const handleMinimizeWindow = (): void => {
                 onSelectTheme={handleThemeSelect}
                 buttonVisibility={buttonVisibility}
                 onButtonVisibilityChange={handleButtonVisibilityChange}
+                launcherShowSystemApps={launcherShowSystemApps}
+                onLauncherShowSystemAppsChange={handleLauncherShowSystemAppsChange}
               />
             )}
             {activeTab === 'terminal' && (

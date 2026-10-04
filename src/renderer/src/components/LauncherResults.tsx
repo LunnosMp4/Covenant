@@ -62,7 +62,7 @@ export default function LauncherResults({
       className={`absolute inset-x-0 bottom-full z-40 mb-3 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} p-2 shadow-xl shadow-black/50`}
       style={{ WebkitBackdropFilter: 'blur(40px)', backdropFilter: 'blur(40px)' }}
     >
-      <div className="max-h-[320px] space-y-0.5 overflow-y-auto chat-scrollbar">
+      <div className="space-y-0.5">
         {items.map((item, index) => {
           const isSelected = index === selectedIndex
           return (

@@ -959,6 +959,15 @@ export default function App(): JSX.Element {
   }, [loadInstalledApps])
 
   useEffect(() => {
+    const unsubscribe = window.api?.config?.onLauncherShowSystemAppsUpdated?.(() => {
+      setLauncherIcons({})
+      void loadInstalledApps()
+    })
+
+    return () => unsubscribe?.()
+  }, [loadInstalledApps])
+
+  useEffect(() => {
     if (!activeConversation) {
       return
     }
@@ -1800,7 +1809,7 @@ export default function App(): JSX.Element {
     const trimmedQuery = query.trim()
     if (!trimmedQuery) return []
 
-    return rankLauncherItems(trimmedQuery, launcherPool, 8)
+    return rankLauncherItems(trimmedQuery, launcherPool, 6)
   }, [mode, query, launcherPool])
 
   const launcherVisible =
@@ -3047,7 +3056,14 @@ export default function App(): JSX.Element {
                   ref={inputRef}
                   contentEditable
                   suppressContentEditableWarning
-                  onInput={() => { const d = inputRef.current; if (d) setQuery(d.textContent ?? '') }}
+                  onInput={() => {
+                    const d = inputRef.current
+                    if (!d) return
+                    if ((d.textContent ?? '').length === 0 && d.childNodes.length > 0) {
+                      d.innerHTML = ''
+                    }
+                    setQuery(d.textContent ?? '')
+                  }}
                   onPaste={(e) => {
                     const items = e.clipboardData.items
                     let hasImage = false

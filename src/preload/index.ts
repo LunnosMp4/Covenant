@@ -95,6 +95,8 @@ const api = {
     updatePreferredShell: (preferredShell: string) => ipcRenderer.send('update-preferred-shell', preferredShell),
     updateButtonVisibility: (buttonVisibility: Partial<ButtonVisibility>) =>
       ipcRenderer.send('update-button-visibility', buttonVisibility),
+    updateLauncherShowSystemApps: (showSystemApps: boolean) =>
+      ipcRenderer.send('update-launcher-show-system-apps', showSystemApps),
     updateChatModel: (chatModel: string) => ipcRenderer.send('update-chat-model', chatModel),
     updateReasoningEffort: (reasoningEffort: ReasoningEffort) =>
       ipcRenderer.send('update-reasoning-effort', reasoningEffort),
@@ -171,6 +173,17 @@ const api = {
 
       return () => {
         ipcRenderer.removeListener('button-visibility-updated', listener)
+      }
+    },
+    onLauncherShowSystemAppsUpdated: (callback: (showSystemApps: boolean) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, showSystemApps: boolean) => {
+        callback(showSystemApps)
+      }
+
+      ipcRenderer.on('launcher-show-system-apps-updated', listener)
+
+      return () => {
+        ipcRenderer.removeListener('launcher-show-system-apps-updated', listener)
       }
     },
     onChatModelUpdated: (callback: (chatModel: string) => void) => {
@@ -388,6 +401,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateTerminalFont: api.config.updateTerminalFont,
   updatePreferredShell: api.config.updatePreferredShell,
   updateButtonVisibility: api.config.updateButtonVisibility,
+  updateLauncherShowSystemApps: api.config.updateLauncherShowSystemApps,
   updateChatModel: api.config.updateChatModel,
   updateReasoningEffort: api.config.updateReasoningEffort,
   updateWebSearch: api.config.updateWebSearch,
@@ -403,6 +417,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onTerminalFontUpdated: api.config.onTerminalFontUpdated,
   onPreferredShellUpdated: api.config.onPreferredShellUpdated,
   onButtonVisibilityUpdated: api.config.onButtonVisibilityUpdated,
+  onLauncherShowSystemAppsUpdated: api.config.onLauncherShowSystemAppsUpdated,
   onChatModelUpdated: api.config.onChatModelUpdated,
   onReasoningEffortUpdated: api.config.onReasoningEffortUpdated,
   askCovenant: api.chat.askCovenant,

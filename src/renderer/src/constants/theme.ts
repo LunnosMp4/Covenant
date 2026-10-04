@@ -146,6 +146,64 @@ export const THEME_OPTIONS: ThemeOption[] = [
         streakColor: '#34d399'
       }
     }
+  },
+  {
+    id: 'monochrome',
+    label: 'Monochrome',
+    description: 'Minimal black & white contrast',
+    gradientClass: 'from-neutral-900 to-[#000000]',
+    palette: {
+      accent: '#ffffff',
+      accentSoft: 'rgba(255, 255, 255, 0.12)',
+      accentStrong: 'rgba(255, 255, 255, 0.32)',
+      userText: '#ffffff',
+      assistantText: '#e5e5e5',
+      assistantBg: 'rgba(0, 0, 0, 0.72)',
+      assistantBorder: 'rgba(255, 255, 255, 0.14)',
+      scrollbarThumb: 'rgba(255, 255, 255, 0.28)',
+      scrollbarThumbHover: 'rgba(255, 255, 255, 0.45)',
+      metaText: 'rgba(255, 255, 255, 0.45)',
+      gamification: {
+        tierColors: {
+          TRIVIAL: '#737373',
+          EASY: '#a3a3a3',
+          MEDIUM: '#d4d4d4',
+          HARD: '#e5e5e5',
+          EPIC: '#ffffff'
+        },
+        levelColor: '#ffffff',
+        streakColor: '#d4d4d4'
+      }
+    }
+  },
+  {
+    id: 'rose-quartz',
+    label: 'Rose Quartz',
+    description: 'Soft pink glow',
+    gradientClass: 'from-neutral-900 to-[#2a0f1e]',
+    palette: {
+      accent: '#fb7185',
+      accentSoft: 'rgba(251, 113, 133, 0.16)',
+      accentStrong: 'rgba(251, 113, 133, 0.38)',
+      userText: '#ffe4e6',
+      assistantText: '#fff1f2',
+      assistantBg: 'rgba(20, 8, 13, 0.74)',
+      assistantBorder: 'rgba(251, 113, 133, 0.2)',
+      scrollbarThumb: 'rgba(251, 113, 133, 0.35)',
+      scrollbarThumbHover: 'rgba(251, 113, 133, 0.55)',
+      metaText: 'rgba(255, 228, 230, 0.55)',
+      gamification: {
+        tierColors: {
+          TRIVIAL: '#a1a1aa',
+          EASY: '#f0abfc',
+          MEDIUM: '#fb7185',
+          HARD: '#f43f5e',
+          EPIC: '#e11d48'
+        },
+        levelColor: '#fb7185',
+        streakColor: '#f0abfc'
+      }
+    }
   }
 ]
 

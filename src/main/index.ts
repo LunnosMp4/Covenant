@@ -28,6 +28,7 @@ import {
   DEFAULT_BUTTON_VISIBILITY,
   DEFAULT_CHAT_MODEL,
   DEFAULT_ENABLE_WEB_SEARCH,
+  DEFAULT_LAUNCHER_SHOW_SYSTEM_APPS,
   DEFAULT_REASONING_EFFORT,
   DEFAULT_SHORTCUTS,
   modelDoesReasoning,
@@ -74,7 +75,7 @@ import {
 } from '../shared/gamification'
 import { evaluateTask, evaluateTaskHeuristically } from './services/taskEvaluator'
 import { openLogsFolder, setupLogger } from './logger'
-import { getAppIcon, getInstalledApps, warmInstalledAppsCache } from './installedApps'
+import { clearInstalledAppsCache, getAppIcon, getInstalledApps, warmInstalledAppsCache } from './installedApps'
 import { checkForUpdatesManually, getUpdateStatus, quitAndInstallUpdate, setupAutoUpdater } from './updater'
 
 // Expose V8's garbage collector so we can force a collection on window hide.
@@ -173,6 +174,7 @@ const DEFAULT_CONFIG: AppConfig = {
   reasoningEffort: DEFAULT_REASONING_EFFORT,
   enableWebSearch: DEFAULT_ENABLE_WEB_SEARCH,
   autoCollapseReasoning: DEFAULT_AUTO_COLLAPSE_REASONING,
+  launcherShowSystemApps: DEFAULT_LAUNCHER_SHOW_SYSTEM_APPS,
   shortcuts: { ...DEFAULT_SHORTCUTS },
   hasOnboarded: false,
   autoUpdate: true
@@ -1257,6 +1259,12 @@ async function launchSavedApp(payload: { path?: string; arguments?: string }): P
     throw new Error('Application path is required.')
   }
 
+  // Microsoft Store / UWP apps are launched through the shell app namespace.
+  if (isWindows && /^shell:/i.test(normalizedPath)) {
+    await spawnDetached('explorer.exe', [normalizedPath])
+    return
+  }
+
   if (!existsSync(normalizedPath)) {
     throw new Error('The saved application path no longer exists.')
   }
@@ -1409,6 +1417,10 @@ function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined): AppC
       typeof rawConfig?.autoCollapseReasoning === 'boolean'
         ? rawConfig.autoCollapseReasoning
         : DEFAULT_AUTO_COLLAPSE_REASONING,
+    launcherShowSystemApps:
+      typeof rawConfig?.launcherShowSystemApps === 'boolean'
+        ? rawConfig.launcherShowSystemApps
+        : DEFAULT_LAUNCHER_SHOW_SYSTEM_APPS,
     shortcuts: normalizeShortcuts(rawConfig?.shortcuts),
     hasOnboarded:
       typeof rawConfig?.hasOnboarded === 'boolean' ? rawConfig.hasOnboarded : false,
@@ -2498,7 +2510,7 @@ app.whenReady().then(() => {
 
   // Build the application index in the background so the first keystroke in
   // the search field is already instant.
-  warmInstalledAppsCache()
+  warmInstalledAppsCache(config.launcherShowSystemApps === true)
 
   registerShortcuts(config)
 
@@ -2626,7 +2638,7 @@ ipcMain.handle('delete-app', (_event, appId: string) => {
 })
 
 ipcMain.handle('get-installed-apps', () => {
-  return getInstalledApps()
+  return getInstalledApps({ includeSystemApps: readConfig().launcherShowSystemApps === true })
 })
 
 ipcMain.handle('get-app-icon', (_event, appPath: string) => {
@@ -3053,6 +3065,23 @@ ipcMain.on('update-button-visibility', (_event, buttonVisibility: Partial<AppCon
 
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.webContents.send('button-visibility-updated', nextButtonVisibility)
+  }
+})
+
+ipcMain.on('update-launcher-show-system-apps', (_event, showSystemApps: boolean) => {
+  const nextShowSystemApps = typeof showSystemApps === 'boolean'
+    ? showSystemApps
+    : DEFAULT_LAUNCHER_SHOW_SYSTEM_APPS
+  updateConfig({ launcherShowSystemApps: nextShowSystemApps })
+  clearInstalledAppsCache()
+  warmInstalledAppsCache(nextShowSystemApps)
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('launcher-show-system-apps-updated', nextShowSystemApps)
+  }
+
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.webContents.send('launcher-show-system-apps-updated', nextShowSystemApps)
   }
 })
 

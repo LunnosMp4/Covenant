@@ -44,6 +44,7 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     updateTerminalFont: (terminalFont: string) => void
     updatePreferredShell: (preferredShell: string) => void
     updateButtonVisibility: (buttonVisibility: Partial<ButtonVisibility>) => void
+    updateLauncherShowSystemApps: (showSystemApps: boolean) => void
     updateChatModel: (chatModel: string) => void
     updateReasoningEffort: (reasoningEffort: ReasoningEffort) => void
     updateWebSearch: (enableWebSearch: boolean) => void
@@ -59,6 +60,7 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     onTerminalFontUpdated: (callback: (terminalFont: string) => void) => () => void
     onPreferredShellUpdated: (callback: (preferredShell?: string) => void) => () => void
     onButtonVisibilityUpdated: (callback: (buttonVisibility: ButtonVisibility) => void) => () => void
+    onLauncherShowSystemAppsUpdated: (callback: (showSystemApps: boolean) => void) => () => void
     onChatModelUpdated: (callback: (chatModel: string) => void) => () => void
     onReasoningEffortUpdated: (callback: (reasoningEffort: ReasoningEffort) => void) => () => void
     onWebSearchUpdated: (callback: (enableWebSearch: boolean) => void) => () => void
@@ -155,6 +157,7 @@ refreshMcpServerTools: (serverId: string) => Promise<McpServer[]>
       updateTerminalFont: (terminalFont: string) => void
       updatePreferredShell: (preferredShell: string) => void
       updateButtonVisibility: (buttonVisibility: Partial<ButtonVisibility>) => void
+      updateLauncherShowSystemApps: (showSystemApps: boolean) => void
       updateChatModel: (chatModel: string) => void
       updateReasoningEffort: (reasoningEffort: ReasoningEffort) => void
       updateWebSearch: (enableWebSearch: boolean) => void
@@ -170,6 +173,7 @@ refreshMcpServerTools: (serverId: string) => Promise<McpServer[]>
       onTerminalFontUpdated: (callback: (terminalFont: string) => void) => () => void
       onPreferredShellUpdated: (callback: (preferredShell?: string) => void) => () => void
       onButtonVisibilityUpdated: (callback: (buttonVisibility: ButtonVisibility) => void) => () => void
+      onLauncherShowSystemAppsUpdated: (callback: (showSystemApps: boolean) => void) => () => void
       onChatModelUpdated: (callback: (chatModel: string) => void) => () => void
       onReasoningEffortUpdated: (callback: (reasoningEffort: ReasoningEffort) => void) => () => void
       askCovenant: (messages: Array<{ role: ChatRole; content: string | InputContent[] }>) => Promise<string>
