@@ -9,6 +9,7 @@ import type { ClearCompletedResult, GamificationState } from './gamification'
 import type { ChatConversation, ChatRole, ChatStreamEvent, InputContent } from '../../../shared/chat'
 import type { TerminalExitPayload, TerminalStartResult } from '../../../shared/terminal'
 import type { UpdateStatus } from '../../../shared/update'
+import type { PasteItemDetail, PasteItemMeta, PasteManagerSettings } from '../../../shared/paste'
 
 interface CovenantAPI {
   platform: string
@@ -23,6 +24,7 @@ interface CovenantAPI {
     onSettingsShown: (callback: (isRestore: boolean) => void) => () => void
     onToggleVisibility: (callback: (visible: boolean, terminalMode?: boolean) => void) => () => void
     onOpenTasks: (callback: () => void) => () => void
+    onChatPrompt: (callback: (text: string) => void) => () => void
   }
   config: {
     getConfig: () => Promise<AppConfig>
@@ -127,6 +129,22 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
   onWorkflowLog: (callback: (payload: WorkflowLogPayload) => void) => () => void
   clipboard: {
     writeText: (text: string) => void
+  }
+  paste: {
+    list: () => Promise<PasteItemMeta[]>
+    getDetail: (id: string) => Promise<PasteItemDetail | null>
+    getSettings: () => Promise<PasteManagerSettings>
+    updateSettings: (patch: Partial<PasteManagerSettings>) => Promise<PasteManagerSettings>
+    setPinned: (id: string, pinned: boolean) => Promise<{ success: boolean }>
+    remove: (id: string) => Promise<{ success: boolean }>
+    clear: (keepPinned: boolean) => Promise<{ removed: number }>
+    copy: (id: string, asPlainText?: boolean) => Promise<{ success: boolean }>
+    saveImage: (id: string) => Promise<{ success: boolean; path?: string; canceled?: boolean }>
+    hideWindow: () => void
+    askInChat: (text: string) => void
+    onChanged: (callback: () => void) => () => void
+    onShown: (callback: () => void) => () => void
+    onSettingsUpdated: (callback: (settings: PasteManagerSettings) => void) => () => void
   }
 }
 

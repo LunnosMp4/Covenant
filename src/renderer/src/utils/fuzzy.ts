@@ -68,7 +68,7 @@ function isWordBoundary(char: string | undefined): boolean {
  * Ranking tiers: exact > prefix > word-boundary substring > substring >
  * subsequence. Returns 0 when nothing matches.
  */
-function scoreMatch(query: string, target: string): number {
+export function scoreMatch(query: string, target: string): number {
   if (!query || !target) return 0
 
   if (target === query) {

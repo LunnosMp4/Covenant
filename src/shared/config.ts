@@ -1,4 +1,5 @@
 import type { McpServer } from './mcp'
+import { DEFAULT_PASTE_SETTINGS, normalizePasteManagerSettings, type PasteManagerSettings } from './paste'
 
 export interface ButtonVisibility {
   appLauncher: boolean
@@ -82,12 +83,14 @@ export interface ShortcutConfig {
   openApp: string
   openAppTerminal: string
   openTasks: string
+  openPaste: string
 }
 
 export const DEFAULT_SHORTCUTS: ShortcutConfig = {
   openApp: 'Alt+Space',
   openAppTerminal: 'Alt+T',
-  openTasks: 'Alt+L'
+  openTasks: 'Alt+L',
+  openPaste: 'Ctrl+Alt+V'
 }
 
 export function normalizeShortcuts(raw: unknown): ShortcutConfig {
@@ -96,7 +99,8 @@ export function normalizeShortcuts(raw: unknown): ShortcutConfig {
   return {
     openApp: typeof obj.openApp === 'string' ? obj.openApp : DEFAULT_SHORTCUTS.openApp,
     openAppTerminal: typeof obj.openAppTerminal === 'string' ? obj.openAppTerminal : DEFAULT_SHORTCUTS.openAppTerminal,
-    openTasks: typeof obj.openTasks === 'string' ? obj.openTasks : DEFAULT_SHORTCUTS.openTasks
+    openTasks: typeof obj.openTasks === 'string' ? obj.openTasks : DEFAULT_SHORTCUTS.openTasks,
+    openPaste: typeof obj.openPaste === 'string' ? obj.openPaste : DEFAULT_SHORTCUTS.openPaste
   }
 }
 
@@ -116,6 +120,10 @@ export interface AppConfig {
   launcherShowSystemApps: boolean
   shortcuts: ShortcutConfig
   textureIntensity: number
+  pasteManager: PasteManagerSettings
   hasOnboarded?: boolean
   autoUpdate?: boolean
 }
+
+export { DEFAULT_PASTE_SETTINGS, normalizePasteManagerSettings }
+export type { PasteManagerSettings }

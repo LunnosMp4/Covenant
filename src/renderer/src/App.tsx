@@ -352,6 +352,8 @@ export default function App(): JSX.Element {
   const [deletingConversation, setDeletingConversation] = useState<ChatConversation | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [onboardingApiKey, setOnboardingApiKey] = useState('')
+  // Prompt handed off from the Paste Manager; consumed once the window is shown.
+  const [pendingExternalPrompt, setPendingExternalPrompt] = useState<string | null>(null)
   const [voiceState, setVoiceState] = useState<'idle' | 'recording' | 'transcribing' | 'error'>('idle')
   const micStreamRef = useRef<MediaStream | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -374,6 +376,8 @@ export default function App(): JSX.Element {
   const activeStreamIdRef = useRef<string | null>(null)
   const activeStreamMessageIdRef = useRef<string | null>(null)
   const activeStreamConversationIdRef = useRef<string | null>(null)
+  // Forces the next submit to start a brand-new conversation (paste manager AI actions).
+  const forceNewConversationRef = useRef(false)
   const reasoningAutoCloseTimersRef = useRef<Record<string, number>>({})
   const autoCollapseReasoningRef = useRef(autoCollapseReasoning)
   // Ref for the hide-delay timer so it can be cancelled on rapid show/hide.
@@ -596,6 +600,21 @@ export default function App(): JSX.Element {
     const unsubscribe = window.api.window.onOpenTasks(() => {
       setMode('ai')
       setActivePopup('tasks')
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!window.api?.window.onChatPrompt) return
+
+    const unsubscribe = window.api.window.onChatPrompt((text) => {
+      if (!text.trim()) return
+      setMode('ai')
+      setActivePopup(null)
+      setPendingExternalPrompt(text)
     })
 
     return () => {
@@ -1478,7 +1497,8 @@ export default function App(): JSX.Element {
     const now = Date.now()
     const activeSystemPrompt = selectedSystemPrompt?.content.trim() || activeConversation?.systemPrompt?.trim() || ''
 
-    const shouldStartNewConversation = !isChatOpen
+    const shouldStartNewConversation = !isChatOpen || forceNewConversationRef.current
+    forceNewConversationRef.current = false
     let nextConversation = shouldStartNewConversation ? null : activeConversation
     if (!nextConversation) {
       const createdAt = now
@@ -1625,6 +1645,33 @@ export default function App(): JSX.Element {
     generateConversationTitleAsync,
     attachedImages
   ])
+
+  // Consume a prompt handed off from the Paste Manager once the window is
+  // visible and the input is mounted, then submit it as a new conversation.
+  useEffect(() => {
+    if (!pendingExternalPrompt || !isAppVisible) return
+    const prompt = pendingExternalPrompt
+    let attempts = 0
+
+    const inject = (): void => {
+      const div = inputRef.current
+      if (!div) {
+        if (attempts++ < 30) window.requestAnimationFrame(inject)
+        return
+      }
+
+      pasteBlocksRef.current.clear()
+      setAttachedImages([])
+      setShowImagePanel(false)
+      div.textContent = prompt
+      setQuery(prompt)
+      forceNewConversationRef.current = true
+      setPendingExternalPrompt(null)
+      void handleSubmit()
+    }
+
+    inject()
+  }, [pendingExternalPrompt, isAppVisible, handleSubmit])
 
   const setCurrentSystemPrompt = useCallback(
     (selection: SelectedSystemPrompt | null) => {

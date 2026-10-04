@@ -7,6 +7,7 @@ import McpServerFormModal from './components/McpServerFormModal'
 import McpServersTab, { type McpPreset } from './components/McpServersTab'
 import PrepromptFormModal from './components/PrepromptFormModal'
 import WorkflowFormModal from './components/WorkflowFormModal'
+import PasteSettingsTab from './components/PasteSettingsTab'
 import {
   DEFAULT_TERMINAL_FONT,
   normalizeTerminalFont
@@ -20,6 +21,11 @@ import {
 import type { AppConfig, ButtonVisibility, ReasoningEffort, ShortcutConfig } from '../../shared/config'
 import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_REASONING_EFFORT, DEFAULT_SHORTCUTS, DEFAULT_TEXTURE_INTENSITY, MAX_TEXTURE_INTENSITY, REASONING_EFFORT_OPTIONS, TEXTURE_MAX_OPACITY, modelSupportsExtendedParams, modelSupportsWebSearch } from '../../shared/config'
 import type { UpdateStatus } from '../../shared/update'
+import {
+  DEFAULT_PASTE_SETTINGS,
+  normalizePasteManagerSettings,
+  type PasteManagerSettings
+} from '../../shared/paste'
 import type { McpServer } from '../../shared/mcp'
 import type { LauncherApp } from './types/launcher-app'
 import type { Preprompt } from './types/preprompt'
@@ -27,9 +33,9 @@ import type { Workflow } from './types/workflow'
 import { getAppBadgeText } from './utils/helpers'
 import { formatTargetsSummary, normalizeLaunchTargets } from './utils/launcherTargets'
 
-type SettingsTab = 'general' | 'appearance' | 'terminal' | 'appLauncher' | 'workflow' | 'preprompts' | 'mcp'
+type SettingsTab = 'general' | 'appearance' | 'terminal' | 'appLauncher' | 'workflow' | 'preprompts' | 'mcp' | 'paste'
 
-const VALID_SETTINGS_TABS: readonly SettingsTab[] = ['general', 'appearance', 'terminal', 'appLauncher', 'workflow', 'preprompts', 'mcp']
+const VALID_SETTINGS_TABS: readonly SettingsTab[] = ['general', 'appearance', 'terminal', 'appLauncher', 'workflow', 'preprompts', 'mcp', 'paste']
 
 const SETTINGS_WINDOW_ENTER_TRANSITION: Transition = { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
 const SETTINGS_WINDOW_EXIT_TRANSITION: Transition = { duration: 0.16, ease: [0.22, 1, 0.36, 1] }
@@ -103,6 +109,17 @@ function SidebarGlyph({ tab }: { tab: SettingsTab }): JSX.Element {
     return (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
         <path d="M13.85 0a4.16 4.16 0 0 0-2.95 1.217L1.456 10.66a.835.835 0 0 0 0 1.18.835.835 0 0 0 1.18 0l9.442-9.442a2.49 2.49 0 0 1 3.541 0 2.49 2.49 0 0 1 0 3.541L8.59 12.97l-.1.1a.835.835 0 0 0 0 1.18.835.835 0 0 0 1.18 0l.1-.098 7.03-7.034a2.49 2.49 0 0 1 3.542 0l.049.05a2.49 2.49 0 0 1 0 3.54l-8.54 8.54a1.96 1.96 0 0 0 0 2.755l1.753 1.753a.835.835 0 0 0 1.18 0 .835.835 0 0 0 0-1.18l-1.753-1.753a.266.266 0 0 1 0-.394l8.54-8.54a4.185 4.185 0 0 0 0-5.9l-.05-.05a4.16 4.16 0 0 0-2.95-1.218c-.2 0-.401.02-.6.048a4.17 4.17 0 0 0-1.17-3.552A4.16 4.16 0 0 0 13.85 0m0 3.333a.84.84 0 0 0-.59.245L6.275 10.56a4.186 4.186 0 0 0 0 5.902 4.186 4.186 0 0 0 5.902 0L19.16 9.48a.835.835 0 0 0 0-1.18.835.835 0 0 0-1.18 0l-6.985 6.984a2.49 2.49 0 0 1-3.54 0 2.49 2.49 0 0 1 0-3.54l6.983-6.985a.835.835 0 0 0 0-1.18.84.84 0 0 0-.59-.245" />
+      </svg>
+    )
+  }
+
+  if (tab === 'paste') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <rect x="8" y="3" width="8" height="4" rx="1" />
+        <path d="M8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+        <path d="M9 13h6" />
+        <path d="M9 17h4" />
       </svg>
     )
   }
@@ -827,6 +844,30 @@ function GeneralTab({
               onReset={() => onShortcutChange('openTasks', DEFAULT_SHORTCUTS.openTasks)}
             />
           </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-neutral-300">
+              Open Paste Manager
+            </label>
+            <p className="mb-2 text-xs text-neutral-500">
+              Opens the clipboard history window. Only active when Paste Manager is enabled.
+            </p>
+            <ShortcutRecorder
+              value={shortcuts.openPaste}
+              onChange={(val) => onShortcutChange('openPaste', val)}
+              conflictWarning={
+                shortcuts.openPaste && shortcuts.openApp && shortcuts.openPaste === shortcuts.openApp
+                  ? 'This shortcut is also assigned to Open App'
+                  : shortcuts.openPaste && shortcuts.openAppTerminal && shortcuts.openPaste === shortcuts.openAppTerminal
+                    ? 'This shortcut is also assigned to Open App in Terminal Mode'
+                    : shortcuts.openPaste && shortcuts.openTasks && shortcuts.openPaste === shortcuts.openTasks
+                      ? 'This shortcut is also assigned to Open Tasks'
+                      : null
+              }
+              defaultShortcut={DEFAULT_SHORTCUTS.openPaste}
+              onReset={() => onShortcutChange('openPaste', DEFAULT_SHORTCUTS.openPaste)}
+            />
+          </div>
         </div>
       </SectionCard>
     </div>
@@ -1264,6 +1305,8 @@ export default function Settings(): JSX.Element {
   const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true, tasks: true })
   const [launcherShowSystemApps, setLauncherShowSystemApps] = useState(false)
   const [shortcuts, setShortcuts] = useState<ShortcutConfig>({ ...DEFAULT_SHORTCUTS })
+  const [pasteSettings, setPasteSettings] = useState<PasteManagerSettings>({ ...DEFAULT_PASTE_SETTINGS })
+  const [pasteFeedbackMessage, setPasteFeedbackMessage] = useState('')
   const [mcpServers, setMcpServers] = useState<McpServer[]>([])
   const [isMcpServersLoading, setIsMcpServersLoading] = useState(false)
   const [mcpFeedbackMessage, setMcpFeedbackMessage] = useState('')
@@ -1346,6 +1389,7 @@ export default function Settings(): JSX.Element {
         setButtonVisibility(config.buttonVisibility ?? { appLauncher: true, workflow: true, tasks: true })
         setLauncherShowSystemApps(config.launcherShowSystemApps === true)
         setShortcuts(config.shortcuts ?? { ...DEFAULT_SHORTCUTS })
+        setPasteSettings(normalizePasteManagerSettings(config.pasteManager))
       } catch {
         if (!isMounted) return
         setApiKey('')
@@ -1359,6 +1403,7 @@ export default function Settings(): JSX.Element {
         setButtonVisibility({ appLauncher: true, workflow: true, tasks: true })
         setLauncherShowSystemApps(false)
         setAutoUpdate(true)
+        setPasteSettings({ ...DEFAULT_PASTE_SETTINGS })
       }
     }
 
@@ -1380,6 +1425,10 @@ export default function Settings(): JSX.Element {
       setShortcuts(newShortcuts)
     })
 
+    const unsubPasteSettings = window.api?.paste?.onSettingsUpdated?.((newSettings) => {
+      setPasteSettings(newSettings)
+    })
+
     const unsubTheme = window.api?.config.onThemeUpdated?.((newGradient) => {
       setSelectedTheme(normalizeThemeGradient(newGradient))
     })
@@ -1394,6 +1443,7 @@ export default function Settings(): JSX.Element {
       if (typeof unsubReasoningEffort === 'function') unsubReasoningEffort()
       if (typeof unsubButtonVisibility === 'function') unsubButtonVisibility()
       if (typeof unsubShortcuts === 'function') unsubShortcuts()
+      if (typeof unsubPasteSettings === 'function') unsubPasteSettings()
       if (typeof unsubTheme === 'function') unsubTheme()
       if (typeof unsubTexture === 'function') unsubTexture()
     }
@@ -1882,6 +1932,20 @@ const handleMinimizeWindow = (): void => {
     })
   }
 
+  const handlePasteSettingChange = (patch: Partial<PasteManagerSettings>): void => {
+    setPasteSettings((prev) => normalizePasteManagerSettings({ ...prev, ...patch }))
+    void window.api?.paste?.updateSettings?.(patch).then((next) => setPasteSettings(next))
+  }
+
+  const handleClearPasteHistory = (keepPinned: boolean): void => {
+    void window.api?.paste?.clear?.(keepPinned).then((result) => {
+      setPasteFeedbackMessage(
+        result?.removed ? `Removed ${result.removed} item${result.removed === 1 ? '' : 's'}.` : 'Nothing to clear.'
+      )
+      window.setTimeout(() => setPasteFeedbackMessage(''), 2000)
+    })
+  }
+
   const handleOpenAddApp = (): void => {
     setEditingApp(undefined)
     setAppsFeedbackMessage('')
@@ -2065,7 +2129,8 @@ const handleMinimizeWindow = (): void => {
     if (activeTab === 'appLauncher') return 'App Launcher'
     if (activeTab === 'workflow') return 'Workflows'
     if (activeTab === 'preprompts') return 'Instructions'
-    return 'MCP Servers'
+    if (activeTab === 'mcp') return 'MCP Servers'
+    return 'Clipboard'
   }, [activeTab])
 
   return (
@@ -2124,7 +2189,8 @@ const handleMinimizeWindow = (): void => {
                 { id: 'appLauncher' as const, label: 'App Launcher' },
                 { id: 'workflow' as const, label: 'Workflows' },
                 { id: 'preprompts' as const, label: 'Instructions' },
-                { id: 'mcp' as const, label: 'MCP Servers' }
+                { id: 'mcp' as const, label: 'MCP Servers' },
+                { id: 'paste' as const, label: 'Clipboard' }
               ].map((item) => {
                 const isActive = activeTab === item.id
 
@@ -2254,6 +2320,14 @@ const handleMinimizeWindow = (): void => {
                 onRefreshTools={handleRefreshMcpTools}
                 onTest={handleTestMcpServer}
                 onApplyPreset={handleApplyMcpPreset}
+              />
+            )}
+            {activeTab === 'paste' && (
+              <PasteSettingsTab
+                settings={pasteSettings}
+                onChange={handlePasteSettingChange}
+                onClearHistory={handleClearPasteHistory}
+                feedbackMessage={pasteFeedbackMessage}
               />
             )}
           </main>

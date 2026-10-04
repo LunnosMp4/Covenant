@@ -2,20 +2,28 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import Settings from './Settings'
+import PasteManager from './PasteManager'
 import './assets/index.css'
 import 'prismjs/themes/prism-tomorrow.css'
 
-function isSettingsRoute(): boolean {
+function getWindowKind(): 'settings' | 'paste' | 'main' {
   const normalizedHash = window.location.hash.toLowerCase()
-  return normalizedHash.startsWith('#settings') || normalizedHash.startsWith('#/settings')
+  if (normalizedHash.startsWith('#settings') || normalizedHash.startsWith('#/settings')) {
+    return 'settings'
+  }
+  if (normalizedHash.startsWith('#paste') || normalizedHash.startsWith('#/paste')) {
+    return 'paste'
+  }
+  return 'main'
 }
 
-const isSettingsWindow = isSettingsRoute()
+const windowKind = getWindowKind()
 
-document.documentElement.setAttribute('data-window', isSettingsWindow ? 'settings' : 'main')
-document.body.setAttribute('data-window', isSettingsWindow ? 'settings' : 'main')
+document.documentElement.setAttribute('data-window', windowKind)
+document.body.setAttribute('data-window', windowKind)
 
-const RootComponent = isSettingsWindow ? Settings : App
+const RootComponent =
+  windowKind === 'settings' ? Settings : windowKind === 'paste' ? PasteManager : App
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>

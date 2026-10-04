@@ -84,6 +84,28 @@ body[data-window='settings'] [contenteditable='true'] {
   user-select: text;
 }
 
+/* Paste window: native panel feel, but allow selecting text in the detail pane. */
+body[data-window='paste'] {
+  cursor: default;
+}
+
+body[data-window='paste'] input,
+body[data-window='paste'] textarea,
+body[data-window='paste'] [contenteditable='true'],
+.paste-selectable,
+.paste-selectable * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.paste-drag {
+  -webkit-app-region: drag;
+}
+
+.paste-no-drag {
+  -webkit-app-region: no-drag;
+}
+
 /* Custom scrollbar styling for xterm */
 .xterm-viewport::-webkit-scrollbar {
   width: 8px;

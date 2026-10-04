@@ -10,6 +10,7 @@ import type { TerminalExitPayload, TerminalStartResult } from '../shared/termina
 import type { ClearCompletedResult, Task } from '../shared/task'
 import type { GamificationState } from '../shared/gamification'
 import type { UpdateStatus } from '../shared/update'
+import type { PasteItemDetail, PasteItemMeta, PasteManagerSettings } from '../shared/paste'
 import type {
   Workflow,
   WorkflowLogPayload,
@@ -61,6 +62,15 @@ const api = {
       ipcRenderer.on('open-tasks', listener)
       return () => {
         ipcRenderer.removeListener('open-tasks', listener)
+      }
+    },
+    onChatPrompt: (callback: (text: string) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, text: string) => {
+        callback(text)
+      }
+      ipcRenderer.on('covenant:chat-prompt', listener)
+      return () => {
+        ipcRenderer.removeListener('covenant:chat-prompt', listener)
       }
     }
   },
@@ -353,6 +363,53 @@ const api = {
   },
   clipboard: {
     writeText: (text: string) => clipboard.writeText(text)
+  },
+  paste: {
+    list: () => ipcRenderer.invoke('paste:list') as Promise<PasteItemMeta[]>,
+    getDetail: (id: string) =>
+      ipcRenderer.invoke('paste:get-detail', id) as Promise<PasteItemDetail | null>,
+    getSettings: () => ipcRenderer.invoke('paste:get-settings') as Promise<PasteManagerSettings>,
+    updateSettings: (patch: Partial<PasteManagerSettings>) =>
+      ipcRenderer.invoke('paste:update-settings', patch) as Promise<PasteManagerSettings>,
+    setPinned: (id: string, pinned: boolean) =>
+      ipcRenderer.invoke('paste:set-pinned', { id, pinned }) as Promise<{ success: boolean }>,
+    remove: (id: string) =>
+      ipcRenderer.invoke('paste:delete', id) as Promise<{ success: boolean }>,
+    clear: (keepPinned: boolean) =>
+      ipcRenderer.invoke('paste:clear', keepPinned) as Promise<{ removed: number }>,
+    copy: (id: string, asPlainText = false) =>
+      ipcRenderer.invoke('paste:copy', { id, asPlainText }) as Promise<{ success: boolean }>,
+    saveImage: (id: string) =>
+      ipcRenderer.invoke('paste:save-image', id) as Promise<{
+        success: boolean
+        path?: string
+        canceled?: boolean
+      }>,
+    hideWindow: () => ipcRenderer.send('paste:hide-window'),
+    askInChat: (text: string) => ipcRenderer.send('paste:ask-in-chat', text),
+    onChanged: (callback: () => void) => {
+      const listener = (): void => callback()
+      ipcRenderer.on('paste:changed', listener)
+      return () => {
+        ipcRenderer.removeListener('paste:changed', listener)
+      }
+    },
+    onShown: (callback: () => void) => {
+      const listener = (): void => callback()
+      ipcRenderer.on('paste:shown', listener)
+      return () => {
+        ipcRenderer.removeListener('paste:shown', listener)
+      }
+    },
+    onSettingsUpdated: (callback: (settings: PasteManagerSettings) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, settings: PasteManagerSettings) => {
+        callback(settings)
+      }
+      ipcRenderer.on('paste:settings-updated', listener)
+      return () => {
+        ipcRenderer.removeListener('paste:settings-updated', listener)
+      }
+    }
   },
   selectFile: () => ipcRenderer.invoke('select-file') as Promise<string>,
   getFavicon: (url: string) => ipcRenderer.invoke('get-favicon', url) as Promise<string>,

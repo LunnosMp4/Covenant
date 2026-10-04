@@ -5,6 +5,7 @@ import {
   globalShortcut,
   ipcMain,
   Menu,
+  protocol,
   screen,
   shell,
   Tray,
@@ -15,6 +16,7 @@ import { randomUUID } from 'crypto'
 import { existsSync, mkdirSync, promises as fsPromises, readFileSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { pathToFileURL } from 'url'
 import { is } from '@electron-toolkit/utils'
 import ElectronStore from 'electron-store'
 import dotenv from 'dotenv'
@@ -42,6 +44,12 @@ import {
 import type { McpServer } from '../shared/mcp'
 import { CHAT_ROLE_SET, type ChatConversation, type ChatRole, type ChatUsage } from '../shared/chat'
 import { normalizeConversation } from '../shared/chatNormalizers'
+import {
+  DEFAULT_PASTE_SETTINGS,
+  normalizePasteManagerSettings,
+  type PasteManagerSettings
+} from '../shared/paste'
+import { PasteManager } from './paste/pasteManager'
 import {
   DEFAULT_TERMINAL_COLS,
   DEFAULT_TERMINAL_ROWS,
@@ -84,8 +92,20 @@ import { checkForUpdatesManually, getUpdateStatus, quitAndInstallUpdate, setupAu
 // Must be set before app.whenReady() — top-level module scope satisfies this.
 app.commandLine.appendSwitch('js-flags', '--expose_gc')
 
+// Custom scheme for serving clipboard image blobs to the paste window renderer
+// without base64-in-IPC. Must be registered before app.whenReady().
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'covenant-paste',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true }
+  }
+])
+
 let mainWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
+let pasteWindow: BrowserWindow | null = null
+let pasteManager: PasteManager | null = null
+let suppressPasteBlur = false
 let tray: Tray | null = null
 let isVisible = false
 let isPinned = false
@@ -99,6 +119,9 @@ const WINDOW_HEIGHT = 520
 const WINDOW_BOTTOM_MARGIN = 48
 const SETTINGS_WINDOW_WIDTH = 1024
 const SETTINGS_WINDOW_HEIGHT = 576
+const PASTE_WINDOW_WIDTH = 960
+const PASTE_WINDOW_HEIGHT = 600
+const PASTE_PROTOCOL = 'covenant-paste'
 
 interface Preprompt {
   id: string
@@ -179,6 +202,7 @@ const DEFAULT_CONFIG: AppConfig = {
   launcherShowSystemApps: DEFAULT_LAUNCHER_SHOW_SYSTEM_APPS,
   shortcuts: { ...DEFAULT_SHORTCUTS },
   textureIntensity: DEFAULT_TEXTURE_INTENSITY,
+  pasteManager: { ...DEFAULT_PASTE_SETTINGS },
   hasOnboarded: false,
   autoUpdate: true
 }
@@ -1349,6 +1373,17 @@ function getSettingsWindowPosition(): { x: number; y: number } {
   }
 }
 
+function getPasteWindowPosition(): { x: number; y: number } {
+  const anchorPoint = screen.getCursorScreenPoint()
+  const display = screen.getDisplayNearestPoint(anchorPoint)
+  const { x: workAreaX, y: workAreaY, width: workAreaWidth, height: workAreaHeight } = display.workArea
+
+  return {
+    x: Math.max(workAreaX, Math.round(workAreaX + (workAreaWidth - PASTE_WINDOW_WIDTH) / 2)),
+    y: Math.max(workAreaY, Math.round(workAreaY + (workAreaHeight - PASTE_WINDOW_HEIGHT) / 2))
+  }
+}
+
 function getConfigPath(): string {
   return join(app.getPath('userData'), 'config.json')
 }
@@ -1425,6 +1460,7 @@ function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined): AppC
         : DEFAULT_LAUNCHER_SHOW_SYSTEM_APPS,
     shortcuts: normalizeShortcuts(rawConfig?.shortcuts),
     textureIntensity: normalizeTextureIntensity(rawConfig?.textureIntensity),
+    pasteManager: normalizePasteManagerSettings(rawConfig?.pasteManager),
     hasOnboarded:
       typeof rawConfig?.hasOnboarded === 'boolean' ? rawConfig.hasOnboarded : false,
     autoUpdate:
@@ -2071,12 +2107,23 @@ async function generateConversationTitle(prompt: string): Promise<string> {
   return normalizeGeneratedTitle(rawTitle) ?? 'New chat'
 }
 
-function loadRendererWindow(targetWindow: BrowserWindow, route?: 'settings', tab?: string): void {
+function loadRendererWindow(
+  targetWindow: BrowserWindow,
+  route?: 'settings' | 'paste',
+  tab?: string
+): void {
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     const rendererUrl = process.env['ELECTRON_RENDERER_URL']
-    const query = tab ? `?tab=${encodeURIComponent(tab)}` : ''
-    const targetUrl = route === 'settings' ? `${rendererUrl}#/settings${query}` : rendererUrl
-    targetWindow.loadURL(targetUrl)
+    if (route === 'settings') {
+      const query = tab ? `?tab=${encodeURIComponent(tab)}` : ''
+      targetWindow.loadURL(`${rendererUrl}#/settings${query}`)
+      return
+    }
+    if (route === 'paste') {
+      targetWindow.loadURL(`${rendererUrl}#/paste`)
+      return
+    }
+    targetWindow.loadURL(rendererUrl)
     return
   }
 
@@ -2084,6 +2131,10 @@ function loadRendererWindow(targetWindow: BrowserWindow, route?: 'settings', tab
   if (route === 'settings') {
     const hash = tab ? `settings?tab=${encodeURIComponent(tab)}` : 'settings'
     targetWindow.loadFile(rendererEntryFile, { hash })
+    return
+  }
+  if (route === 'paste') {
+    targetWindow.loadFile(rendererEntryFile, { hash: 'paste' })
     return
   }
 
@@ -2229,6 +2280,135 @@ function createSettingsWindow(tab?: string): void {
   })
 
   loadRendererWindow(settingsWindow, 'settings', tab)
+}
+
+function createPasteWindow(): BrowserWindow {
+  if (pasteWindow && !pasteWindow.isDestroyed()) return pasteWindow
+
+  const { x, y } = getPasteWindowPosition()
+
+  pasteWindow = new BrowserWindow({
+    width: PASTE_WINDOW_WIDTH,
+    height: PASTE_WINDOW_HEIGHT,
+    x,
+    y,
+    minWidth: 640,
+    minHeight: 400,
+    show: false,
+    frame: false,
+    transparent: true,
+    backgroundColor: 'rgba(0, 0, 0, 0)',
+    resizable: true,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    hasShadow: false,
+    title: 'Covenant Paste Manager',
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false,
+      contextIsolation: true,
+      nodeIntegration: false,
+      // Throttle timers/animations when hidden to save CPU.
+      backgroundThrottling: true
+    }
+  })
+
+  if (isMac) {
+    pasteWindow.setBackgroundColor('rgba(0, 0, 0, 0)')
+  }
+
+  pasteWindow.on('ready-to-show', () => {
+    pasteWindow?.show()
+    pasteWindow?.focus()
+  })
+
+  pasteWindow.on('blur', () => {
+    if (!suppressPasteBlur && pasteWindow && !pasteWindow.isDestroyed()) {
+      hidePasteWindow()
+    }
+  })
+
+  pasteWindow.on('closed', () => {
+    pasteWindow = null
+  })
+
+  pasteWindow.webContents.setWindowOpenHandler((details) => {
+    shell.openExternal(details.url)
+    return { action: 'deny' }
+  })
+
+  loadRendererWindow(pasteWindow, 'paste')
+  return pasteWindow
+}
+
+function showPasteWindow(): void {
+  const win = createPasteWindow()
+  const { x, y } = getPasteWindowPosition()
+  win.setBounds({ x, y, width: PASTE_WINDOW_WIDTH, height: PASTE_WINDOW_HEIGHT })
+
+  if (win.isMinimized()) win.restore()
+
+  // First open: `ready-to-show` reveals the window once the renderer is ready.
+  if (win.webContents.isLoading()) return
+
+  win.show()
+  win.focus()
+  win.webContents.send('paste:shown')
+}
+
+function hidePasteWindow(): void {
+  if (!pasteWindow || pasteWindow.isDestroyed()) return
+  pasteWindow.hide()
+  scheduleSleepModeCleanup(pasteWindow)
+}
+
+function togglePasteWindow(): void {
+  const config = readConfig()
+  if (!config.pasteManager?.enabled) return
+
+  if (pasteWindow && !pasteWindow.isDestroyed() && pasteWindow.isVisible()) {
+    hidePasteWindow()
+  } else {
+    showPasteWindow()
+  }
+}
+
+function pasteImageContentType(filePath: string): string {
+  const lower = filePath.toLowerCase()
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg'
+  if (lower.endsWith('.bmp')) return 'image/bmp'
+  if (lower.endsWith('.gif')) return 'image/gif'
+  if (lower.endsWith('.webp')) return 'image/webp'
+  return 'image/png'
+}
+
+function registerPasteProtocol(): void {
+  try {
+    protocol.handle(PASTE_PROTOCOL, async (request) => {
+      try {
+        const url = new URL(request.url)
+        const kind = url.hostname === 'thumb' ? 'thumb' : 'full'
+        const id = decodeURIComponent(url.pathname.replace(/^\/+/, ''))
+        if (!pasteManager || !id) {
+          return new Response('Not found', { status: 404 })
+        }
+
+        const filePath = pasteManager.getImageFilePath(id, kind)
+        if (!filePath) {
+          return new Response('Not found', { status: 404 })
+        }
+
+        const data = await fsPromises.readFile(filePath)
+        return new Response(data, {
+          headers: { 'content-type': pasteImageContentType(filePath), 'cache-control': 'no-cache' }
+        })
+      } catch {
+        return new Response('Error', { status: 500 })
+      }
+    })
+  } catch (error) {
+    console.error('Failed to register paste protocol handler:', error)
+  }
 }
 
 function showWindow(terminalMode = false): void {
@@ -2383,6 +2563,17 @@ function registerShortcuts(config: AppConfig): void {
     }
   }
 
+  if (shortcuts.openPaste && config.pasteManager?.enabled) {
+    try {
+      const ok = globalShortcut.register(shortcuts.openPaste, togglePasteWindow)
+      if (!ok) {
+        console.warn(`Failed to register global shortcut: ${shortcuts.openPaste} (may conflict with another app)`)
+      }
+    } catch (error) {
+      console.warn(`Error registering global shortcut '${shortcuts.openPaste}':`, error)
+    }
+  }
+
   updateTrayTooltip(shortcuts.openApp)
 }
 
@@ -2515,6 +2706,32 @@ app.whenReady().then(() => {
   // the search field is already instant.
   warmInstalledAppsCache(config.launcherShowSystemApps === true)
 
+  // Initialize the Paste Manager (clipboard history). The watcher only starts
+  // when the feature is enabled in config.
+  pasteManager = new PasteManager({
+    baseDir: join(app.getPath('userData'), 'paste'),
+    getSettings: () => readConfig().pasteManager,
+    saveSettings: (settings) => {
+      updateConfig({ pasteManager: settings })
+    },
+    getOpenAIConfig: () => {
+      const current = readConfig()
+      return {
+        apiKey: current.apiKey || process.env.OPENAI_API_KEY || '',
+        proxyUrl: resolveOpenAIProxyUrl(current.proxyUrl)
+      }
+    },
+    onChanged: () => {
+      // Only push live updates while the window is actually open; on show the
+      // renderer reloads the full list anyway.
+      if (pasteWindow && !pasteWindow.isDestroyed() && pasteWindow.isVisible()) {
+        pasteWindow.webContents.send('paste:changed')
+      }
+    }
+  })
+  void pasteManager.init()
+  registerPasteProtocol()
+
   registerShortcuts(config)
 
   app.on('activate', () => {
@@ -2535,6 +2752,9 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+
+  void pasteManager?.dispose()
+  pasteManager = null
 
   terminalManager.disposeAll()
   
@@ -3174,6 +3394,113 @@ ipcMain.on('update-shortcuts', (_event, rawShortcuts: unknown) => {
 
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.webContents.send('shortcuts-updated', shortcuts)
+  }
+})
+
+function broadcastPasteSettings(settings: PasteManagerSettings): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('paste:settings-updated', settings)
+  }
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.webContents.send('paste:settings-updated', settings)
+  }
+  if (pasteWindow && !pasteWindow.isDestroyed()) {
+    pasteWindow.webContents.send('paste:settings-updated', settings)
+  }
+}
+
+ipcMain.handle('paste:list', () => {
+  return pasteManager?.list() ?? []
+})
+
+ipcMain.handle('paste:get-detail', (_event, rawId: unknown) => {
+  const id = typeof rawId === 'string' ? rawId : ''
+  if (!id || !pasteManager) return null
+  return pasteManager.getDetail(id)
+})
+
+ipcMain.handle('paste:get-settings', () => {
+  return readConfig().pasteManager
+})
+
+ipcMain.handle('paste:update-settings', (_event, rawPatch: unknown) => {
+  if (!pasteManager) return readConfig().pasteManager
+  const patch = rawPatch && typeof rawPatch === 'object' ? (rawPatch as Partial<PasteManagerSettings>) : {}
+  const settings = pasteManager.updateSettings(patch)
+  registerShortcuts(readConfig())
+  broadcastPasteSettings(settings)
+  return settings
+})
+
+ipcMain.handle('paste:set-pinned', (_event, payload: { id?: unknown; pinned?: unknown }) => {
+  const id = typeof payload?.id === 'string' ? payload.id : ''
+  if (!id || !pasteManager) return { success: false }
+  return { success: pasteManager.setPinned(id, payload?.pinned === true) }
+})
+
+ipcMain.handle('paste:delete', async (_event, rawId: unknown) => {
+  const id = typeof rawId === 'string' ? rawId : ''
+  if (!id || !pasteManager) return { success: false }
+  return { success: await pasteManager.delete(id) }
+})
+
+ipcMain.handle('paste:clear', async (_event, rawKeepPinned: unknown) => {
+  if (!pasteManager) return { removed: 0 }
+  const removed = await pasteManager.clear(rawKeepPinned === true)
+  return { removed }
+})
+
+ipcMain.handle('paste:copy', async (_event, payload: { id?: unknown; asPlainText?: unknown }) => {
+  const id = typeof payload?.id === 'string' ? payload.id : ''
+  if (!id || !pasteManager) return { success: false }
+  const success = await pasteManager.copy(id, payload?.asPlainText === true)
+  return { success }
+})
+
+ipcMain.handle('paste:save-image', async (_event, rawId: unknown) => {
+  const id = typeof rawId === 'string' ? rawId : ''
+  const meta = pasteManager?.getMeta(id)
+  if (!pasteManager || !meta || meta.type !== 'image') {
+    return { success: false }
+  }
+
+  const defaultName = `${(meta.preview || 'clipboard-image').replace(/[\\/:*?"<>|]/g, '_')}.png`
+  const options = {
+    title: 'Save image',
+    defaultPath: defaultName,
+    filters: [{ name: 'PNG image', extensions: ['png'] }]
+  }
+
+  suppressPasteBlur = true
+  try {
+    const result =
+      pasteWindow && !pasteWindow.isDestroyed()
+        ? await dialog.showSaveDialog(pasteWindow, options)
+        : await dialog.showSaveDialog(options)
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true }
+    }
+
+    const success = await pasteManager.saveImage(id, result.filePath)
+    return { success, path: result.filePath }
+  } finally {
+    suppressPasteBlur = false
+  }
+})
+
+ipcMain.on('paste:hide-window', () => {
+  hidePasteWindow()
+})
+
+ipcMain.on('paste:ask-in-chat', (_event, rawText: unknown) => {
+  const text = typeof rawText === 'string' ? rawText.trim() : ''
+  if (!text) return
+
+  hidePasteWindow()
+  showWindow()
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('covenant:chat-prompt', text)
   }
 })
 
