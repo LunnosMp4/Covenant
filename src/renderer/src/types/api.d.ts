@@ -2,6 +2,7 @@ import type { AppConfig, ButtonVisibility, ReasoningEffort, ShortcutConfig } fro
 import type { McpServer } from '../../../shared/mcp'
 import type { Preprompt } from './preprompt'
 import type { LauncherApp } from './launcher-app'
+import type { InstalledApp } from '../../../shared/launcher'
 import type { Workflow, WorkflowLogPayload, WorkflowStatusUpdatePayload } from './workflow'
 import type { Task } from './task'
 import type { ClearCompletedResult, GamificationState } from './gamification'
@@ -112,6 +113,10 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
   }
   selectFile: () => Promise<string>
   getFavicon: (url: string) => Promise<string>
+  installedApps: {
+    list: () => Promise<InstalledApp[]>
+    icon: (appPath: string) => Promise<string>
+  }
   launchApp: (path: string, launchArguments: string) => Promise<{ success: boolean; error?: string }>
   executeWorkflow: (workflow: Partial<Workflow>) => Promise<{ success: boolean; error?: string }>
   onWorkflowStatusUpdate: (callback: (payload: WorkflowStatusUpdatePayload) => void) => () => void

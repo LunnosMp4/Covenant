@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback, type CSSProperties } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import ModulePopup, { type ActivePopup, type PopupItem } from './components/ModulePopup'
+import LauncherResults from './components/LauncherResults'
 import TerminalView from './components/TerminalView'
 import VoiceWaveform from './components/VoiceWaveform'
 import ConfirmDeleteModal from './components/ConfirmDeleteModal'
@@ -26,6 +27,7 @@ import {
   XIcon
 } from './components/icons'
 import { createId } from './utils/helpers'
+import { rankLauncherItems } from './utils/fuzzy'
 import { formatTargetsSummary, normalizeLaunchTargets } from './utils/launcherTargets'
 import {
   computeContextStats,
@@ -57,6 +59,7 @@ import type {
   Source
 } from '../../shared/chat'
 import type { LauncherApp, LauncherAppTarget } from './types/launcher-app'
+import type { InstalledApp, LauncherItem } from '../../shared/launcher'
 import type { Preprompt } from './types/preprompt'
 import type { Task } from './types/task'
 import type { GamificationState, XpToastState } from './types/gamification'
@@ -311,6 +314,10 @@ export default function App(): JSX.Element {
   const [activeStreamConversationId, setActiveStreamConversationId] = useState<string | null>(null)
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
   const [apps, setApps] = useState<LauncherApp[]>([])
+  const [installedApps, setInstalledApps] = useState<InstalledApp[]>([])
+  const [launcherSelectedIndex, setLauncherSelectedIndex] = useState(0)
+  const [launcherIcons, setLauncherIcons] = useState<Record<string, string>>({})
+  const [launcherDismissed, setLauncherDismissed] = useState(false)
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [preprompts, setPreprompts] = useState<Preprompt[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
@@ -682,6 +689,19 @@ export default function App(): JSX.Element {
     }
   }, [])
 
+  const loadInstalledApps = useCallback(async (): Promise<void> => {
+    if (!window.api?.installedApps?.list) {
+      setInstalledApps([])
+      return
+    }
+
+    try {
+      setInstalledApps(await window.api.installedApps.list())
+    } catch {
+      setInstalledApps([])
+    }
+  }, [])
+
   const loadWorkflows = useCallback(async (): Promise<void> => {
     if (!window.api?.store.getWorkflows) {
       setWorkflows([])
@@ -933,6 +953,10 @@ export default function App(): JSX.Element {
       void loadGamification()
     }
   }, [activePopup, loadApps, loadPreprompts, loadTasks, loadWorkflows, loadGamification])
+
+  useEffect(() => {
+    void loadInstalledApps()
+  }, [loadInstalledApps])
 
   useEffect(() => {
     if (!activeConversation) {
@@ -1758,8 +1782,145 @@ export default function App(): JSX.Element {
     [activePopup, appendAssistantMessage, mode]
   )
 
+  const launcherPool = useMemo<LauncherItem[]>(
+    () =>
+      installedApps.map((app) => ({
+        id: app.id,
+        kind: 'app',
+        title: app.title,
+        score: 0,
+        app: { path: app.path }
+      })),
+    [installedApps]
+  )
+
+  const launcherResults = useMemo<LauncherItem[]>(() => {
+    if (mode !== 'ai') return []
+
+    const trimmedQuery = query.trim()
+    if (!trimmedQuery) return []
+
+    return rankLauncherItems(trimmedQuery, launcherPool, 8)
+  }, [mode, query, launcherPool])
+
+  const launcherVisible =
+    mode === 'ai' &&
+    !isChatOpen &&
+    !activePopup &&
+    !launcherDismissed &&
+    query.trim().length > 0 &&
+    launcherResults.length > 0
+
+  const launcherDisplayItems = useMemo<LauncherItem[]>(
+    () =>
+      launcherResults.map((item) =>
+        item.app && launcherIcons[item.app.path]
+          ? { ...item, iconBase64: launcherIcons[item.app.path] }
+          : item
+      ),
+    [launcherResults, launcherIcons]
+  )
+
+  useEffect(() => {
+    setLauncherSelectedIndex(0)
+    setLauncherDismissed(false)
+  }, [query])
+
+  useEffect(() => {
+    setLauncherSelectedIndex((current) =>
+      Math.min(current, Math.max(launcherResults.length - 1, 0))
+    )
+  }, [launcherResults.length])
+
+  useEffect(() => {
+    if (!launcherVisible) return
+
+    const missing = launcherResults.filter(
+      (item) => item.app && launcherIcons[item.app.path] === undefined
+    )
+    if (missing.length === 0) return
+
+    let cancelled = false
+    void Promise.all(
+      missing.map(async (item) => {
+        const appPath = item.app?.path
+        if (!appPath) return
+        const icon = await window.api?.installedApps?.icon?.(appPath)
+        if (cancelled) return
+        setLauncherIcons((previous) => ({
+          ...previous,
+          [appPath]: icon ?? ''
+        }))
+      })
+    )
+
+    return () => {
+      cancelled = true
+    }
+  }, [launcherVisible, launcherResults, launcherIcons])
+
+  const runLauncherItem = useCallback(
+    (item: LauncherItem | undefined) => {
+      if (!item) return
+
+      if (item.kind === 'app' && item.app) {
+        setLauncherDismissed(true)
+        const launchApp = window.api?.launchApp
+        if (!launchApp) {
+          appendAssistantMessage('App launching is only available in the Electron app.')
+          return
+        }
+
+        void (async () => {
+          const result = await launchApp(item.app!.path, item.app!.arguments ?? '')
+          if (!result.success) {
+            appendAssistantMessage(`Error: ${result.error ?? 'Unable to launch application.'}`)
+            return
+          }
+          handleClose()
+        })().catch((error) => {
+          const message = error instanceof Error ? error.message : 'Unable to launch application.'
+          appendAssistantMessage(`Error: ${message}`)
+        })
+        return
+      }
+
+      if (item.kind === 'ai') {
+        setLauncherDismissed(true)
+        void handleSubmit()
+      }
+    },
+    [appendAssistantMessage, handleClose, handleSubmit]
+  )
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (launcherVisible) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault()
+          setLauncherSelectedIndex((current) => (current + 1) % launcherResults.length)
+          return
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault()
+          setLauncherSelectedIndex(
+            (current) => (current - 1 + launcherResults.length) % launcherResults.length
+          )
+          return
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          setLauncherDismissed(true)
+          return
+        }
+        if (e.key === 'Enter') {
+          if (isComposingRef.current) return
+          e.preventDefault()
+          runLauncherItem(launcherResults[launcherSelectedIndex])
+          return
+        }
+      }
+
       if (e.key === 'Escape') {
         if (showImagePanel) {
           setShowImagePanel(false)
@@ -1797,7 +1958,16 @@ export default function App(): JSX.Element {
         }
       }
     },
-    [activePopup, showImagePanel, handleClose, handleSubmit]
+    [
+      activePopup,
+      showImagePanel,
+      handleClose,
+      handleSubmit,
+      launcherVisible,
+      launcherResults,
+      launcherSelectedIndex,
+      runLauncherItem
+    ]
   )
 
   const toggleRecording = useCallback(async () => {
@@ -2733,6 +2903,18 @@ export default function App(): JSX.Element {
                 backdropFilter: 'blur(40px)'
               }}
             >
+            <AnimatePresence>
+              {launcherVisible && (
+                <LauncherResults
+                  items={launcherDisplayItems}
+                  selectedIndex={launcherSelectedIndex}
+                  themeGradient={themeGradient}
+                  onHover={setLauncherSelectedIndex}
+                  onSelect={runLauncherItem}
+                />
+              )}
+            </AnimatePresence>
+
             <AnimatePresence mode="wait">
               {mode === 'ai' && activePopup && isAppVisible && (
                 <ModulePopup

@@ -11,14 +11,7 @@ import {
   DEFAULT_TERMINAL_FONT,
   normalizeTerminalFont
 } from './constants/terminalFonts'
-import {
-  DEFAULT_THEME_GRADIENT,
-  THEME_OPTIONS,
-  buildCustomGradientClass,
-  isCustomGradient,
-  normalizeThemeGradient,
-  parseGradientColors
-} from './constants/theme'
+import { DEFAULT_THEME_GRADIENT, THEME_OPTIONS, normalizeThemeGradient } from './constants/theme'
 import type { AppConfig, ButtonVisibility, ReasoningEffort, ShortcutConfig } from '../../shared/config'
 import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_REASONING_EFFORT, DEFAULT_SHORTCUTS, REASONING_EFFORT_OPTIONS, modelSupportsExtendedParams, modelSupportsWebSearch } from '../../shared/config'
 import type { UpdateStatus } from '../../shared/update'
@@ -29,9 +22,9 @@ import type { Workflow } from './types/workflow'
 import { getAppBadgeText } from './utils/helpers'
 import { formatTargetsSummary, normalizeLaunchTargets } from './utils/launcherTargets'
 
-type SettingsTab = 'general' | 'terminal' | 'appLauncher' | 'workflow' | 'preprompts' | 'mcp'
+type SettingsTab = 'general' | 'appearance' | 'terminal' | 'appLauncher' | 'workflow' | 'preprompts' | 'mcp'
 
-const VALID_SETTINGS_TABS: readonly SettingsTab[] = ['general', 'terminal', 'appLauncher', 'workflow', 'preprompts', 'mcp']
+const VALID_SETTINGS_TABS: readonly SettingsTab[] = ['general', 'appearance', 'terminal', 'appLauncher', 'workflow', 'preprompts', 'mcp']
 
 const SETTINGS_WINDOW_ENTER_TRANSITION: Transition = { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
 const SETTINGS_WINDOW_EXIT_TRANSITION: Transition = { duration: 0.16, ease: [0.22, 1, 0.36, 1] }
@@ -54,6 +47,18 @@ function SidebarGlyph({ tab }: { tab: SettingsTab }): JSX.Element {
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
         <circle cx="12" cy="12" r="3" />
         <path d="M19.4 15a1 1 0 0 0 .2 1.1l.1.1a2 2 0 0 1 0 2.8l-.7.7a2 2 0 0 1-2.8 0l-.1-.1a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.9V21a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-.2a1 1 0 0 0-.6-.9 1 1 0 0 0-1.1.2l-.1.1a2 2 0 0 1-2.8 0l-.7-.7a2 2 0 0 1 0-2.8l.1-.1a1 1 0 0 0 .2-1.1 1 1 0 0 0-.9-.6H3a2 2 0 0 1-2-2v-1a2 2 0 0 1 2-2h.2a1 1 0 0 0 .9-.6 1 1 0 0 0-.2-1.1l-.1-.1a2 2 0 0 1 0-2.8l.7-.7a2 2 0 0 1 2.8 0l.1.1a1 1 0 0 0 1.1.2h.1a1 1 0 0 0 .6-.9V3a2 2 0 0 1 2-2h1a2 2 0 0 1 2 2v.2a1 1 0 0 0 .6.9h.1a1 1 0 0 0 1.1-.2l.1-.1a2 2 0 0 1 2.8 0l.7.7a2 2 0 0 1 0 2.8l-.1.1a1 1 0 0 0-.2 1.1v.1a1 1 0 0 0 .9.6H21a2 2 0 0 1 2 2v1a2 2 0 0 1-2 2h-.2a1 1 0 0 0-.9.6z" />
+      </svg>
+    )
+  }
+
+  if (tab === 'appearance') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+        <circle cx="13.5" cy="6.5" r="1.5" fill="currentColor" />
+        <circle cx="17.5" cy="10.5" r="1.5" fill="currentColor" />
+        <circle cx="8.5" cy="7.5" r="1.5" fill="currentColor" />
+        <circle cx="6.5" cy="12.5" r="1.5" fill="currentColor" />
+        <path d="M12 2a10 10 0 0 0 0 20 2 2 0 0 0 2-2 2 2 0 0 0-.6-1.4 1.9 1.9 0 0 1 1.35-3.25H16a6 6 0 0 0 6-6 10 10 0 0 0-10-7.35Z" />
       </svg>
     )
   }
@@ -346,6 +351,78 @@ function getUpdateStatusLabel(status: UpdateStatus): string {
   }
 }
 
+interface AppearanceTabProps {
+  selectedTheme: string
+  onSelectTheme: (gradientClass: string) => void
+  buttonVisibility: ButtonVisibility
+  onButtonVisibilityChange: (value: ButtonVisibility) => void
+}
+
+function AppearanceTab({
+  selectedTheme,
+  onSelectTheme,
+  buttonVisibility,
+  onButtonVisibilityChange
+}: AppearanceTabProps): JSX.Element {
+  return (
+    <div className="space-y-6">
+      <SectionCard
+        title="Theme"
+        description="Pick a gradient preset. Changes apply instantly across windows."
+      >
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {THEME_OPTIONS.map((themeOption) => {
+            const isActive = selectedTheme === themeOption.gradientClass
+
+            return (
+              <button
+                key={themeOption.id}
+                type="button"
+                onClick={() => onSelectTheme(themeOption.gradientClass)}
+                className={`rounded-xl border p-3 text-left transition-colors ${
+                  isActive
+                    ? 'border-neutral-500 bg-neutral-800/80'
+                    : 'border-neutral-800 bg-neutral-900/70 hover:border-neutral-600 hover:bg-neutral-800/60'
+                }`}
+              >
+                <div className={`h-10 rounded-lg bg-gradient-to-r ${themeOption.gradientClass}`} />
+                <p className="mt-3 text-sm font-medium text-neutral-100">{themeOption.label}</p>
+                <p className="mt-1 text-xs text-neutral-400">{themeOption.description}</p>
+              </button>
+            )
+          })}
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Bar Buttons"
+        description="Choose which buttons appear on the floating command bar. The Settings button is always visible."
+      >
+        <div className="space-y-4">
+          <MinimalistToggle
+            checked={buttonVisibility.appLauncher}
+            onChange={(checked) => onButtonVisibilityChange({ ...buttonVisibility, appLauncher: checked })}
+            label="App Launcher"
+            description="Show the App Launcher button to quickly open your favorite applications."
+          />
+          <MinimalistToggle
+            checked={buttonVisibility.workflow}
+            onChange={(checked) => onButtonVisibilityChange({ ...buttonVisibility, workflow: checked })}
+            label="Workflows"
+            description="Show the Workflows button to run saved scripts and automations."
+          />
+          <MinimalistToggle
+            checked={buttonVisibility.tasks}
+            onChange={(checked) => onButtonVisibilityChange({ ...buttonVisibility, tasks: checked })}
+            label="Tasks"
+            description="Show the Tasks button to quickly capture and check off to-dos."
+          />
+        </div>
+      </SectionCard>
+    </div>
+  )
+}
+
 interface GeneralTabProps {
   apiKey: string
   onApiKeyChange: (value: string) => void
@@ -356,14 +433,10 @@ interface GeneralTabProps {
   onSaveOpenAISettings: () => void
   isSavingApiKey: boolean
   saveFeedbackMessage: string
-  selectedTheme: string
-  onSelectTheme: (gradientClass: string) => void
   launchOnStartup: boolean
   onLaunchOnStartupChange: (value: boolean) => void
   chatModel: string
   onChatModelChange: (value: string) => void
-  buttonVisibility: ButtonVisibility
-  onButtonVisibilityChange: (value: ButtonVisibility) => void
   reasoningEffort: ReasoningEffort
   onReasoningEffortChange: (value: ReasoningEffort) => void
   enableWebSearch: boolean
@@ -389,14 +462,10 @@ function GeneralTab({
   onSaveOpenAISettings,
   isSavingApiKey,
   saveFeedbackMessage,
-  selectedTheme,
-  onSelectTheme,
   launchOnStartup,
   onLaunchOnStartupChange,
   chatModel,
   onChatModelChange,
-  buttonVisibility,
-  onButtonVisibilityChange,
   reasoningEffort,
   onReasoningEffortChange,
   enableWebSearch,
@@ -411,9 +480,6 @@ function GeneralTab({
   shortcuts,
   onShortcutChange
 }: GeneralTabProps): JSX.Element {
-  const initialCustomColors = parseGradientColors(selectedTheme)
-  const [customFrom, setCustomFrom] = useState(initialCustomColors?.from ?? '#1c0f03')
-  const [customTo, setCustomTo] = useState(initialCustomColors?.to ?? '#0a0a0a')
   return (
     <div className="space-y-6">
       <SectionCard
@@ -490,75 +556,6 @@ function GeneralTab({
           <p className="mt-2 text-xs text-neutral-500">Saved locally in the native user data folder as part of config.json.</p>
           {saveFeedbackMessage ? <p className="mt-2 text-xs text-emerald-300">{saveFeedbackMessage}</p> : null}
         </div>
-      </SectionCard>
-
-      <SectionCard
-        title="Appearance"
-        description="Pick a gradient preset or build your own. Changes apply instantly across windows."
-      >
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {THEME_OPTIONS.map((themeOption) => {
-            const isActive = selectedTheme === themeOption.gradientClass
-
-            return (
-              <button
-                key={themeOption.id}
-                type="button"
-                onClick={() => onSelectTheme(themeOption.gradientClass)}
-                className={`rounded-xl border p-3 text-left transition-colors ${
-                  isActive
-                    ? 'border-neutral-500 bg-neutral-800/80'
-                    : 'border-neutral-800 bg-neutral-900/70 hover:border-neutral-600 hover:bg-neutral-800/60'
-                }`}
-              >
-                <div className={`h-10 rounded-lg bg-gradient-to-r ${themeOption.gradientClass}`} />
-                <p className="mt-3 text-sm font-medium text-neutral-100">{themeOption.label}</p>
-                <p className="mt-1 text-xs text-neutral-400">{themeOption.description}</p>
-              </button>
-            )
-          })}
-        </div>
-
-        <div className="mt-4 border-t border-neutral-800 pt-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-neutral-100">Custom gradient</p>
-              <p className="mt-1 text-xs text-neutral-400">Pick two colors to build your own background.</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => onSelectTheme(buildCustomGradientClass(customFrom, customTo))}
-              className="rounded-lg bg-neutral-100 px-3 py-1.5 text-xs font-medium text-neutral-900 transition-colors hover:bg-white"
-            >
-              Apply custom
-            </button>
-          </div>
-          <div className="mt-3 flex items-center gap-5">
-            <label className="flex items-center gap-2 text-xs text-neutral-400">
-              <input
-                type="color"
-                value={customFrom}
-                onChange={(event) => setCustomFrom(event.target.value)}
-                className="h-8 w-14 cursor-pointer rounded border border-neutral-700 bg-neutral-900"
-              />
-              From
-            </label>
-            <label className="flex items-center gap-2 text-xs text-neutral-400">
-              <input
-                type="color"
-                value={customTo}
-                onChange={(event) => setCustomTo(event.target.value)}
-                className="h-8 w-14 cursor-pointer rounded border border-neutral-700 bg-neutral-900"
-              />
-              To
-            </label>
-            {isCustomGradient(selectedTheme) ? (
-              <span className="text-xs text-emerald-300">Custom gradient active</span>
-            ) : null}
-          </div>
-        </div>
-          </div>
       </SectionCard>
 
       <SectionCard
@@ -693,32 +690,6 @@ function GeneralTab({
             onChange={onAutoCollapseReasoningChange}
             label="Auto-collapse Reasoning"
             description="Automatically collapse the reasoning panel after the response completes."
-          />
-        </div>
-      </SectionCard>
-
-      <SectionCard
-        title="Bar Buttons"
-        description="Choose which buttons appear on the floating command bar. The Settings button is always visible."
-      >
-        <div className="space-y-4">
-          <MinimalistToggle
-            checked={buttonVisibility.appLauncher}
-            onChange={(checked) => onButtonVisibilityChange({ ...buttonVisibility, appLauncher: checked })}
-            label="App Launcher"
-            description="Show the App Launcher button to quickly open your favorite applications."
-          />
-          <MinimalistToggle
-            checked={buttonVisibility.workflow}
-            onChange={(checked) => onButtonVisibilityChange({ ...buttonVisibility, workflow: checked })}
-            label="Workflows"
-            description="Show the Workflows button to run saved scripts and automations."
-          />
-          <MinimalistToggle
-            checked={buttonVisibility.tasks}
-            onChange={(checked) => onButtonVisibilityChange({ ...buttonVisibility, tasks: checked })}
-            label="Tasks"
-            description="Show the Tasks button to quickly capture and check off to-dos."
           />
         </div>
       </SectionCard>
@@ -1959,6 +1930,7 @@ const handleMinimizeWindow = (): void => {
 
   const pageTitle = useMemo(() => {
     if (activeTab === 'general') return 'General'
+    if (activeTab === 'appearance') return 'Appearance'
     if (activeTab === 'terminal') return 'Terminal'
     if (activeTab === 'appLauncher') return 'App Launcher'
     if (activeTab === 'workflow') return 'Workflows'
@@ -2017,6 +1989,7 @@ const handleMinimizeWindow = (): void => {
             <nav className="space-y-1">
               {[
                 { id: 'general' as const, label: 'General' },
+                { id: 'appearance' as const, label: 'Appearance' },
                 { id: 'terminal' as const, label: 'Terminal' },
                 { id: 'appLauncher' as const, label: 'App Launcher' },
                 { id: 'workflow' as const, label: 'Workflows' },
@@ -2063,14 +2036,10 @@ const handleMinimizeWindow = (): void => {
                 onSaveOpenAISettings={handleSaveOpenAISettings}
                 isSavingApiKey={isSavingApiKey}
                 saveFeedbackMessage={saveFeedbackMessage}
-                selectedTheme={selectedTheme}
-                onSelectTheme={handleThemeSelect}
                 launchOnStartup={launchOnStartup}
                 onLaunchOnStartupChange={handleLaunchOnStartupChange}
                 chatModel={chatModel}
                 onChatModelChange={handleChatModelChange}
-                buttonVisibility={buttonVisibility}
-                onButtonVisibilityChange={handleButtonVisibilityChange}
                 reasoningEffort={reasoningEffort}
                 onReasoningEffortChange={handleReasoningEffortChange}
                 enableWebSearch={enableWebSearch}
@@ -2084,6 +2053,14 @@ const handleMinimizeWindow = (): void => {
                 onInstallUpdate={handleInstallUpdate}
                 shortcuts={shortcuts}
                 onShortcutChange={handleShortcutChange}
+              />
+            )}
+            {activeTab === 'appearance' && (
+              <AppearanceTab
+                selectedTheme={selectedTheme}
+                onSelectTheme={handleThemeSelect}
+                buttonVisibility={buttonVisibility}
+                onButtonVisibilityChange={handleButtonVisibilityChange}
               />
             )}
             {activeTab === 'terminal' && (

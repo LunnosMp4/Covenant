@@ -74,6 +74,7 @@ import {
 } from '../shared/gamification'
 import { evaluateTask, evaluateTaskHeuristically } from './services/taskEvaluator'
 import { openLogsFolder, setupLogger } from './logger'
+import { getAppIcon, getInstalledApps, warmInstalledAppsCache } from './installedApps'
 import { checkForUpdatesManually, getUpdateStatus, quitAndInstallUpdate, setupAutoUpdater } from './updater'
 
 // Expose V8's garbage collector so we can force a collection on window hide.
@@ -1272,6 +1273,14 @@ async function launchSavedApp(payload: { path?: string; arguments?: string }): P
     return
   }
 
+  if (isWindows && /\.(lnk|url)$/i.test(normalizedPath)) {
+    const openError = await shell.openPath(normalizedPath)
+    if (openError) {
+      throw new Error(openError)
+    }
+    return
+  }
+
   await spawnDetached(normalizedPath, parsedArguments)
 }
 
@@ -2457,6 +2466,13 @@ app.whenReady().then(() => {
     }
   })
 
+  // Covenant is a background command-bar app. On macOS, hide the Dock icon and
+  // application menu so it never appears as a regular foreground "Electron"
+  // app. Packaged builds enforce this via LSUIElement; this covers dev too.
+  if (isMac) {
+    app.dock?.hide()
+  }
+
   const config = readConfig()
 
   configureMcpClient({ name: 'Covenant', version: app.getVersion() })
@@ -2479,6 +2495,10 @@ app.whenReady().then(() => {
   
   createWindow()
   createTray()
+
+  // Build the application index in the background so the first keystroke in
+  // the search field is already instant.
+  warmInstalledAppsCache()
 
   registerShortcuts(config)
 
@@ -2603,6 +2623,14 @@ ipcMain.handle('save-app', (_event, payload: Partial<LauncherApp>) => {
 
 ipcMain.handle('delete-app', (_event, appId: string) => {
   return deleteApp(appId)
+})
+
+ipcMain.handle('get-installed-apps', () => {
+  return getInstalledApps()
+})
+
+ipcMain.handle('get-app-icon', (_event, appPath: string) => {
+  return getAppIcon(appPath)
 })
 
 ipcMain.handle('get-workflows', () => {

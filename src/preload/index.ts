@@ -4,6 +4,7 @@ import type { ButtonVisibility, ReasoningEffort, ShortcutConfig } from '../share
 import type { McpServer } from '../shared/mcp'
 import type { ChatConversation, ChatRole, ChatStreamEvent, InputContent } from '../shared/chat'
 import type { LauncherApp } from '../shared/launcher-app'
+import type { InstalledApp } from '../shared/launcher'
 import type { Preprompt } from '../shared/preprompt'
 import type { TerminalExitPayload, TerminalStartResult } from '../shared/terminal'
 import type { ClearCompletedResult, Task } from '../shared/task'
@@ -329,6 +330,10 @@ const api = {
   },
   selectFile: () => ipcRenderer.invoke('select-file') as Promise<string>,
   getFavicon: (url: string) => ipcRenderer.invoke('get-favicon', url) as Promise<string>,
+  installedApps: {
+    list: () => ipcRenderer.invoke('get-installed-apps') as Promise<InstalledApp[]>,
+    icon: (appPath: string) => ipcRenderer.invoke('get-app-icon', appPath) as Promise<string>
+  },
   launchApp: (path: string, launchArguments: string) =>
     ipcRenderer.invoke('launch-app', {
       path,
