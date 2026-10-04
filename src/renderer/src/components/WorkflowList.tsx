@@ -126,7 +126,7 @@ export default function WorkflowList({
                 onClick={() => onRunWorkflow(item)}
                 className="relative z-10 flex w-full items-center gap-3 p-3 text-left text-sm transition-colors duration-150 hover:bg-white/5"
               >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/20 text-xs font-semibold uppercase tracking-[0.08em] text-amber-100">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-neutral-950/20 text-xs font-semibold uppercase tracking-[0.08em] text-amber-100">
                   <WorkflowIcon />
                 </span>
 
@@ -152,7 +152,7 @@ export default function WorkflowList({
                         event.stopPropagation()
                         onToggleLogs(item.id)
                       }}
-                      className="rounded-md border border-white/20 bg-black/35 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-200 hover:border-white/40 hover:bg-black/55"
+                      className="rounded-md border border-white/20 bg-neutral-950/35 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-200 hover:border-white/40 hover:bg-neutral-950/55"
                     >
                       {isLogsVisible ? 'Hide Logs' : 'Show Logs'}
                     </motion.button>
@@ -170,7 +170,7 @@ export default function WorkflowList({
                   transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
                   className="overflow-hidden"
                 >
-                  <div className="bg-black p-2 font-mono text-xs overflow-y-auto max-h-32 whitespace-pre-wrap break-words rounded-lg border border-neutral-800 text-neutral-300">
+                  <div className="bg-neutral-950 p-2 font-mono text-xs overflow-y-auto max-h-32 whitespace-pre-wrap break-words rounded-lg border border-neutral-800 text-neutral-300">
                     {workflowState.logs.length > 0 ? (
                       workflowState.logs.map((line, index) => (
                         <p key={`${item.id}-${index}`} className="leading-5">

@@ -40,11 +40,18 @@ import {
 import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from './constants/terminalFonts'
 import {
   DEFAULT_THEME_GRADIENT,
+  getThemeMode,
   getThemePalette,
   normalizeThemeGradient
 } from './constants/theme'
 import type { ButtonVisibility, ReasoningEffort } from '../../shared/config'
-import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_REASONING_EFFORT } from '../../shared/config'
+import {
+  CHAT_MODEL_OPTIONS,
+  DEFAULT_CHAT_MODEL,
+  DEFAULT_REASONING_EFFORT,
+  DEFAULT_TEXTURE_INTENSITY,
+  TEXTURE_MAX_OPACITY
+} from '../../shared/config'
 import type { UpdateStatus } from '../../shared/update'
 import type {
   ChatConversation,
@@ -335,6 +342,7 @@ export default function App(): JSX.Element {
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT)
   const [enableWebSearch, setEnableWebSearch] = useState(true)
   const [autoCollapseReasoning, setAutoCollapseReasoning] = useState(true)
+  const [textureIntensity, setTextureIntensity] = useState(DEFAULT_TEXTURE_INTENSITY)
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
   const [isPinned, setIsPinned] = useState(false)
   const [sourcesPanelMessageId, setSourcesPanelMessageId] = useState<string | null>(null)
@@ -426,6 +434,9 @@ export default function App(): JSX.Element {
           if (typeof config.autoCollapseReasoning === 'boolean') {
             setAutoCollapseReasoning(config.autoCollapseReasoning)
           }
+          if (typeof config.textureIntensity === 'number') {
+            setTextureIntensity(config.textureIntensity)
+          }
         }
       } catch {
         if (isMounted) {
@@ -465,6 +476,10 @@ export default function App(): JSX.Element {
       setAutoCollapseReasoning(newAutoCollapse)
     })
 
+    const unsubscribeTextureIntensityListener = window.api?.config.onTextureIntensityUpdated?.((newIntensity) => {
+      setTextureIntensity(newIntensity)
+    })
+
     return () => {
       isMounted = false
       if (typeof unsubscribeThemeListener === 'function') {
@@ -487,6 +502,9 @@ export default function App(): JSX.Element {
       }
       if (typeof unsubscribeAutoCollapseReasoningListener === 'function') {
         unsubscribeAutoCollapseReasoningListener()
+      }
+      if (typeof unsubscribeTextureIntensityListener === 'function') {
+        unsubscribeTextureIntensityListener()
       }
     }
   }, [])
@@ -2271,6 +2289,7 @@ export default function App(): JSX.Element {
       '--chat-accent': themePalette.accent,
       '--chat-accent-soft': themePalette.accentSoft,
       '--chat-accent-strong': themePalette.accentStrong,
+      '--chat-on-accent': themePalette.onAccent,
       '--chat-user-text': themePalette.userText,
       '--chat-assistant-text': themePalette.assistantText,
       '--chat-assistant-bg': themePalette.assistantBg,
@@ -2281,6 +2300,17 @@ export default function App(): JSX.Element {
     } as CSSProperties),
     [themePalette]
   )
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', getThemeMode(themeGradient))
+  }, [themeGradient])
+
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      '--texture-opacity',
+      String((textureIntensity / 100) * TEXTURE_MAX_OPACITY)
+    )
+  }, [textureIntensity])
 
   const contextStats = useMemo(
     () => (activeConversation ? computeContextStats(activeConversation.messages, chatModel) : null),
@@ -2379,7 +2409,7 @@ export default function App(): JSX.Element {
                   animate={{ opacity: 1, y: 0, height: 'auto' }}
                   exit={{ opacity: 0, y: -6, height: 0 }}
                   transition={{ duration: 0.2 }}
-                  className={`mb-2 rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} p-4 chat-surface`}
+                  className={`relative mb-2 rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} p-4 chat-surface texture-surface`}
                 >
                   <div className="relative flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -2904,7 +2934,7 @@ export default function App(): JSX.Element {
             </AnimatePresence>
 
             <motion.div
-              className={`relative flex items-center w-full rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10 transition-opacity duration-100 ${
+              className={`relative flex items-center w-full rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10 transition-opacity duration-100 texture-surface ${
                 mode === 'terminal' ? 'opacity-0 pointer-events-none' : 'opacity-100'
               }`}
               style={{
@@ -3011,7 +3041,7 @@ export default function App(): JSX.Element {
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95, y: 10 }}
                   transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-                  className="absolute bottom-full right-0 z-30 mb-3 w-[280px] rounded-2xl border border-white/10 bg-gradient-to-br from-neutral-900 to-neutral-950 p-3 shadow-xl shadow-black/40"
+                  className="texture-surface absolute bottom-full right-0 z-30 mb-3 w-[280px] rounded-2xl border border-white/10 bg-gradient-to-br from-neutral-900 to-neutral-950 p-3 shadow-xl shadow-black/40"
                   style={{ WebkitBackdropFilter: 'blur(30px)', backdropFilter: 'blur(30px)' }}
                 >
                   <p className="px-2 pb-2 text-xs uppercase tracking-[0.12em] text-neutral-500">
@@ -3257,7 +3287,7 @@ export default function App(): JSX.Element {
           aria-hidden={mode !== 'terminal' || !visible}
         >
           <div
-            className={`flex h-full w-[750px] max-w-full flex-col overflow-hidden rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10`}
+            className={`relative flex h-full w-[750px] max-w-full flex-col overflow-hidden rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10 texture-surface`}
             style={{
               WebkitBackdropFilter: 'blur(40px)',
               backdropFilter: 'blur(40px)'
@@ -3269,6 +3299,7 @@ export default function App(): JSX.Element {
                 fontFamily={terminalFont}
                 isExpanded={isExpanded}
                 isPinned={isPinned}
+                isLight={getThemeMode(themeGradient) === 'light'}
                 onTogglePin={handleTogglePin}
                 onToggleExpand={handleToggleExpand}
               />

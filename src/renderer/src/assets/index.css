@@ -6,8 +6,40 @@
   box-sizing: border-box;
 }
 
-:root {
+:root,
+[data-theme='dark'] {
   background: transparent !important;
+  /* `white` utilities resolve here; flips to near-black in light mode. */
+  --ui-fg: 255 255 255;
+  /* Neutral scale (dark): matches Tailwind's default palette. */
+  --n-50: 250 250 250;
+  --n-100: 245 245 245;
+  --n-200: 229 229 229;
+  --n-300: 212 212 212;
+  --n-400: 163 163 163;
+  --n-500: 115 115 115;
+  --n-600: 82 82 82;
+  --n-700: 64 64 64;
+  --n-800: 38 38 38;
+  --n-900: 23 23 23;
+  --n-950: 10 10 10;
+}
+
+[data-theme='light'] {
+  background: transparent !important;
+  --ui-fg: 17 17 17;
+  /* Neutral scale (light): reversed, so surface/text semantics are preserved. */
+  --n-50: 10 10 10;
+  --n-100: 23 23 23;
+  --n-200: 38 38 38;
+  --n-300: 64 64 64;
+  --n-400: 82 82 82;
+  --n-500: 115 115 115;
+  --n-600: 163 163 163;
+  --n-700: 212 212 212;
+  --n-800: 229 229 229;
+  --n-900: 245 245 245;
+  --n-950: 250 250 250;
 }
 
 html,
@@ -100,7 +132,7 @@ body[data-window='settings'] [contenteditable='true'] {
 
 ::highlight(chat-search) {
   background-color: var(--chat-accent, rgba(245, 158, 11, 0.55));
-  color: #111111;
+  color: var(--chat-on-accent, #111111);
 }
 
 .chat-message {
@@ -143,7 +175,7 @@ body[data-window='settings'] [contenteditable='true'] {
 }
 
 .chat-thinking-toggle:hover .chat-thinking-title {
-  color: rgba(255, 255, 255, 0.55);
+  color: rgb(var(--n-50) / 0.55);
 }
 
 .chat-thinking-title {
@@ -154,9 +186,9 @@ body[data-window='settings'] [contenteditable='true'] {
 .chat-thinking-title--streaming {
   background: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0.2) 25%,
-    rgba(255, 255, 255, 0.5) 50%,
-    rgba(255, 255, 255, 0.2) 75%
+    rgb(var(--n-50) / 0.2) 25%,
+    rgb(var(--n-50) / 0.5) 50%,
+    rgb(var(--n-50) / 0.2) 75%
   );
   background-size: 200% 100%;
   -webkit-background-clip: text;
@@ -189,7 +221,7 @@ body[data-window='settings'] [contenteditable='true'] {
 }
 
 .chat-thinking-body {
-  border-left: 2px solid rgba(255, 255, 255, 0.12);
+  border-left: 2px solid rgb(var(--n-50) / 0.12);
   padding-left: 14px;
   margin-top: 6px;
   margin-left: 2px;
@@ -253,7 +285,7 @@ body[data-window='settings'] [contenteditable='true'] {
 }
 
 .chat-thinking-search-query {
-  color: rgba(255, 255, 255, 0.65);
+  color: rgb(var(--n-50) / 0.65);
 }
 
 .chat-thinking-search-sources {
@@ -273,7 +305,7 @@ body[data-window='settings'] [contenteditable='true'] {
 }
 
 .chat-thinking-source:hover {
-  color: rgba(255, 255, 255, 0.75);
+  color: rgb(var(--n-50) / 0.75);
 }
 
 .chat-thinking-source-favicon {
@@ -328,7 +360,7 @@ body[data-window='settings'] [contenteditable='true'] {
 }
 
 .chat-thinking-tool-name {
-  color: rgba(255, 255, 255, 0.65);
+  color: rgb(var(--n-50) / 0.65);
   word-break: break-word;
 }
 
@@ -363,15 +395,15 @@ body[data-window='settings'] [contenteditable='true'] {
   padding: 4px 10px;
   font-size: 11px;
   color: var(--chat-meta-text);
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgb(var(--n-950) / 0.35);
+  border: 1px solid rgb(var(--n-50) / 0.08);
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.15s;
 }
 
 .chat-sources-toggle:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgb(var(--n-50) / 0.06);
 }
 
 .chat-sources-count {
@@ -383,7 +415,7 @@ body[data-window='settings'] [contenteditable='true'] {
   padding: 0 5px;
   font-size: 10px;
   font-weight: 600;
-  color: var(--chat-bg);
+  color: var(--chat-on-accent, #111111);
   background: var(--chat-accent);
   border-radius: 999px;
 }
@@ -391,8 +423,8 @@ body[data-window='settings'] [contenteditable='true'] {
 .chat-sources-panel {
   margin-top: 6px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgb(var(--n-50) / 0.08);
+  background: rgb(var(--n-950) / 0.45);
   overflow: hidden;
 }
 
@@ -403,7 +435,7 @@ body[data-window='settings'] [contenteditable='true'] {
   padding: 8px 10px;
   font-size: 12px;
   color: var(--chat-meta-text);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgb(var(--n-50) / 0.06);
 }
 
 .chat-sources-panel-close {
@@ -421,7 +453,7 @@ body[data-window='settings'] [contenteditable='true'] {
 }
 
 .chat-sources-panel-close:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgb(var(--n-50) / 0.08);
 }
 
 .chat-sources-panel-list {
@@ -441,11 +473,11 @@ body[data-window='settings'] [contenteditable='true'] {
 }
 
 .chat-source-item:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgb(var(--n-50) / 0.05);
 }
 
 .chat-source-item + .chat-source-item {
-  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  border-top: 1px solid rgb(var(--n-50) / 0.04);
 }
 
 .chat-source-favicon {
@@ -466,7 +498,7 @@ body[data-window='settings'] [contenteditable='true'] {
 
 .chat-source-title {
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.75);
+  color: rgb(var(--n-50) / 0.75);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -549,7 +581,7 @@ body[data-window='settings'] [contenteditable='true'] {
   display: inline;
   padding: 0 4px;
   border-radius: 6px;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgb(var(--n-950) / 0.45);
   font-family: 'Cascadia Mono', 'Fira Code', 'SFMono-Regular', monospace;
   font-size: 12px;
   word-break: break-all;
@@ -559,7 +591,7 @@ body[data-window='settings'] [contenteditable='true'] {
   margin: 8px 0;
   padding: 10px 12px;
   border-radius: 12px;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgb(var(--n-950) / 0.55);
   overflow-x: auto;
 }
 
@@ -578,7 +610,7 @@ body[data-window='settings'] [contenteditable='true'] {
   align-items: center;
   justify-content: space-between;
   padding: 4px 12px;
-  background: rgba(0, 0, 0, 0.35);
+  background: rgb(var(--n-950) / 0.35);
   border-radius: 12px 12px 0 0;
   border-bottom: none;
 }
@@ -587,7 +619,7 @@ body[data-window='settings'] [contenteditable='true'] {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.4);
+  color: rgb(var(--n-50) / 0.4);
 }
 
 .chat-code-block-actions {
@@ -603,17 +635,17 @@ body[data-window='settings'] [contenteditable='true'] {
   width: 24px;
   height: 24px;
   border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgb(var(--n-50) / 0.1);
   background: transparent;
-  color: rgba(255, 255, 255, 0.4);
+  color: rgb(var(--n-50) / 0.4);
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
 .chat-code-block-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.8);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: rgb(var(--n-50) / 0.08);
+  color: rgb(var(--n-50) / 0.8);
+  border-color: rgb(var(--n-50) / 0.2);
 }
 
 .chat-code-block-btn-sent {
@@ -651,9 +683,9 @@ body[data-window='settings'] [contenteditable='true'] {
 .task-shimmer {
   background: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0.35) 0%,
-    rgba(255, 255, 255, 0.7) 50%,
-    rgba(255, 255, 255, 0.35) 100%
+    rgb(var(--n-50) / 0.35) 0%,
+    rgb(var(--n-50) / 0.7) 50%,
+    rgb(var(--n-50) / 0.35) 100%
   );
   background-size: 200% 100%;
   -webkit-background-clip: text;
@@ -669,4 +701,69 @@ body[data-window='settings'] [contenteditable='true'] {
   100% {
     background-position: -200% 0;
   }
+}
+
+/* ── Theme texture / film-grain overlay ── */
+.texture-surface::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  mix-blend-mode: soft-light;
+  opacity: var(--texture-opacity, 0);
+  transition: opacity 0.2s ease;
+}
+
+/* On light surfaces soft-light barely registers; normal blending reads as visible grain. */
+[data-theme='light'] .texture-surface::after {
+  mix-blend-mode: normal;
+}
+
+/* ── Semantic label/tag/icon colors on light surfaces ──
+   Dark themes use light shades (e.g. text-emerald-300) which vanish on
+   light backgrounds, so shift them to darker shades when in light mode. */
+[data-theme='light'] .text-emerald-50 {
+  color: #065f46;
+}
+[data-theme='light'] .text-emerald-50\/65 {
+  color: rgb(6 95 70 / 0.85);
+}
+[data-theme='light'] .text-emerald-100 {
+  color: #065f46;
+}
+[data-theme='light'] .text-emerald-300 {
+  color: #047857;
+}
+[data-theme='light'] .text-emerald-400 {
+  color: #059669;
+}
+[data-theme='light'] .text-red-200 {
+  color: #991b1b;
+}
+[data-theme='light'] .text-red-300 {
+  color: #b91c1c;
+}
+[data-theme='light'] .text-red-400 {
+  color: #dc2626;
+}
+[data-theme='light'] .text-amber-100 {
+  color: #92400e;
+}
+[data-theme='light'] .text-amber-200 {
+  color: #b45309;
+}
+[data-theme='light'] .text-amber-300 {
+  color: #b45309;
+}
+[data-theme='light'] .text-amber-400 {
+  color: #d97706;
+}
+[data-theme='light'] .text-rose-100 {
+  color: #be123c;
+}
+[data-theme='light'] .hover\:text-red-300:hover {
+  color: #b91c1c;
 }

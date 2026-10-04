@@ -49,6 +49,7 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     updateReasoningEffort: (reasoningEffort: ReasoningEffort) => void
     updateWebSearch: (enableWebSearch: boolean) => void
     updateAutoCollapseReasoning: (autoCollapseReasoning: boolean) => void
+    updateTextureIntensity: (textureIntensity: number) => void
     updateAutoUpdate: (enabled: boolean) => void
     checkForUpdates: () => Promise<UpdateStatus>
     getUpdateStatus: () => Promise<UpdateStatus>
@@ -65,6 +66,7 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     onReasoningEffortUpdated: (callback: (reasoningEffort: ReasoningEffort) => void) => () => void
     onWebSearchUpdated: (callback: (enableWebSearch: boolean) => void) => () => void
     onAutoCollapseReasoningUpdated: (callback: (autoCollapseReasoning: boolean) => void) => () => void
+    onTextureIntensityUpdated: (callback: (textureIntensity: number) => void) => () => void
     onShortcutsUpdated: (callback: (shortcuts: ShortcutConfig) => void) => () => void
   }
   chat: {
@@ -162,6 +164,8 @@ refreshMcpServerTools: (serverId: string) => Promise<McpServer[]>
       updateReasoningEffort: (reasoningEffort: ReasoningEffort) => void
       updateWebSearch: (enableWebSearch: boolean) => void
       updateAutoCollapseReasoning: (autoCollapseReasoning: boolean) => void
+      updateTextureIntensity: (textureIntensity: number) => void
+      onTextureIntensityUpdated: (callback: (textureIntensity: number) => void) => () => void
       updateAutoUpdate: (enabled: boolean) => void
       checkForUpdates: () => Promise<UpdateStatus>
       getUpdateStatus: () => Promise<UpdateStatus>

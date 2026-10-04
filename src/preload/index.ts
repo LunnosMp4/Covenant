@@ -104,6 +104,8 @@ const api = {
       ipcRenderer.send('update-web-search', enableWebSearch),
     updateAutoCollapseReasoning: (autoCollapseReasoning: boolean) =>
       ipcRenderer.send('update-auto-collapse-reasoning', autoCollapseReasoning),
+    updateTextureIntensity: (textureIntensity: number) =>
+      ipcRenderer.send('update-texture-intensity', textureIntensity),
     updateAutoUpdate: (enabled: boolean) => ipcRenderer.send('update-auto-update', enabled),
     checkForUpdates: () => ipcRenderer.invoke('check-for-updates') as Promise<UpdateStatus>,
     getUpdateStatus: () => ipcRenderer.invoke('get-update-status') as Promise<UpdateStatus>,
@@ -228,6 +230,17 @@ const api = {
 
       return () => {
         ipcRenderer.removeListener('auto-collapse-reasoning-updated', listener)
+      }
+    },
+    onTextureIntensityUpdated: (callback: (textureIntensity: number) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, textureIntensity: number) => {
+        callback(textureIntensity)
+      }
+
+      ipcRenderer.on('texture-intensity-updated', listener)
+
+      return () => {
+        ipcRenderer.removeListener('texture-intensity-updated', listener)
       }
     },
     getTerminalFonts: () => ipcRenderer.invoke('get-terminal-fonts') as Promise<string[]>
@@ -406,6 +419,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateReasoningEffort: api.config.updateReasoningEffort,
   updateWebSearch: api.config.updateWebSearch,
   updateAutoCollapseReasoning: api.config.updateAutoCollapseReasoning,
+  updateTextureIntensity: api.config.updateTextureIntensity,
+  onTextureIntensityUpdated: api.config.onTextureIntensityUpdated,
   updateAutoUpdate: api.config.updateAutoUpdate,
   checkForUpdates: api.config.checkForUpdates,
   getUpdateStatus: api.config.getUpdateStatus,

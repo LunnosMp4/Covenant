@@ -31,10 +31,12 @@ import {
   DEFAULT_LAUNCHER_SHOW_SYSTEM_APPS,
   DEFAULT_REASONING_EFFORT,
   DEFAULT_SHORTCUTS,
+  DEFAULT_TEXTURE_INTENSITY,
   modelDoesReasoning,
   modelSupportsWebSearch,
   normalizeChatModelId,
   normalizeShortcuts,
+  normalizeTextureIntensity,
   type ShortcutConfig
 } from '../shared/config'
 import type { McpServer } from '../shared/mcp'
@@ -176,6 +178,7 @@ const DEFAULT_CONFIG: AppConfig = {
   autoCollapseReasoning: DEFAULT_AUTO_COLLAPSE_REASONING,
   launcherShowSystemApps: DEFAULT_LAUNCHER_SHOW_SYSTEM_APPS,
   shortcuts: { ...DEFAULT_SHORTCUTS },
+  textureIntensity: DEFAULT_TEXTURE_INTENSITY,
   hasOnboarded: false,
   autoUpdate: true
 }
@@ -1360,13 +1363,12 @@ function normalizeTerminalFont(rawFont: unknown): string {
     return DEFAULT_CONFIG.terminalFont
   }
 
+  // Preserve whatever family the user picked. Validating against the freshly
+  // enumerated system font list here is destructive: if enumeration fails or
+  // filters the font out, the saved preference is silently reset and written
+  // back to disk. The renderer only ever sends a family it selected.
   const normalizedFont = extractTerminalFontFamily(rawFont)
-  if (!normalizedFont) {
-    return DEFAULT_CONFIG.terminalFont
-  }
-
-  const terminalFonts = new Set(getTerminalFonts().map((font) => font.toLowerCase()))
-  return terminalFonts.has(normalizedFont.toLowerCase()) ? normalizedFont : DEFAULT_CONFIG.terminalFont
+  return normalizedFont || DEFAULT_CONFIG.terminalFont
 }
 
 function normalizeButtonVisibility(raw: unknown): AppConfig['buttonVisibility'] {
@@ -1422,6 +1424,7 @@ function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined): AppC
         ? rawConfig.launcherShowSystemApps
         : DEFAULT_LAUNCHER_SHOW_SYSTEM_APPS,
     shortcuts: normalizeShortcuts(rawConfig?.shortcuts),
+    textureIntensity: normalizeTextureIntensity(rawConfig?.textureIntensity),
     hasOnboarded:
       typeof rawConfig?.hasOnboarded === 'boolean' ? rawConfig.hasOnboarded : false,
     autoUpdate:
@@ -3001,6 +3004,10 @@ ipcMain.on('update-theme', (_event, gradientClass: string) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('theme-updated', nextTheme)
   }
+
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.webContents.send('theme-updated', nextTheme)
+  }
 })
 
 ipcMain.on('update-terminal-font', (_event, terminalFont: string) => {
@@ -3018,7 +3025,10 @@ ipcMain.on('update-terminal-font', (_event, terminalFont: string) => {
 
 ipcMain.handle('get-terminal-fonts', () => {
   try {
-    return getTerminalFonts()
+    const fonts = getTerminalFonts()
+    const savedFont = normalizeTerminalFont(readConfig().terminalFont)
+    const hasSavedFont = fonts.some((font) => font.toLowerCase() === savedFont.toLowerCase())
+    return hasSavedFont ? fonts : [...fonts, savedFont].sort((a, b) => a.localeCompare(b))
   } catch (error) {
     console.error('Failed to get terminal fonts:', error)
     return []
@@ -3137,6 +3147,19 @@ ipcMain.on('update-auto-collapse-reasoning', (_event, autoCollapseReasoning: boo
 
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.webContents.send('auto-collapse-reasoning-updated', nextAutoCollapse)
+  }
+})
+
+ipcMain.on('update-texture-intensity', (_event, textureIntensity: number) => {
+  const nextTextureIntensity = normalizeTextureIntensity(textureIntensity)
+  updateConfig({ textureIntensity: nextTextureIntensity })
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('texture-intensity-updated', nextTextureIntensity)
+  }
+
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.webContents.send('texture-intensity-updated', nextTextureIntensity)
   }
 })
 

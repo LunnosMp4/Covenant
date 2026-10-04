@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion, useAnimationControls, type Transition } from 'framer-motion'
 import AppFormModal from './components/AppFormModal'
 import ConfirmDeleteModal from './components/ConfirmDeleteModal'
@@ -11,9 +11,14 @@ import {
   DEFAULT_TERMINAL_FONT,
   normalizeTerminalFont
 } from './constants/terminalFonts'
-import { DEFAULT_THEME_GRADIENT, THEME_OPTIONS, normalizeThemeGradient } from './constants/theme'
+import {
+  DEFAULT_THEME_GRADIENT,
+  THEME_OPTIONS,
+  getThemeMode,
+  normalizeThemeGradient
+} from './constants/theme'
 import type { AppConfig, ButtonVisibility, ReasoningEffort, ShortcutConfig } from '../../shared/config'
-import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_REASONING_EFFORT, DEFAULT_SHORTCUTS, REASONING_EFFORT_OPTIONS, modelSupportsExtendedParams, modelSupportsWebSearch } from '../../shared/config'
+import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_REASONING_EFFORT, DEFAULT_SHORTCUTS, DEFAULT_TEXTURE_INTENSITY, MAX_TEXTURE_INTENSITY, REASONING_EFFORT_OPTIONS, TEXTURE_MAX_OPACITY, modelSupportsExtendedParams, modelSupportsWebSearch } from '../../shared/config'
 import type { UpdateStatus } from '../../shared/update'
 import type { McpServer } from '../../shared/mcp'
 import type { LauncherApp } from './types/launcher-app'
@@ -354,6 +359,8 @@ function getUpdateStatusLabel(status: UpdateStatus): string {
 interface AppearanceTabProps {
   selectedTheme: string
   onSelectTheme: (gradientClass: string) => void
+  textureIntensity: number
+  onTextureIntensityChange: (value: number) => void
   buttonVisibility: ButtonVisibility
   onButtonVisibilityChange: (value: ButtonVisibility) => void
   launcherShowSystemApps: boolean
@@ -363,6 +370,8 @@ interface AppearanceTabProps {
 function AppearanceTab({
   selectedTheme,
   onSelectTheme,
+  textureIntensity,
+  onTextureIntensityChange,
   buttonVisibility,
   onButtonVisibilityChange,
   launcherShowSystemApps,
@@ -391,12 +400,50 @@ function AppearanceTab({
                     : 'border-neutral-800 bg-neutral-900/70 hover:border-neutral-600 hover:bg-neutral-800/60'
                 }`}
               >
-                <div className={`h-10 rounded-lg bg-gradient-to-r ${themeOption.gradientClass}`} />
+                <div
+                  className="h-10 rounded-lg border border-neutral-700/60"
+                  style={{
+                    backgroundImage: `linear-gradient(to right, ${themeOption.preview.from}, ${themeOption.preview.to})`
+                  }}
+                />
                 <p className="mt-3 text-sm font-medium text-neutral-100">{themeOption.label}</p>
                 <p className="mt-1 text-xs text-neutral-400">{themeOption.description}</p>
               </button>
             )
           })}
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Texture"
+        description="Add a subtle film-grain texture over themed surfaces."
+      >
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label htmlFor="texture-intensity" className="text-sm font-medium text-neutral-200">
+              Grain intensity
+            </label>
+            <span className="rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs font-medium tabular-nums text-neutral-300">
+              {textureIntensity}%
+            </span>
+          </div>
+
+          <input
+            id="texture-intensity"
+            type="range"
+            min={0}
+            max={MAX_TEXTURE_INTENSITY}
+            step={1}
+            value={textureIntensity}
+            onChange={(event) => onTextureIntensityChange(Number(event.target.value))}
+            className="w-full cursor-pointer accent-neutral-200"
+          />
+
+          <div className="flex justify-between text-[10px] uppercase tracking-[0.08em] text-neutral-500">
+            <span>Off</span>
+            <span>Subtle</span>
+            <span>Strong</span>
+          </div>
         </div>
       </SectionCard>
 
@@ -824,6 +871,15 @@ function TerminalTab({ terminalFont, onTerminalFontSelect, preferredShell, onPre
     }
   }, [])
 
+  const selectedFont = normalizeTerminalFont(terminalFont)
+  const fontOptions = useMemo(
+    () =>
+      selectedFont && !availableFonts.includes(selectedFont)
+        ? [selectedFont, ...availableFonts]
+        : availableFonts,
+    [availableFonts, selectedFont]
+  )
+
   return (
     <div className="space-y-6">
       <SectionCard
@@ -859,7 +915,7 @@ function TerminalTab({ terminalFont, onTerminalFontSelect, preferredShell, onPre
               Terminal Fonts
             </label>
             <select
-              value={normalizeTerminalFont(terminalFont)}
+              value={selectedFont}
               onChange={(e) => onTerminalFontSelect(e.target.value)}
               disabled={isLoadingFonts}
               className="w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100 transition-colors focus:border-neutral-600 focus:outline-none disabled:opacity-50"
@@ -867,7 +923,7 @@ function TerminalTab({ terminalFont, onTerminalFontSelect, preferredShell, onPre
               <option value="">
                 {isLoadingFonts ? 'Loading terminal fonts...' : 'Select a terminal font'}
               </option>
-              {availableFonts.map((font) => (
+              {fontOptions.map((font) => (
                 <option key={font} value={font}>
                   {font}
                 </option>
@@ -1202,6 +1258,7 @@ export default function Settings(): JSX.Element {
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT)
   const [enableWebSearch, setEnableWebSearch] = useState(true)
   const [autoCollapseReasoning, setAutoCollapseReasoning] = useState(true)
+  const [textureIntensity, setTextureIntensity] = useState(DEFAULT_TEXTURE_INTENSITY)
   const [autoUpdate, setAutoUpdate] = useState(true)
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: 'idle', currentVersion: '' })
   const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true, tasks: true })
@@ -1242,6 +1299,15 @@ export default function Settings(): JSX.Element {
   const [isGlobalInstructionsSaving, setIsGlobalInstructionsSaving] = useState(false)
   const [globalInstructionsFeedbackMessage, setGlobalInstructionsFeedbackMessage] = useState('')
   const [isClosing, setIsClosing] = useState(false)
+  const texturePersistTimer = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (texturePersistTimer.current !== null) {
+        window.clearTimeout(texturePersistTimer.current)
+      }
+    }
+  }, [])
 
   const isMac = window.api?.platform === 'darwin'
 
@@ -1275,6 +1341,7 @@ export default function Settings(): JSX.Element {
         )
         setEnableWebSearch(typeof config.enableWebSearch === 'boolean' ? config.enableWebSearch : true)
         setAutoCollapseReasoning(typeof config.autoCollapseReasoning === 'boolean' ? config.autoCollapseReasoning : true)
+        setTextureIntensity(typeof config.textureIntensity === 'number' ? config.textureIntensity : DEFAULT_TEXTURE_INTENSITY)
         setAutoUpdate(typeof config.autoUpdate === 'boolean' ? config.autoUpdate : true)
         setButtonVisibility(config.buttonVisibility ?? { appLauncher: true, workflow: true, tasks: true })
         setLauncherShowSystemApps(config.launcherShowSystemApps === true)
@@ -1313,12 +1380,22 @@ export default function Settings(): JSX.Element {
       setShortcuts(newShortcuts)
     })
 
+    const unsubTheme = window.api?.config.onThemeUpdated?.((newGradient) => {
+      setSelectedTheme(normalizeThemeGradient(newGradient))
+    })
+
+    const unsubTexture = window.api?.config.onTextureIntensityUpdated?.((newIntensity) => {
+      setTextureIntensity(newIntensity)
+    })
+
     return () => {
       isMounted = false
       if (typeof unsubChatModel === 'function') unsubChatModel()
       if (typeof unsubReasoningEffort === 'function') unsubReasoningEffort()
       if (typeof unsubButtonVisibility === 'function') unsubButtonVisibility()
       if (typeof unsubShortcuts === 'function') unsubShortcuts()
+      if (typeof unsubTheme === 'function') unsubTheme()
+      if (typeof unsubTexture === 'function') unsubTexture()
     }
   }, [])
 
@@ -1329,6 +1406,17 @@ export default function Settings(): JSX.Element {
       }
     })
   }, [])
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', getThemeMode(selectedTheme))
+  }, [selectedTheme])
+
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      '--texture-opacity',
+      String((textureIntensity / 100) * TEXTURE_MAX_OPACITY)
+    )
+  }, [textureIntensity])
 
   useEffect(() => {
     let isMounted = true
@@ -1530,6 +1618,20 @@ const handleMinimizeWindow = (): void => {
     const safeTheme = normalizeThemeGradient(gradientClass)
     setSelectedTheme(safeTheme)
     window.api?.config.updateTheme?.(safeTheme)
+  }
+
+  const handleTextureIntensityChange = (value: number): void => {
+    const clamped = Math.max(0, Math.min(MAX_TEXTURE_INTENSITY, Math.round(value)))
+    setTextureIntensity(clamped)
+
+    if (texturePersistTimer.current !== null) {
+      window.clearTimeout(texturePersistTimer.current)
+    }
+
+    texturePersistTimer.current = window.setTimeout(() => {
+      texturePersistTimer.current = null
+      window.api?.config.updateTextureIntensity?.(clamped)
+    }, 120)
   }
 
   const handleLaunchOnStartupChange = (value: boolean): void => {
@@ -1976,7 +2078,7 @@ const handleMinimizeWindow = (): void => {
           exit={{ opacity: 0, scale: 0.97, y: 6, transition: SETTINGS_WINDOW_EXIT_TRANSITION }}
           className="h-screen w-screen bg-transparent font-sans text-neutral-200"
         >
-      <div className="h-full overflow-hidden rounded-xl border border-neutral-800/85 bg-neutral-900/95">
+      <div className={`relative h-full overflow-hidden rounded-xl border border-neutral-800/85 bg-gradient-to-br ${selectedTheme} texture-surface`}>
         <div className="relative h-10 w-full">
           <div className="absolute inset-0 border-b border-neutral-800/80 bg-neutral-900/40" style={dragRegionStyle}>
             <div className={`flex h-full items-center text-xs uppercase tracking-[0.1em] text-neutral-500 ${isMac ? 'pl-[76px] pr-4' : 'px-4'}`}>
@@ -2087,6 +2189,8 @@ const handleMinimizeWindow = (): void => {
               <AppearanceTab
                 selectedTheme={selectedTheme}
                 onSelectTheme={handleThemeSelect}
+                textureIntensity={textureIntensity}
+                onTextureIntensityChange={handleTextureIntensityChange}
                 buttonVisibility={buttonVisibility}
                 onButtonVisibilityChange={handleButtonVisibilityChange}
                 launcherShowSystemApps={launcherShowSystemApps}

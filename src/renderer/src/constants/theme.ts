@@ -1,8 +1,12 @@
+export type ThemeMode = 'dark' | 'light'
+
 export interface ThemeOption {
   id: string
   label: string
   description: string
+  mode: ThemeMode
   gradientClass: string
+  preview: { from: string; to: string }
   palette: ThemePalette
 }
 
@@ -12,6 +16,7 @@ export interface ThemePalette {
   accent: string
   accentSoft: string
   accentStrong: string
+  onAccent: string
   userText: string
   assistantText: string
   assistantBg: string
@@ -35,11 +40,14 @@ export const THEME_OPTIONS: ThemeOption[] = [
     id: 'dark-default',
     label: 'Dark Neutral',
     description: 'Balanced dark gradient',
+    mode: 'dark',
     gradientClass: 'from-neutral-900/95 to-[#1c0f03]',
+    preview: { from: '#171717', to: '#1c0f03' },
     palette: {
       accent: '#f59e0b',
       accentSoft: 'rgba(245, 158, 11, 0.16)',
       accentStrong: 'rgba(245, 158, 11, 0.38)',
+      onAccent: '#111111',
       userText: '#fff7ed',
       assistantText: '#f5f5f4',
       assistantBg: 'rgba(10, 10, 10, 0.72)',
@@ -64,11 +72,14 @@ export const THEME_OPTIONS: ThemeOption[] = [
     id: 'blue-depth',
     label: 'Blue Depth',
     description: 'Cool steel tone',
+    mode: 'dark',
     gradientClass: 'from-slate-900 to-[#071726]',
+    preview: { from: '#0f172a', to: '#071726' },
     palette: {
       accent: '#60a5fa',
       accentSoft: 'rgba(96, 165, 250, 0.16)',
       accentStrong: 'rgba(96, 165, 250, 0.38)',
+      onAccent: '#071726',
       userText: '#e0f2fe',
       assistantText: '#f8fafc',
       assistantBg: 'rgba(6, 10, 18, 0.74)',
@@ -93,11 +104,14 @@ export const THEME_OPTIONS: ThemeOption[] = [
     id: 'violet-focus',
     label: 'Violet Focus',
     description: 'Focused creative mood',
+    mode: 'dark',
     gradientClass: 'from-zinc-900 to-[#1a1026]',
+    preview: { from: '#18181b', to: '#1a1026' },
     palette: {
       accent: '#a78bfa',
       accentSoft: 'rgba(167, 139, 250, 0.16)',
       accentStrong: 'rgba(167, 139, 250, 0.38)',
+      onAccent: '#1a1026',
       userText: '#ede9fe',
       assistantText: '#f5f3ff',
       assistantBg: 'rgba(18, 12, 26, 0.74)',
@@ -122,11 +136,14 @@ export const THEME_OPTIONS: ThemeOption[] = [
     id: 'emerald-night',
     label: 'Emerald Night',
     description: 'Dark green accent',
+    mode: 'dark',
     gradientClass: 'from-neutral-900 to-[#0a1f17]',
+    preview: { from: '#171717', to: '#0a1f17' },
     palette: {
       accent: '#34d399',
       accentSoft: 'rgba(52, 211, 153, 0.16)',
       accentStrong: 'rgba(52, 211, 153, 0.38)',
+      onAccent: '#0a1f17',
       userText: '#d1fae5',
       assistantText: '#ecfdf5',
       assistantBg: 'rgba(7, 19, 15, 0.76)',
@@ -148,60 +165,66 @@ export const THEME_OPTIONS: ThemeOption[] = [
     }
   },
   {
-    id: 'monochrome',
-    label: 'Monochrome',
-    description: 'Minimal black & white contrast',
-    gradientClass: 'from-neutral-900 to-[#000000]',
+    id: 'paper',
+    label: 'Paper',
+    description: 'Clean neutral light',
+    mode: 'light',
+    gradientClass: 'from-[#fdfdfd] to-[#e8e8e8]',
+    preview: { from: '#fdfdfd', to: '#e8e8e8' },
     palette: {
-      accent: '#ffffff',
-      accentSoft: 'rgba(255, 255, 255, 0.12)',
-      accentStrong: 'rgba(255, 255, 255, 0.32)',
-      userText: '#ffffff',
-      assistantText: '#e5e5e5',
-      assistantBg: 'rgba(0, 0, 0, 0.72)',
-      assistantBorder: 'rgba(255, 255, 255, 0.14)',
-      scrollbarThumb: 'rgba(255, 255, 255, 0.28)',
-      scrollbarThumbHover: 'rgba(255, 255, 255, 0.45)',
-      metaText: 'rgba(255, 255, 255, 0.45)',
+      accent: '#18181b',
+      accentSoft: 'rgba(24, 24, 27, 0.08)',
+      accentStrong: 'rgba(24, 24, 27, 0.22)',
+      onAccent: '#ffffff',
+      userText: '#18181b',
+      assistantText: '#1f2937',
+      assistantBg: 'rgba(255, 255, 255, 0.8)',
+      assistantBorder: 'rgba(15, 23, 42, 0.1)',
+      scrollbarThumb: 'rgba(24, 24, 27, 0.22)',
+      scrollbarThumbHover: 'rgba(24, 24, 27, 0.38)',
+      metaText: 'rgba(15, 23, 42, 0.5)',
       gamification: {
         tierColors: {
-          TRIVIAL: '#737373',
-          EASY: '#a3a3a3',
-          MEDIUM: '#d4d4d4',
-          HARD: '#e5e5e5',
-          EPIC: '#ffffff'
+          TRIVIAL: '#64748b',
+          EASY: '#0ea5e9',
+          MEDIUM: '#f59e0b',
+          HARD: '#f97316',
+          EPIC: '#e11d48'
         },
-        levelColor: '#ffffff',
-        streakColor: '#d4d4d4'
+        levelColor: '#18181b',
+        streakColor: '#525252'
       }
     }
   },
   {
-    id: 'rose-quartz',
-    label: 'Rose Quartz',
-    description: 'Soft pink glow',
-    gradientClass: 'from-neutral-900 to-[#2a0f1e]',
+    id: 'warm-sand',
+    label: 'Warm Sand',
+    description: 'Creamy warm light',
+    mode: 'light',
+    gradientClass: 'from-[#fdf8f1] to-[#f0e2cd]',
+    preview: { from: '#fdf8f1', to: '#f0e2cd' },
     palette: {
-      accent: '#fb7185',
-      accentSoft: 'rgba(251, 113, 133, 0.16)',
-      accentStrong: 'rgba(251, 113, 133, 0.38)',
-      userText: '#ffe4e6',
-      assistantText: '#fff1f2',
-      assistantBg: 'rgba(20, 8, 13, 0.74)',
-      assistantBorder: 'rgba(251, 113, 133, 0.2)',
-      scrollbarThumb: 'rgba(251, 113, 133, 0.35)',
-      scrollbarThumbHover: 'rgba(251, 113, 133, 0.55)',
-      metaText: 'rgba(255, 228, 230, 0.55)',
+      accent: '#d97706',
+      accentSoft: 'rgba(217, 119, 6, 0.12)',
+      accentStrong: 'rgba(217, 119, 6, 0.3)',
+      onAccent: '#ffffff',
+      userText: '#78350f',
+      assistantText: '#3f2d1a',
+      assistantBg: 'rgba(255, 252, 247, 0.82)',
+      assistantBorder: 'rgba(120, 53, 15, 0.12)',
+      scrollbarThumb: 'rgba(217, 119, 6, 0.3)',
+      scrollbarThumbHover: 'rgba(217, 119, 6, 0.48)',
+      metaText: 'rgba(120, 53, 15, 0.55)',
       gamification: {
         tierColors: {
-          TRIVIAL: '#a1a1aa',
-          EASY: '#f0abfc',
-          MEDIUM: '#fb7185',
-          HARD: '#f43f5e',
-          EPIC: '#e11d48'
+          TRIVIAL: '#a8a29e',
+          EASY: '#fbbf24',
+          MEDIUM: '#f59e0b',
+          HARD: '#fb923c',
+          EPIC: '#dc2626'
         },
-        levelColor: '#fb7185',
-        streakColor: '#f0abfc'
+        levelColor: '#d97706',
+        streakColor: '#b45309'
       }
     }
   }
@@ -290,6 +313,7 @@ export function buildPaletteFromGradient(
     accent,
     accentSoft: rgba(0.16),
     accentStrong: rgba(0.38),
+    onAccent: '#111111',
     userText: '#ffffff',
     assistantText: '#f5f5f4',
     assistantBg: 'rgba(10, 10, 10, 0.72)',
@@ -324,6 +348,12 @@ export function getThemePalette(themeGradient: string | undefined): ThemePalette
   }
 
   return THEME_OPTIONS[0].palette
+}
+
+export function getThemeMode(themeGradient: string | undefined): ThemeMode {
+  const normalized = normalizeThemeGradient(themeGradient)
+  const match = THEME_OPTIONS.find((option) => option.gradientClass === normalized)
+  return match?.mode ?? 'dark'
 }
 
 export { buildCustomGradientClass }

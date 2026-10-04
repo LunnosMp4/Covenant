@@ -59,7 +59,7 @@ export default function LauncherResults({
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.98, y: 10 }}
       transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
-      className={`absolute inset-x-0 bottom-full z-40 mb-3 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} p-2 shadow-xl shadow-black/50`}
+      className={`absolute inset-x-0 bottom-full z-40 mb-3 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} p-2 shadow-xl shadow-black/50 texture-surface`}
       style={{ WebkitBackdropFilter: 'blur(40px)', backdropFilter: 'blur(40px)' }}
     >
       <div className="space-y-0.5">
