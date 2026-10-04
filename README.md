@@ -14,7 +14,7 @@ Floating command bar for Windows and macOS — prompt an OpenAI model, run termi
 - Workflow script runner (PowerShell, CMD, Python, Node.js, Shell, custom)
 - App launcher with file-pick and icon extraction
 - MCP server integration with tool discovery and auto-calling
-- Conversation history (last 20), system prompts, and preprompt templates
+- Conversation history (last 20), global instructions, and reusable instruction templates
 - Per-message token usage and cost breakdown (client-side pricing table)
 - Frosted glass UI with Tailwind CSS, spring animations (Framer Motion)
 - System tray icon with context menu, always-on-top floating window

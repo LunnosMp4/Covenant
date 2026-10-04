@@ -16,5 +16,6 @@ export interface UpdateStatus {
   transferred?: number
   total?: number
   error?: string
+  downloadUrl?: string
   checkedAt?: number
 }

@@ -16,6 +16,7 @@ import type {
 } from '../shared/workflow'
 
 const api = {
+  platform: process.platform,
   window: {
     hideWindow: () => ipcRenderer.send('hide-window'),
     setPinned: (pinned: boolean) => ipcRenderer.send('set-pinned', pinned),
@@ -292,6 +293,9 @@ const api = {
       ipcRenderer.invoke('save-preprompt', preprompt) as Promise<Preprompt[]>,
     deletePreprompt: (prepromptId: string) =>
       ipcRenderer.invoke('delete-preprompt', prepromptId) as Promise<Preprompt[]>,
+    getGlobalInstructions: () => ipcRenderer.invoke('get-global-instructions') as Promise<string>,
+    saveGlobalInstructions: (value: string) =>
+      ipcRenderer.invoke('save-global-instructions', value) as Promise<string>,
     getApps: () => ipcRenderer.invoke('get-apps') as Promise<LauncherApp[]>,
     saveApp: (launcherApp: Partial<LauncherApp>) =>
       ipcRenderer.invoke('save-app', launcherApp) as Promise<LauncherApp[]>,

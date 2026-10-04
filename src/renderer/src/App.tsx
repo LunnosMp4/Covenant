@@ -2143,7 +2143,9 @@ export default function App(): JSX.Element {
                   ? `Covenant v${updateStatus.version} is ready to install`
                   : updateStatus.state === 'downloading'
                     ? `Downloading Covenant v${updateStatus.version}…`
-                    : `Covenant v${updateStatus.version} update found`}
+                    : updateStatus.downloadUrl
+                      ? `Covenant v${updateStatus.version} is available`
+                      : `Covenant v${updateStatus.version} update found`}
               </p>
               {typeof updateStatus.percent === 'number' && updateStatus.state !== 'available' ? (
                 <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-white/10">
@@ -2156,13 +2158,13 @@ export default function App(): JSX.Element {
                 </div>
               ) : null}
             </div>
-            {updateStatus.state === 'downloaded' ? (
+            {updateStatus.state === 'downloaded' || (updateStatus.state === 'available' && updateStatus.downloadUrl) ? (
               <button
                 type="button"
                 onClick={() => window.api?.config.installUpdate?.()}
                 className="flex-shrink-0 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-emerald-950 transition-colors hover:bg-emerald-400"
               >
-                Restart &amp; install
+                {updateStatus.state === 'downloaded' ? 'Restart & install' : 'Download'}
               </button>
             ) : (
               <span className="flex-shrink-0 text-xs tabular-nums text-neutral-400">

@@ -194,7 +194,7 @@ function SettingsPopup({
               : 'text-neutral-500 hover:text-neutral-300'
           }`}
         >
-          System Prompt
+          Instructions
         </button>
         <button
           type="button"
@@ -213,7 +213,7 @@ function SettingsPopup({
         <div className="space-y-1">
           {items.length === 0 ? (
             <div className="rounded-xl border border-neutral-800 bg-neutral-900/70 px-3 py-5 text-center text-xs text-neutral-500">
-              No preprompts saved yet.
+              No instructions saved yet.
             </div>
           ) : (
             items.map((item) =>
@@ -242,7 +242,7 @@ function SettingsPopup({
                       type="button"
                       onClick={onClearSelectedItem}
                       className="shrink-0 rounded-lg border border-emerald-300/20 bg-emerald-300/10 p-1.5 text-emerald-50 transition-colors hover:bg-emerald-300/20 hover:text-white"
-                      aria-label="Remove selected system prompt"
+                      aria-label="Remove selected instruction"
                     >
                       <CloseIcon />
                     </button>
@@ -389,7 +389,7 @@ export default function ModulePopup({
       : activePopup === 'workflow'
         ? 'No workflows saved yet.'
       : activePopup === 'settings'
-        ? 'No preprompts saved yet.'
+        ? 'No instructions saved yet.'
         : 'No items available.'
   const anchorClass = anchorSide === 'left' ? 'left-0' : 'right-0'
   const popupWidthClass =

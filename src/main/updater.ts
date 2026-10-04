@@ -1,7 +1,11 @@
-import { app, BrowserWindow, Notification } from 'electron'
+import { app, BrowserWindow, Notification, shell } from 'electron'
 import { autoUpdater, type UpdateInfo } from 'electron-updater'
 import { log } from './logger'
 import type { UpdateStatus, UpdateStatusState } from '../shared/update'
+
+const isMac = process.platform === 'darwin'
+const RELEASE_API_URL = 'https://api.github.com/repos/LunnosMp4/Covenant/releases/latest'
+const RELEASE_PAGE_URL = 'https://github.com/LunnosMp4/Covenant/releases/latest'
 
 let isSetup = false
 
@@ -50,9 +54,113 @@ function showNotification(title: string, body: string, onClick?: () => void): vo
   notification.show()
 }
 
+function parseVersionParts(version: string): number[] {
+  return version
+    .trim()
+    .replace(/^v/i, '')
+    .split(/[.-]/)
+    .map((part) => {
+      const value = Number.parseInt(part, 10)
+      return Number.isFinite(value) ? value : 0
+    })
+}
+
+function isNewerVersion(candidate: string, current: string): boolean {
+  const candidateParts = parseVersionParts(candidate)
+  const currentParts = parseVersionParts(current)
+  const length = Math.max(candidateParts.length, currentParts.length)
+
+  for (let index = 0; index < length; index += 1) {
+    const candidatePart = candidateParts[index] ?? 0
+    const currentPart = currentParts[index] ?? 0
+    if (candidatePart > currentPart) return true
+    if (candidatePart < currentPart) return false
+  }
+
+  return false
+}
+
+interface GitHubRelease {
+  tag_name?: unknown
+  html_url?: unknown
+  name?: unknown
+}
+
+/**
+ * macOS auto-update requires a paid Developer ID signature, so instead of
+ * silently downloading we check GitHub Releases and point the user at the
+ * download page. Windows keeps the full electron-updater flow below.
+ */
+async function checkForUpdatesOnMac(): Promise<void> {
+  setUpdateStatus({ state: 'checking', error: undefined, checkedAt: Date.now() })
+
+  try {
+    const response = await fetch(RELEASE_API_URL, {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'Covenant-Updater'
+      }
+    })
+
+    if (!response.ok) {
+      throw new Error(`GitHub responded with ${response.status}`)
+    }
+
+    const release = (await response.json()) as GitHubRelease
+    const tag = typeof release.tag_name === 'string' ? release.tag_name.trim() : ''
+    const version = tag.replace(/^v/i, '')
+    const downloadUrl =
+      typeof release.html_url === 'string' && release.html_url.trim()
+        ? release.html_url.trim()
+        : RELEASE_PAGE_URL
+
+    if (!version || !isNewerVersion(version, app.getVersion())) {
+      log.info('Update not available.')
+      setUpdateStatus({ state: 'not-available', version: undefined, percent: undefined, error: undefined, checkedAt: Date.now() })
+      return
+    }
+
+    log.info(`Update available: ${version}`)
+    setUpdateStatus({
+      state: 'available',
+      version,
+      percent: undefined,
+      downloadUrl,
+      error: undefined,
+      checkedAt: Date.now()
+    })
+
+    showNotification(
+      'Covenant update available',
+      `Version ${version} is available. Click to open the download page.`,
+      () => {
+        void shell.openExternal(downloadUrl)
+      }
+    )
+  } catch (error) {
+    log.error('Failed to check for updates:', error)
+    setUpdateStatus({
+      state: 'error',
+      error: error instanceof Error ? error.message : String(error),
+      checkedAt: Date.now()
+    })
+  }
+}
+
 export function setupAutoUpdater(getAutoUpdateEnabled: () => boolean): void {
   if (isSetup) return
   isSetup = true
+
+  if (isMac) {
+    app.whenReady().then(() => {
+      if (getAutoUpdateEnabled()) {
+        setTimeout(() => {
+          void checkForUpdatesOnMac()
+        }, 10_000)
+      }
+    })
+    return
+  }
 
   autoUpdater.autoDownload = true
   autoUpdater.logger = log as unknown as typeof autoUpdater.logger
@@ -126,6 +234,11 @@ export function setupAutoUpdater(getAutoUpdateEnabled: () => boolean): void {
 }
 
 export function checkForUpdatesManually(): void {
+  if (isMac) {
+    void checkForUpdatesOnMac()
+    return
+  }
+
   setUpdateStatus({ state: 'checking', error: undefined, checkedAt: Date.now() })
   void autoUpdater.checkForUpdates().catch((error) => {
     log.error('Failed to check for updates:', error)
@@ -138,6 +251,14 @@ export function checkForUpdatesManually(): void {
 }
 
 export function quitAndInstallUpdate(): void {
+  if (isMac) {
+    const downloadUrl =
+      (currentStatus.state === 'available' && currentStatus.downloadUrl) || RELEASE_PAGE_URL
+    void shell.openExternal(downloadUrl)
+    focusApp()
+    return
+  }
+
   if (currentStatus.state !== 'downloaded') {
     focusApp()
     return

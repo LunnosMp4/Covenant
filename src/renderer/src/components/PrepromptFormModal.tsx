@@ -27,7 +27,7 @@ export default function PrepromptFormModal({
   return (
     <ModalOverlay onClose={onCancel}>
       <div className="rounded-2xl border border-neutral-800 bg-neutral-900/95 p-5 shadow-[0_22px_60px_rgba(0,0,0,0.55)]">
-        <h3 className="text-lg font-semibold text-neutral-100">{isEditMode ? 'Edit Preprompt' : 'Add Preprompt'}</h3>
+        <h3 className="text-lg font-semibold text-neutral-100">{isEditMode ? 'Edit Instruction' : 'Add Instruction'}</h3>
 
         <div className="mt-4 space-y-4">
           <div>
@@ -53,7 +53,7 @@ export default function PrepromptFormModal({
               id="preprompt-content"
               value={content}
               onChange={(event) => setContent(event.target.value)}
-              placeholder="Write the reusable preprompt content here..."
+              placeholder="Write the reusable instruction content here..."
               className="min-h-[180px] w-full resize-y rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-neutral-500 focus:outline-none"
             />
           </div>

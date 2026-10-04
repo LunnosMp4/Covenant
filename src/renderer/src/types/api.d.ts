@@ -10,6 +10,7 @@ import type { TerminalExitPayload, TerminalStartResult } from '../../../shared/t
 import type { UpdateStatus } from '../../../shared/update'
 
 interface CovenantAPI {
+  platform: string
   window: {
     hideWindow: () => void
     setPinned: (pinned: boolean) => void
@@ -92,6 +93,8 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     getPreprompts: () => Promise<Preprompt[]>
     savePreprompt: (preprompt: Partial<Preprompt>) => Promise<Preprompt[]>
     deletePreprompt: (prepromptId: string) => Promise<Preprompt[]>
+    getGlobalInstructions: () => Promise<string>
+    saveGlobalInstructions: (value: string) => Promise<string>
     getApps: () => Promise<LauncherApp[]>
     saveApp: (launcherApp: Partial<LauncherApp>) => Promise<LauncherApp[]>
     deleteApp: (appId: string) => Promise<LauncherApp[]>

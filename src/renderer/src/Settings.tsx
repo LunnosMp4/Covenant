@@ -91,15 +91,8 @@ function SidebarGlyph({ tab }: { tab: SettingsTab }): JSX.Element {
 
   if (tab === 'mcp') {
     return (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
-        <path d="M12 3v5" />
-        <path d="M12 16v5" />
-        <path d="M5 12H3" />
-        <path d="M21 12h-2" />
-        <path d="M7.8 7.8 6.4 6.4" />
-        <path d="M17.6 17.6 16.2 16.2" />
-        <path d="M16.2 7.8 17.6 6.4" />
-        <path d="M6.4 17.6 7.8 16.2" />
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+        <path d="M13.85 0a4.16 4.16 0 0 0-2.95 1.217L1.456 10.66a.835.835 0 0 0 0 1.18.835.835 0 0 0 1.18 0l9.442-9.442a2.49 2.49 0 0 1 3.541 0 2.49 2.49 0 0 1 0 3.541L8.59 12.97l-.1.1a.835.835 0 0 0 0 1.18.835.835 0 0 0 1.18 0l.1-.098 7.03-7.034a2.49 2.49 0 0 1 3.542 0l.049.05a2.49 2.49 0 0 1 0 3.54l-8.54 8.54a1.96 1.96 0 0 0 0 2.755l1.753 1.753a.835.835 0 0 0 1.18 0 .835.835 0 0 0 0-1.18l-1.753-1.753a.266.266 0 0 1 0-.394l8.54-8.54a4.185 4.185 0 0 0 0-5.9l-.05-.05a4.16 4.16 0 0 0-2.95-1.218c-.2 0-.401.02-.6.048a4.17 4.17 0 0 0-1.17-3.552A4.16 4.16 0 0 0 13.85 0m0 3.333a.84.84 0 0 0-.59.245L6.275 10.56a4.186 4.186 0 0 0 0 5.902 4.186 4.186 0 0 0 5.902 0L19.16 9.48a.835.835 0 0 0 0-1.18.835.835 0 0 0-1.18 0l-6.985 6.984a2.49 2.49 0 0 1-3.54 0 2.49 2.49 0 0 1 0-3.54l6.983-6.985a.835.835 0 0 0 0-1.18.84.84 0 0 0-.59-.245" />
       </svg>
     )
   }
@@ -337,7 +330,9 @@ function getUpdateStatusLabel(status: UpdateStatus): string {
     case 'checking':
       return 'Checking for updates…'
     case 'available':
-      return `Version ${status.version ?? ''} found. Downloading…`
+      return status.downloadUrl
+        ? `Version ${status.version ?? ''} is available. Download the installer to update.`
+        : `Version ${status.version ?? ''} found. Downloading…`
     case 'downloading':
       return `Downloading version ${status.version ?? ''}…`
     case 'downloaded':
@@ -589,7 +584,7 @@ function GeneralTab({
             checked={autoUpdate}
             onChange={onAutoUpdateChange}
             label="Automatically check for updates"
-            description="Download new versions from GitHub Releases and prompt you to restart."
+            description="Check GitHub Releases for new versions and let you know when an update is available."
           />
 
           <div className="rounded-xl border border-neutral-800 bg-neutral-950/70 p-3">
@@ -603,13 +598,13 @@ function GeneralTab({
                 </p>
               </div>
 
-              {updateStatus.state === 'downloaded' ? (
+              {updateStatus.state === 'downloaded' || (updateStatus.state === 'available' && updateStatus.downloadUrl) ? (
                 <button
                   type="button"
                   onClick={onInstallUpdate}
                   className="flex-shrink-0 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-emerald-950 transition-colors hover:bg-emerald-400"
                 >
-                  Restart & install
+                  {updateStatus.state === 'downloaded' ? 'Restart & install' : 'Download'}
                 </button>
               ) : (
                 <button
@@ -1083,22 +1078,73 @@ interface PrepromptsTabProps {
   onAdd: () => void
   onEdit: (preprompt: Preprompt) => void
   onDelete: (preprompt: Preprompt) => void
+  globalInstructions: string
+  savedGlobalInstructions: string
+  isGlobalInstructionsSaving: boolean
+  globalInstructionsFeedbackMessage: string
+  onGlobalInstructionsChange: (value: string) => void
+  onSaveGlobalInstructions: () => void
 }
 
-function PrepromptsTab({ preprompts, isLoading, feedbackMessage, onAdd, onEdit, onDelete }: PrepromptsTabProps): JSX.Element {
+function PrepromptsTab({
+  preprompts,
+  isLoading,
+  feedbackMessage,
+  onAdd,
+  onEdit,
+  onDelete,
+  globalInstructions,
+  savedGlobalInstructions,
+  isGlobalInstructionsSaving,
+  globalInstructionsFeedbackMessage,
+  onGlobalInstructionsChange,
+  onSaveGlobalInstructions
+}: PrepromptsTabProps): JSX.Element {
+  const isGlobalInstructionsDirty = globalInstructions !== savedGlobalInstructions
+
   return (
     <div className="space-y-5">
+      <div className="rounded-2xl border border-neutral-800 bg-neutral-900/80 p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-sm font-semibold text-neutral-100">Global Instructions</h2>
+            <p className="mt-1 text-xs text-neutral-400">
+              Always applied to every chat, before any selected instruction below.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onSaveGlobalInstructions}
+            disabled={!isGlobalInstructionsDirty || isGlobalInstructionsSaving}
+            className="shrink-0 rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isGlobalInstructionsSaving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+
+        <textarea
+          value={globalInstructions}
+          onChange={(event) => onGlobalInstructionsChange(event.target.value)}
+          placeholder="Write instructions that should apply to every conversation..."
+          className="mt-3 min-h-[140px] w-full resize-y rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-neutral-500 focus:outline-none"
+        />
+
+        {globalInstructionsFeedbackMessage ? (
+          <p className="mt-2 text-xs text-emerald-300">{globalInstructionsFeedbackMessage}</p>
+        ) : null}
+      </div>
+
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-neutral-100">Preprompts</h2>
-          <p className="mt-1 text-sm text-neutral-400">Reusable instruction presets for the System Prompt selector in the bar's Settings popup.</p>
+          <h2 className="text-xl font-semibold text-neutral-100">Instructions</h2>
+          <p className="mt-1 text-sm text-neutral-400">Reusable instruction presets for the Instructions selector in the bar's Settings popup.</p>
         </div>
         <button
           type="button"
           onClick={onAdd}
           className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-white"
         >
-          Add Preprompt
+          Add Instruction
         </button>
       </div>
 
@@ -1107,13 +1153,13 @@ function PrepromptsTab({ preprompts, isLoading, feedbackMessage, onAdd, onEdit, 
       <div className="space-y-3">
         {isLoading ? (
           <div className="rounded-2xl border border-neutral-800 bg-neutral-900/80 px-4 py-6 text-sm text-neutral-400">
-            Loading preprompts...
+            Loading instructions...
           </div>
         ) : null}
 
         {!isLoading && preprompts.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-neutral-700 bg-neutral-900/70 px-4 py-6 text-sm text-neutral-500">
-            No preprompts saved yet. Add your first reusable prompt.
+            No instructions saved yet. Add your first reusable instruction.
           </div>
         ) : null}
 
@@ -1199,7 +1245,13 @@ export default function Settings(): JSX.Element {
   const [isPrepromptFormOpen, setIsPrepromptFormOpen] = useState(false)
   const [editingPreprompt, setEditingPreprompt] = useState<Preprompt | undefined>(undefined)
   const [deletingPreprompt, setDeletingPreprompt] = useState<Preprompt | undefined>(undefined)
+  const [globalInstructions, setGlobalInstructions] = useState('')
+  const [savedGlobalInstructions, setSavedGlobalInstructions] = useState('')
+  const [isGlobalInstructionsSaving, setIsGlobalInstructionsSaving] = useState(false)
+  const [globalInstructionsFeedbackMessage, setGlobalInstructionsFeedbackMessage] = useState('')
   const [isClosing, setIsClosing] = useState(false)
+
+  const isMac = window.api?.platform === 'darwin'
 
   const windowControls = useAnimationControls()
 
@@ -1433,6 +1485,23 @@ export default function Settings(): JSX.Element {
     }
 
     void loadPreprompts()
+
+    const loadGlobalInstructions = async (): Promise<void> => {
+      if (!window.api?.store.getGlobalInstructions) return
+
+      try {
+        const saved = await window.api.store.getGlobalInstructions()
+        if (!isMounted) return
+        setGlobalInstructions(saved)
+        setSavedGlobalInstructions(saved)
+      } catch {
+        if (!isMounted) return
+        setGlobalInstructions('')
+        setSavedGlobalInstructions('')
+      }
+    }
+
+    void loadGlobalInstructions()
 
     return () => {
       isMounted = false
@@ -1846,11 +1915,29 @@ const handleMinimizeWindow = (): void => {
       setPreprompts(updatedPreprompts)
       setIsPrepromptFormOpen(false)
       setEditingPreprompt(undefined)
-      setPrepromptsFeedbackMessage('Preprompt saved.')
+      setPrepromptsFeedbackMessage('Instruction saved.')
       window.setTimeout(() => setPrepromptsFeedbackMessage(''), 1600)
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to save preprompt.'
+      const message = error instanceof Error ? error.message : 'Unable to save instruction.'
       setPrepromptsFeedbackMessage(message)
+    }
+  }
+
+  const handleSaveGlobalInstructions = async (): Promise<void> => {
+    if (!window.api?.store.saveGlobalInstructions) return
+
+    try {
+      setIsGlobalInstructionsSaving(true)
+      const saved = await window.api.store.saveGlobalInstructions(globalInstructions)
+      setGlobalInstructions(saved)
+      setSavedGlobalInstructions(saved)
+      setGlobalInstructionsFeedbackMessage('Global instructions saved.')
+      window.setTimeout(() => setGlobalInstructionsFeedbackMessage(''), 1600)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to save global instructions.'
+      setGlobalInstructionsFeedbackMessage(message)
+    } finally {
+      setIsGlobalInstructionsSaving(false)
     }
   }
 
@@ -1862,10 +1949,10 @@ const handleMinimizeWindow = (): void => {
       const updatedPreprompts = await window.api.store.deletePreprompt(target.id)
       setPreprompts(updatedPreprompts)
       setDeletingPreprompt(undefined)
-      setPrepromptsFeedbackMessage('Preprompt deleted.')
+      setPrepromptsFeedbackMessage('Instruction deleted.')
       window.setTimeout(() => setPrepromptsFeedbackMessage(''), 1600)
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to delete preprompt.'
+      const message = error instanceof Error ? error.message : 'Unable to delete instruction.'
       setPrepromptsFeedbackMessage(message)
     }
   }
@@ -1875,7 +1962,7 @@ const handleMinimizeWindow = (): void => {
     if (activeTab === 'terminal') return 'Terminal'
     if (activeTab === 'appLauncher') return 'App Launcher'
     if (activeTab === 'workflow') return 'Workflows'
-    if (activeTab === 'preprompts') return 'Preprompts'
+    if (activeTab === 'preprompts') return 'Instructions'
     return 'MCP Servers'
   }, [activeTab])
 
@@ -1892,31 +1979,32 @@ const handleMinimizeWindow = (): void => {
       <div className="h-full overflow-hidden rounded-xl border border-neutral-800/85 bg-neutral-900/95">
         <div className="relative h-10 w-full">
           <div className="absolute inset-0 border-b border-neutral-800/80 bg-neutral-900/40" style={dragRegionStyle}>
-            <div className="flex h-full items-center px-4 text-xs uppercase tracking-[0.1em] text-neutral-500">
-              <span className="h-2 w-2 rounded-full bg-amber-400/80" />
-              <span className="ml-2">Covenant Settings</span>
+            <div className={`flex h-full items-center text-xs uppercase tracking-[0.1em] text-neutral-500 ${isMac ? 'pl-[76px] pr-4' : 'px-4'}`}>
+              <span>Covenant Settings</span>
             </div>
           </div>
 
-          <div className="absolute inset-y-0 right-0 z-20 flex items-center gap-1 pr-3" style={noDragRegionStyle}>
-            <button
-              type="button"
-              aria-label="Minimize settings window"
-              onClick={handleMinimizeWindow}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
-            >
-              <MinimizeIcon />
-            </button>
+          {!isMac && (
+            <div className="absolute inset-y-0 right-0 z-20 flex items-center gap-1 pr-3" style={noDragRegionStyle}>
+              <button
+                type="button"
+                aria-label="Minimize settings window"
+                onClick={handleMinimizeWindow}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
+              >
+                <MinimizeIcon />
+              </button>
 
-            <button
-              type="button"
-              aria-label="Close settings window"
-              onClick={handleCloseWindow}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-red-500/20 hover:text-red-300"
-            >
-              <CloseIcon />
-            </button>
-          </div>
+              <button
+                type="button"
+                aria-label="Close settings window"
+                onClick={handleCloseWindow}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-red-500/20 hover:text-red-300"
+              >
+                <CloseIcon />
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="flex h-[calc(100%-2.5rem)]">
@@ -1932,7 +2020,7 @@ const handleMinimizeWindow = (): void => {
                 { id: 'terminal' as const, label: 'Terminal' },
                 { id: 'appLauncher' as const, label: 'App Launcher' },
                 { id: 'workflow' as const, label: 'Workflows' },
-                { id: 'preprompts' as const, label: 'Preprompts' },
+                { id: 'preprompts' as const, label: 'Instructions' },
                 { id: 'mcp' as const, label: 'MCP Servers' }
               ].map((item) => {
                 const isActive = activeTab === item.id
@@ -2034,6 +2122,12 @@ const handleMinimizeWindow = (): void => {
                 onAdd={handleOpenAddPreprompt}
                 onEdit={handleOpenEditPreprompt}
                 onDelete={(preprompt) => setDeletingPreprompt(preprompt)}
+                globalInstructions={globalInstructions}
+                savedGlobalInstructions={savedGlobalInstructions}
+                isGlobalInstructionsSaving={isGlobalInstructionsSaving}
+                globalInstructionsFeedbackMessage={globalInstructionsFeedbackMessage}
+                onGlobalInstructionsChange={setGlobalInstructions}
+                onSaveGlobalInstructions={handleSaveGlobalInstructions}
               />
             )}
             {activeTab === 'mcp' && (
@@ -2120,7 +2214,7 @@ const handleMinimizeWindow = (): void => {
       <AnimatePresence>
         {deletingPreprompt ? (
           <ConfirmDeleteModal
-            title="Delete Preprompt"
+            title="Delete Instruction"
             message={`Are you sure you want to delete \"${deletingPreprompt.title}\"? This action cannot be undone.`}
             onCancel={() => setDeletingPreprompt(undefined)}
             onConfirm={() => {

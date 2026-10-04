@@ -151,6 +151,7 @@ interface ClearCompletedResult {
 
 interface AppStoreSchema {
   preprompts: Preprompt[]
+  globalInstructions: string
   apps: LauncherApp[]
   workflows: Workflow[]
   conversations: ChatConversation[]
@@ -245,6 +246,7 @@ const appStore = new StoreClass<AppStoreSchema>({
   name: 'preprompts',
   defaults: {
     preprompts: [],
+    globalInstructions: '',
     apps: [],
     workflows: [],
     conversations: [],
@@ -265,6 +267,10 @@ const appStore = new StoreClass<AppStoreSchema>({
         },
         required: ['id', 'title', 'content']
       }
+    },
+    globalInstructions: {
+      type: 'string',
+      default: ''
     },
     apps: {
       type: 'array',
@@ -507,6 +513,17 @@ function deletePreprompt(id: string): Preprompt[] {
   const nextPreprompts = getPreprompts().filter((item) => item.id !== normalizedId)
   appStore.set('preprompts', nextPreprompts)
   return nextPreprompts
+}
+
+function getGlobalInstructions(): string {
+  const stored = appStore.get('globalInstructions', '')
+  return typeof stored === 'string' ? stored : ''
+}
+
+function saveGlobalInstructions(value: string): string {
+  const normalized = typeof value === 'string' ? value.trim() : ''
+  appStore.set('globalInstructions', normalized)
+  return normalized
 }
 
 function getTasks(): Task[] {
@@ -1544,8 +1561,11 @@ function buildResponsesInput(sanitizedMessages: SanitizedMessage[]): Array<Recor
 }
 
 function buildResponseParams(storedConfig: AppConfig, model: string): Record<string, unknown> {
+  const globalInstructions = getGlobalInstructions()
   const params: Record<string, unknown> = {
-    instructions: COVENANT_INSTRUCTIONS
+    instructions: globalInstructions
+      ? `${COVENANT_INSTRUCTIONS}\n\n${globalInstructions}`
+      : COVENANT_INSTRUCTIONS
   }
 
   if (modelDoesReasoning(model)) {
@@ -2144,7 +2164,11 @@ function createSettingsWindow(tab?: string): void {
     minHeight: 450,
     title: 'Covenant Settings',
     show: false,
-    frame: false,
+    // macOS gets the native traffic-light controls; Windows keeps the custom
+    // frameless chrome rendered by the settings UI.
+    ...(isMac
+      ? { titleBarStyle: 'hidden' as const, trafficLightPosition: { x: 12, y: 14 } }
+      : { frame: false }),
     transparent: true,
     autoHideMenuBar: true,
     backgroundColor: 'rgba(0, 0, 0, 0)',
@@ -2559,6 +2583,14 @@ ipcMain.handle('save-preprompt', (_event, payload: Partial<Preprompt>) => {
 
 ipcMain.handle('delete-preprompt', (_event, prepromptId: string) => {
   return deletePreprompt(prepromptId)
+})
+
+ipcMain.handle('get-global-instructions', () => {
+  return getGlobalInstructions()
+})
+
+ipcMain.handle('save-global-instructions', (_event, value: string) => {
+  return saveGlobalInstructions(value)
 })
 
 ipcMain.handle('get-apps', () => {

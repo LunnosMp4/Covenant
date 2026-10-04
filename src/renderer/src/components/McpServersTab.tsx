@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { McpAuth, McpServer } from '../../../shared/mcp'
 import { PresetLogo, type BrandKind } from './brands'
-import { MoreIcon } from './icons'
+import { ChevronDownIcon, ChevronUpIcon, MoreIcon } from './icons'
 
 export interface McpPreset {
   id: string
@@ -103,6 +103,64 @@ function findPresetLogo(server: McpServer): BrandKind | undefined {
   return MCP_PRESETS.find((preset) => url.includes(preset.url.toLowerCase()))?.logo
 }
 
+const TOOL_DESCRIPTION_PREVIEW_LENGTH = 160
+
+function ToolRow({
+  tool,
+  server,
+  onToggleTool
+}: {
+  tool: McpServer['tools'][number]
+  server: McpServer
+  onToggleTool: (server: McpServer, toolName: string, enabled: boolean) => void
+}): JSX.Element {
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false)
+  const description = tool.description ?? ''
+  const isDescriptionLong = description.length > TOOL_DESCRIPTION_PREVIEW_LENGTH
+
+  return (
+    <label className="flex items-start justify-between gap-4 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2">
+      <span className="min-w-0">
+        <span className="block break-all text-sm text-neutral-100">{tool.name}</span>
+        {description ? (
+          <span
+            className={`mt-1 block whitespace-pre-wrap text-xs text-neutral-500 ${
+              isDescriptionLong && !isDescriptionExpanded ? 'line-clamp-2' : ''
+            }`}
+          >
+            {description}
+          </span>
+        ) : null}
+        {isDescriptionLong ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              setIsDescriptionExpanded((expanded) => !expanded)
+            }}
+            className="mt-1 text-[11px] font-medium text-neutral-400 transition-colors hover:text-neutral-200"
+          >
+            {isDescriptionExpanded ? 'Show less' : 'Show more'}
+          </button>
+        ) : null}
+      </span>
+
+      <span className="flex flex-shrink-0 items-center gap-2">
+        <span className="text-[11px] uppercase tracking-[0.08em] text-neutral-500">
+          {tool.enabled ? 'Enabled' : 'Disabled'}
+        </span>
+        <input
+          type="checkbox"
+          checked={tool.enabled}
+          onChange={(event) => onToggleTool(server, tool.name, event.target.checked)}
+          className="h-4 w-4 rounded border-neutral-700 bg-neutral-950 text-neutral-100"
+        />
+      </span>
+    </label>
+  )
+}
+
 function McpServerCard({
   server,
   onToggleActive,
@@ -122,6 +180,7 @@ function McpServerCard({
 }): JSX.Element {
   const [toolFilter, setToolFilter] = useState('')
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(false)
 
   const connection = getConnectionState(server)
   const connectionMeta = CONNECTION_LABELS[connection]
@@ -164,11 +223,24 @@ function McpServerCard({
             ) : null}
           </div>
           <p className="mt-1 break-all text-xs text-neutral-500">{server.url}</p>
-          {server.description ? <p className="mt-2 text-sm text-neutral-400">{server.description}</p> : null}
+          {isExpanded && server.description ? (
+            <p className="mt-2 text-sm text-neutral-400">{server.description}</p>
+          ) : null}
           {server.lastError ? <p className="mt-2 break-all text-xs text-red-300">{server.lastError}</p> : null}
         </div>
 
         <div className="flex flex-shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setIsExpanded((expanded) => !expanded)}
+            className="flex items-center gap-1.5 rounded-lg border border-neutral-700 px-2.5 py-1.5 text-xs text-neutral-300 transition-colors hover:border-neutral-600 hover:text-neutral-100"
+            aria-expanded={isExpanded}
+            aria-label={isExpanded ? 'Collapse server details' : 'Expand server details'}
+          >
+            {isExpanded ? <ChevronUpIcon /> : <ChevronDownIcon />}
+            {isExpanded ? 'Collapse' : 'Expand'}
+          </button>
+
           <button
             type="button"
             role="switch"
@@ -249,78 +321,60 @@ function McpServerCard({
         </div>
       </div>
 
-      <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-950/70 p-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <p className="text-xs font-medium uppercase tracking-[0.08em] text-neutral-400">Discovered tools</p>
-            {server.tools.length > 0 ? (
-              <span className="text-xs text-neutral-500">{enabledCount} enabled</span>
-            ) : null}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setAllTools(true)}
-              disabled={enabledCount === server.tools.length}
-              className="rounded-lg border border-neutral-700 px-2 py-1 text-[11px] text-neutral-400 transition-colors hover:border-neutral-600 hover:text-neutral-200 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Enable all
-            </button>
-            <button
-              type="button"
-              onClick={() => setAllTools(false)}
-              disabled={enabledCount === 0}
-              className="rounded-lg border border-neutral-700 px-2 py-1 text-[11px] text-neutral-400 transition-colors hover:border-neutral-600 hover:text-neutral-200 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Disable all
-            </button>
-          </div>
-        </div>
-
-        {server.tools.length > 1 ? (
-          <input
-            type="text"
-            value={toolFilter}
-            onChange={(event) => setToolFilter(event.target.value)}
-            placeholder="Filter tools…"
-            className="mt-3 w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 placeholder:text-neutral-500 focus:border-neutral-500 focus:outline-none"
-          />
-        ) : null}
-
-        <div className="mt-3 space-y-2">
-          {server.tools.length === 0 ? (
-            <p className="text-xs text-neutral-500">
-              No tools discovered yet. Activate the server to fetch them automatically.
-            </p>
-          ) : filteredTools.length === 0 ? (
-            <p className="text-xs text-neutral-500">No tools match “{toolFilter}”.</p>
-          ) : (
-            filteredTools.map((tool) => (
-              <label
-                key={tool.name}
-                className="flex items-start justify-between gap-4 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2"
+      {isExpanded ? (
+        <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-950/70 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-medium uppercase tracking-[0.08em] text-neutral-400">Discovered tools</p>
+              {server.tools.length > 0 ? (
+                <span className="text-xs text-neutral-500">{enabledCount} enabled</span>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setAllTools(true)}
+                disabled={enabledCount === server.tools.length}
+                className="rounded-lg border border-neutral-700 px-2 py-1 text-[11px] text-neutral-400 transition-colors hover:border-neutral-600 hover:text-neutral-200 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                <span className="min-w-0">
-                  <span className="block break-all text-sm text-neutral-100">{tool.name}</span>
-                  {tool.description ? <span className="mt-1 block text-xs text-neutral-500">{tool.description}</span> : null}
-                </span>
+                Enable all
+              </button>
+              <button
+                type="button"
+                onClick={() => setAllTools(false)}
+                disabled={enabledCount === 0}
+                className="rounded-lg border border-neutral-700 px-2 py-1 text-[11px] text-neutral-400 transition-colors hover:border-neutral-600 hover:text-neutral-200 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Disable all
+              </button>
+            </div>
+          </div>
 
-                <span className="flex items-center gap-2">
-                  <span className="text-[11px] uppercase tracking-[0.08em] text-neutral-500">
-                    {tool.enabled ? 'Enabled' : 'Disabled'}
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={tool.enabled}
-                    onChange={(event) => onToggleTool(server, tool.name, event.target.checked)}
-                    className="h-4 w-4 rounded border-neutral-700 bg-neutral-950 text-neutral-100"
-                  />
-                </span>
-              </label>
-            ))
-          )}
+          {server.tools.length > 1 ? (
+            <input
+              type="text"
+              value={toolFilter}
+              onChange={(event) => setToolFilter(event.target.value)}
+              placeholder="Filter tools…"
+              className="mt-3 w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 placeholder:text-neutral-500 focus:border-neutral-500 focus:outline-none"
+            />
+          ) : null}
+
+          <div className="mt-3 space-y-2">
+            {server.tools.length === 0 ? (
+              <p className="text-xs text-neutral-500">
+                No tools discovered yet. Activate the server to fetch them automatically.
+              </p>
+            ) : filteredTools.length === 0 ? (
+              <p className="text-xs text-neutral-500">No tools match “{toolFilter}”.</p>
+            ) : (
+              filteredTools.map((tool) => (
+                <ToolRow key={tool.name} tool={tool} server={server} onToggleTool={onToggleTool} />
+              ))
+            )}
+          </div>
         </div>
-      </div>
+      ) : null}
     </article>
   )
 }
