@@ -85,7 +85,7 @@ export default function PasteDetail({
             {meta.linkTitle && <p className="text-base font-medium text-neutral-100">{meta.linkTitle}</p>}
             <p className="break-all text-sm text-emerald-300">{meta.linkUrl ?? text}</p>
             {text && meta.linkUrl && text !== meta.linkUrl && (
-              <pre className="chat-scrollbar mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-white/5 bg-black/20 p-3 text-xs text-neutral-300">
+              <pre className="chat-scrollbar mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-white/5 bg-neutral-500/10 p-3 text-xs text-neutral-300">
                 {text}
               </pre>
             )}

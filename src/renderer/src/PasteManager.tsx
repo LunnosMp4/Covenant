@@ -15,6 +15,7 @@ import type {
 } from '../../shared/paste'
 import PasteDetail from './components/PasteDetail'
 import { PasteTypeIcon, PinIcon, SearchIcon } from './components/PasteIcons'
+import { getThemeMode, getThemePalette } from './constants/theme'
 import { normalizeText, scoreMatch } from './utils/fuzzy'
 import { formatAbsoluteTime, formatRelativeTime } from './utils/pasteFormat'
 
@@ -84,6 +85,9 @@ export default function PasteManager(): JSX.Element {
       setQuery('')
       window.setTimeout(() => searchRef.current?.focus(), 0)
     })
+    const offTheme = window.api?.config?.onThemeUpdated?.((gradient) => {
+      setThemeGradient(gradient || 'from-neutral-900/95 to-[#1c0f03]')
+    })
 
     window.setTimeout(() => searchRef.current?.focus(), 30)
 
@@ -91,6 +95,7 @@ export default function PasteManager(): JSX.Element {
       offChanged?.()
       offSettings?.()
       offShown?.()
+      offTheme?.()
     }
   }, [reload])
 
@@ -220,10 +225,33 @@ export default function PasteManager(): JSX.Element {
     [moveSelection, selectedId, handlePasteAndClose]
   )
 
+  const themePalette = useMemo(() => getThemePalette(themeGradient), [themeGradient])
+  const themeStyles = useMemo<CSSProperties>(
+    () =>
+      ({
+        '--chat-accent': themePalette.accent,
+        '--chat-accent-soft': themePalette.accentSoft,
+        '--chat-accent-strong': themePalette.accentStrong,
+        '--chat-on-accent': themePalette.onAccent,
+        '--chat-user-text': themePalette.userText,
+        '--chat-assistant-text': themePalette.assistantText,
+        '--chat-assistant-bg': themePalette.assistantBg,
+        '--chat-assistant-border': themePalette.assistantBorder,
+        '--chat-scroll-thumb': themePalette.scrollbarThumb,
+        '--chat-scroll-thumb-hover': themePalette.scrollbarThumbHover,
+        '--chat-meta-text': themePalette.metaText
+      }) as CSSProperties,
+    [themePalette]
+  )
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', getThemeMode(themeGradient))
+  }, [themeGradient])
+
   const disabled = settings != null && !settings.enabled
 
   return (
-    <div className="h-screen w-screen bg-transparent p-2 font-sans text-neutral-200">
+    <div className="h-screen w-screen bg-transparent p-2 font-sans text-neutral-200" style={themeStyles}>
       <div
         className={`relative flex h-full flex-col overflow-hidden rounded-xl border border-neutral-800/85 bg-gradient-to-br ${themeGradient} texture-surface`}
       >

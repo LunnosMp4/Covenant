@@ -3228,6 +3228,10 @@ ipcMain.on('update-theme', (_event, gradientClass: string) => {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.webContents.send('theme-updated', nextTheme)
   }
+
+  if (pasteWindow && !pasteWindow.isDestroyed()) {
+    pasteWindow.webContents.send('theme-updated', nextTheme)
+  }
 })
 
 ipcMain.on('update-terminal-font', (_event, terminalFont: string) => {
