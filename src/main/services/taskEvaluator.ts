@@ -11,7 +11,7 @@ import {
   type TaskTier
 } from '../../shared/gamification'
 
-const EVALUATION_MODEL = 'gpt-4o-mini'
+const EVALUATION_MODEL = 'gpt-6-luna'
 const EVALUATION_TIMEOUT_MS = 8000
 
 const SYSTEM_PROMPT = `You are the Task Gamification & Complexity Evaluator for Covenant.

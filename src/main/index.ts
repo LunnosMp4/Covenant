@@ -220,7 +220,7 @@ const runningWorkflowIds = new Set<string>()
 const terminalSubscribers = new Set<WebContents>()
 let lastActiveSessionId: string | null = null
 const MAX_CONVERSATIONS = 20
-const CONVERSATION_TITLE_MODEL = 'gpt-4o-mini'
+const CONVERSATION_TITLE_MODEL = 'gpt-6-luna'
 const MAX_GENERATED_TITLE_LENGTH = 60
 const activeChatStreams = new Map<string, AbortController>()
 

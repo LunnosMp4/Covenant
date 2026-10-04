@@ -6,7 +6,7 @@ export interface OpenAIConfig {
   proxyUrl?: string
 }
 
-const OCR_MODEL = 'gpt-4o-mini'
+const OCR_MODEL = 'gpt-6-luna'
 const OCR_PROMPT =
   'Extract all readable text from this image. Return only the extracted text, preserving line breaks, with no commentary. If there is no text, return an empty string.'
 
