@@ -1,22 +1,22 @@
 import { clipboard, contextBridge, ipcRenderer } from 'electron'
 import type { AppConfig } from '../shared/config'
 import type { ButtonVisibility, ReasoningEffort, ShortcutConfig } from '../shared/config'
-import type { McpServer } from '../shared/mcp'
-import type { ChatConversation, ChatRole, ChatStreamEvent, InputContent } from '../shared/chat'
-import type { LauncherApp } from '../shared/launcher-app'
-import type { InstalledApp } from '../shared/launcher'
-import type { Preprompt } from '../shared/preprompt'
-import type { TerminalExitPayload, TerminalStartResult } from '../shared/terminal'
-import type { ClearCompletedResult, Task } from '../shared/task'
-import type { GamificationState } from '../shared/gamification'
-import type { UpdateStatus } from '../shared/update'
-import type { UsageMetricsResult, UsageProjectsResult } from '../shared/usage'
-import type { PasteItemDetail, PasteItemMeta, PasteManagerSettings } from '../shared/paste'
+import type { McpServer } from '../shared/mcp/mcp'
+import type { ChatConversation, ChatRole, ChatStreamEvent, InputContent } from '../shared/chat/chat'
+import type { LauncherApp } from '../shared/launcher/launcher-app'
+import type { InstalledApp } from '../shared/launcher/launcher'
+import type { Preprompt } from '../shared/domain/preprompt'
+import type { TerminalExitPayload, TerminalStartResult } from '../shared/terminal/terminal'
+import type { ClearCompletedResult, Task } from '../shared/tasks/task'
+import type { GamificationState } from '../shared/tasks/gamification'
+import type { UpdateStatus } from '../shared/system/update'
+import type { UsageMetricsResult, UsageProjectsResult } from '../shared/system/usage'
+import type { PasteItemDetail, PasteItemMeta, PasteManagerSettings } from '../shared/paste/paste'
 import type {
   Workflow,
   WorkflowLogPayload,
   WorkflowStatusUpdatePayload
-} from '../shared/workflow'
+} from '../shared/domain/workflow'
 
 const api = {
   platform: process.platform,
@@ -176,17 +176,6 @@ const api = {
         ipcRenderer.removeListener('terminal-font-updated', listener)
       }
     },
-    onPreferredShellUpdated: (callback: (preferredShell?: string) => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, preferredShell?: string) => {
-        callback(preferredShell)
-      }
-
-      ipcRenderer.on('preferred-shell-updated', listener)
-
-      return () => {
-        ipcRenderer.removeListener('preferred-shell-updated', listener)
-      }
-    },
     onButtonVisibilityUpdated: (callback: (buttonVisibility: ButtonVisibility) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, buttonVisibility: ButtonVisibility) => {
         callback(buttonVisibility)
@@ -229,17 +218,6 @@ const api = {
 
       return () => {
         ipcRenderer.removeListener('reasoning-effort-updated', listener)
-      }
-    },
-    onWebSearchUpdated: (callback: (enableWebSearch: boolean) => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, enableWebSearch: boolean) => {
-        callback(enableWebSearch)
-      }
-
-      ipcRenderer.on('web-search-updated', listener)
-
-      return () => {
-        ipcRenderer.removeListener('web-search-updated', listener)
       }
     },
     onAutoCollapseReasoningUpdated: (callback: (autoCollapseReasoning: boolean) => void) => {
@@ -289,7 +267,6 @@ const api = {
     },
     cancelStream: (streamId: string) => ipcRenderer.send('covenant:chat-cancel', streamId),
     getConversations: () => ipcRenderer.invoke('get-conversations') as Promise<ChatConversation[]>,
-    getConversation: (id: string) => ipcRenderer.invoke('get-conversation', id) as Promise<ChatConversation | null>,
     saveConversation: (conversation: ChatConversation) =>
       ipcRenderer.invoke('save-conversation', conversation) as Promise<ChatConversation[]>,
     deleteConversation: (id: string) =>
@@ -484,54 +461,3 @@ const api = {
 }
 
 contextBridge.exposeInMainWorld('api', api)
-
-contextBridge.exposeInMainWorld('electronAPI', {
-  hideWindow: api.window.hideWindow,
-  notifyReadyToShow: api.window.notifyReadyToShow,
-  notifyExitComplete: api.window.notifyExitComplete,
-  setPinned: api.window.setPinned,
-  setExpanded: api.window.setExpanded,
-  openSettings: api.window.openSettings,
-  closeSettings: api.window.closeSettings,
-  minimizeSettings: api.window.minimizeSettings,
-  getConfig: api.config.getConfig,
-  saveApiKey: api.config.saveApiKey,
-  saveOpenAISettings: api.config.saveOpenAISettings,
-  markOnboarded: api.config.markOnboarded,
-  getMcpServers: api.config.getMcpServers,
-  saveMcpServer: api.config.saveMcpServer,
-  deleteMcpServer: api.config.deleteMcpServer,
-  refreshMcpServerTools: api.config.refreshMcpServerTools,
-  testMcpServer: api.config.testMcpServer,
-  updateTheme: api.config.updateTheme,
-  updateStartupSetting: api.config.updateStartupSetting,
-  updateTerminalFont: api.config.updateTerminalFont,
-  updatePreferredShell: api.config.updatePreferredShell,
-  updateButtonVisibility: api.config.updateButtonVisibility,
-  updateLauncherShowSystemApps: api.config.updateLauncherShowSystemApps,
-  updateChatModel: api.config.updateChatModel,
-  updateReasoningEffort: api.config.updateReasoningEffort,
-  updateWebSearch: api.config.updateWebSearch,
-  updateAutoCollapseReasoning: api.config.updateAutoCollapseReasoning,
-  updateTextureIntensity: api.config.updateTextureIntensity,
-  onTextureIntensityUpdated: api.config.onTextureIntensityUpdated,
-  updateAutoUpdate: api.config.updateAutoUpdate,
-  updateUsageProject: api.config.updateUsageProject,
-  checkForUpdates: api.config.checkForUpdates,
-  getUpdateStatus: api.config.getUpdateStatus,
-  installUpdate: api.config.installUpdate,
-  onUpdateStatus: api.config.onUpdateStatus,
-  updateShortcuts: api.config.updateShortcuts,
-  getTerminalFonts: api.config.getTerminalFonts,
-  onThemeUpdated: api.config.onThemeUpdated,
-  onTerminalFontUpdated: api.config.onTerminalFontUpdated,
-  onPreferredShellUpdated: api.config.onPreferredShellUpdated,
-  onButtonVisibilityUpdated: api.config.onButtonVisibilityUpdated,
-  onLauncherShowSystemAppsUpdated: api.config.onLauncherShowSystemAppsUpdated,
-  onChatModelUpdated: api.config.onChatModelUpdated,
-  onReasoningEffortUpdated: api.config.onReasoningEffortUpdated,
-  askCovenant: api.chat.askCovenant,
-  transcribe: api.voice.transcribe,
-  onToggleVisibility: api.window.onToggleVisibility,
-  writeText: api.clipboard.writeText
-})

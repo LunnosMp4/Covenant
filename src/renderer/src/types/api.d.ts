@@ -1,16 +1,21 @@
 import type { AppConfig, ButtonVisibility, ReasoningEffort, ShortcutConfig } from '../../../shared/config'
-import type { McpServer } from '../../../shared/mcp'
-import type { Preprompt } from './preprompt'
-import type { LauncherApp } from './launcher-app'
-import type { InstalledApp } from '../../../shared/launcher'
-import type { Workflow, WorkflowLogPayload, WorkflowStatusUpdatePayload } from './workflow'
-import type { Task } from './task'
-import type { ClearCompletedResult, GamificationState } from './gamification'
-import type { ChatConversation, ChatRole, ChatStreamEvent, InputContent } from '../../../shared/chat'
-import type { TerminalExitPayload, TerminalStartResult } from '../../../shared/terminal'
-import type { UpdateStatus } from '../../../shared/update'
-import type { PasteItemDetail, PasteItemMeta, PasteManagerSettings } from '../../../shared/paste'
-import type { UsageMetricsResult, UsageProjectsResult } from '../../../shared/usage'
+import type { McpServer } from '../../../shared/mcp/mcp'
+import type { InstalledApp } from '../../../shared/launcher/launcher'
+import type {
+  ClearCompletedResult,
+  GamificationState,
+  LauncherApp,
+  Preprompt,
+  Task,
+  Workflow,
+  WorkflowLogPayload,
+  WorkflowStatusUpdatePayload
+} from './renderer'
+import type { ChatConversation, ChatRole, ChatStreamEvent, InputContent } from '../../../shared/chat/chat'
+import type { TerminalExitPayload, TerminalStartResult } from '../../../shared/terminal/terminal'
+import type { UpdateStatus } from '../../../shared/system/update'
+import type { PasteItemDetail, PasteItemMeta, PasteManagerSettings } from '../../../shared/paste/paste'
+import type { UsageMetricsResult, UsageProjectsResult } from '../../../shared/system/usage'
 
 interface CovenantAPI {
   platform: string
@@ -67,12 +72,10 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     getTerminalFonts: () => Promise<string[]>
     onThemeUpdated: (callback: (gradientClass: string) => void) => () => void
     onTerminalFontUpdated: (callback: (terminalFont: string) => void) => () => void
-    onPreferredShellUpdated: (callback: (preferredShell?: string) => void) => () => void
     onButtonVisibilityUpdated: (callback: (buttonVisibility: ButtonVisibility) => void) => () => void
     onLauncherShowSystemAppsUpdated: (callback: (showSystemApps: boolean) => void) => () => void
     onChatModelUpdated: (callback: (chatModel: string) => void) => () => void
     onReasoningEffortUpdated: (callback: (reasoningEffort: ReasoningEffort) => void) => () => void
-    onWebSearchUpdated: (callback: (enableWebSearch: boolean) => void) => () => void
     onAutoCollapseReasoningUpdated: (callback: (autoCollapseReasoning: boolean) => void) => () => void
     onTextureIntensityUpdated: (callback: (textureIntensity: number) => void) => () => void
     onShortcutsUpdated: (callback: (shortcuts: ShortcutConfig) => void) => () => void
@@ -87,7 +90,6 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     onStreamEvent: (callback: (event: ChatStreamEvent) => void) => () => void
     cancelStream: (streamId: string) => void
     getConversations: () => Promise<ChatConversation[]>
-    getConversation: (id: string) => Promise<ChatConversation | null>
     saveConversation: (conversation: ChatConversation) => Promise<ChatConversation[]>
     deleteConversation: (id: string) => Promise<ChatConversation[]>
     generateConversationTitle: (prompt: string) => Promise<string>
@@ -173,61 +175,6 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
 declare global {
   interface Window {
     api?: CovenantAPI
-    electronAPI?: {
-      hideWindow: () => void
-      notifyReadyToShow: () => void
-      notifyExitComplete: () => void
-      setPinned: (pinned: boolean) => void
-      setExpanded: (expanded: boolean) => void
-      openSettings: (tab?: string) => void
-      closeSettings: () => void
-      minimizeSettings: () => void
-      getConfig: () => Promise<AppConfig>
-      saveApiKey: (apiKey: string) => void
-    saveOpenAISettings: (settings: { apiKey?: string; proxyUrl?: string; adminApiKey?: string }) => void
-      markOnboarded: () => void
-      getMcpServers: () => Promise<McpServer[]>
-      saveMcpServer: (server: Partial<McpServer>) => Promise<McpServer[]>
-      deleteMcpServer: (serverId: string) => Promise<McpServer[]>
-refreshMcpServerTools: (serverId: string) => Promise<McpServer[]>
-    testMcpServer: (payload: {
-      name: string
-      url: string
-      auth: McpServer['auth']
-      appendMcpSuffix?: boolean
-    }) => Promise<{ ok: boolean; message: string; toolCount: number; lastError?: string }>
-      updateTheme: (gradientClass: string) => void
-      updateStartupSetting: (launchOnStartup: boolean) => void
-      updateTerminalFont: (terminalFont: string) => void
-      updatePreferredShell: (preferredShell: string) => void
-      updateButtonVisibility: (buttonVisibility: Partial<ButtonVisibility>) => void
-      updateLauncherShowSystemApps: (showSystemApps: boolean) => void
-      updateChatModel: (chatModel: string) => void
-      updateReasoningEffort: (reasoningEffort: ReasoningEffort) => void
-      updateWebSearch: (enableWebSearch: boolean) => void
-      updateAutoCollapseReasoning: (autoCollapseReasoning: boolean) => void
-      updateTextureIntensity: (textureIntensity: number) => void
-      onTextureIntensityUpdated: (callback: (textureIntensity: number) => void) => () => void
-    updateAutoUpdate: (enabled: boolean) => void
-    updateUsageProject: (projectId: string) => void
-      checkForUpdates: () => Promise<UpdateStatus>
-      getUpdateStatus: () => Promise<UpdateStatus>
-      installUpdate: () => void
-      onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void
-      updateShortcuts: (shortcuts: ShortcutConfig) => void
-      getTerminalFonts: () => Promise<string[]>
-      onThemeUpdated: (callback: (gradientClass: string) => void) => () => void
-      onTerminalFontUpdated: (callback: (terminalFont: string) => void) => () => void
-      onPreferredShellUpdated: (callback: (preferredShell?: string) => void) => () => void
-      onButtonVisibilityUpdated: (callback: (buttonVisibility: ButtonVisibility) => void) => () => void
-      onLauncherShowSystemAppsUpdated: (callback: (showSystemApps: boolean) => void) => () => void
-      onChatModelUpdated: (callback: (chatModel: string) => void) => () => void
-      onReasoningEffortUpdated: (callback: (reasoningEffort: ReasoningEffort) => void) => () => void
-      askCovenant: (messages: Array<{ role: ChatRole; content: string | InputContent[] }>) => Promise<string>
-      transcribe: (audioBuffer: ArrayBuffer) => Promise<string>
-    onToggleVisibility: (callback: (visible: boolean) => void) => () => void
-    writeText: (text: string) => void
-    }
   }
 }
 

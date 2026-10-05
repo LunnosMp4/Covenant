@@ -1,7 +1,7 @@
 import { app, BrowserWindow, Notification, shell } from 'electron'
 import { autoUpdater, type UpdateInfo } from 'electron-updater'
 import { log } from './logger'
-import type { UpdateStatus, UpdateStatusState } from '../shared/update'
+import type { UpdateStatus } from '../shared/system/update'
 
 const isMac = process.platform === 'darwin'
 const RELEASE_API_URL = 'https://api.github.com/repos/LunnosMp4/Covenant/releases/latest'
@@ -264,8 +264,4 @@ export function quitAndInstallUpdate(): void {
     return
   }
   autoUpdater.quitAndInstall()
-}
-
-export function getAutoUpdaterState(): UpdateStatusState {
-  return currentStatus.state
 }

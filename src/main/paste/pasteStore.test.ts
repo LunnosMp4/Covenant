@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { existsSync, mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { PASTE_INLINE_TEXT_LIMIT } from '../../shared/paste'
+import { PASTE_INLINE_TEXT_LIMIT } from '../../shared/paste/paste'
 import { PasteStore } from './pasteStore'
 
 let dir: string
