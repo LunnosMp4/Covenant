@@ -789,3 +789,29 @@ body[data-window='paste'] [contenteditable='true'],
 [data-theme='light'] .hover\:text-red-300:hover {
   color: #b91c1c;
 }
+
+/* ── Terminal chrome scope ──
+   The terminal panel keeps a dark surface even in light themes (so shell/prompt
+   ANSI colors stay readable). Force the dark palette within it so all the
+   neutral/white utilities on its buttons, tabs and labels render light-on-dark
+   instead of inheriting the light theme's flipped values. */
+.terminal-surface {
+  --ui-fg: 255 255 255;
+  --n-50: 250 250 250;
+  --n-100: 245 245 245;
+  --n-200: 229 229 229;
+  --n-300: 212 212 212;
+  --n-400: 163 163 163;
+  --n-500: 115 115 115;
+  --n-600: 82 82 82;
+  --n-700: 64 64 64;
+  --n-800: 38 38 38;
+  --n-900: 23 23 23;
+  --n-950: 10 10 10;
+}
+
+/* The light-theme override for .text-emerald-400 would darken the pinned
+   button icon against the dark terminal surface; restore the dark-theme shade. */
+[data-theme='light'] .terminal-surface .text-emerald-400 {
+  color: #34d399;
+}

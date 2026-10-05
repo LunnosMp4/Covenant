@@ -487,7 +487,6 @@ export default function McpServersTab({
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-semibold text-neutral-100">MCP Servers</h2>
           <p className="mt-1 text-sm text-neutral-400">
             Connect streamable HTTP MCP servers, control which tools are exposed to chat, and see their status at a glance.
           </p>

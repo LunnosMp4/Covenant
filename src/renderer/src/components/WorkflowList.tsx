@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import type { PopupItem } from './ModulePopup'
 import type { WorkflowExecutionState } from '../types/workflow'
+import MeasuredCollapse from './MeasuredCollapse'
 
 interface WorkflowListProps {
   items: PopupItem[]
@@ -161,29 +162,21 @@ export default function WorkflowList({
               </button>
             </motion.div>
 
-            <AnimatePresence initial={false}>
-              {isLogsVisible && (workflowState.status === 'running' || workflowState.status === 'error') ? (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                  className="overflow-hidden"
-                >
-                  <div className="bg-neutral-950 p-2 font-mono text-xs overflow-y-auto max-h-32 whitespace-pre-wrap break-words rounded-lg border border-neutral-800 text-neutral-300">
-                    {workflowState.logs.length > 0 ? (
-                      workflowState.logs.map((line, index) => (
-                        <p key={`${item.id}-${index}`} className="leading-5">
-                          {line}
-                        </p>
-                      ))
-                    ) : (
-                      <p className="text-neutral-500">Waiting for logs...</p>
-                    )}
-                  </div>
-                </motion.div>
-              ) : null}
-            </AnimatePresence>
+            <MeasuredCollapse
+              open={isLogsVisible && (workflowState.status === 'running' || workflowState.status === 'error')}
+            >
+              <div className="bg-neutral-950 p-2 font-mono text-xs overflow-y-auto max-h-32 whitespace-pre-wrap break-words rounded-lg border border-neutral-800 text-neutral-300">
+                {workflowState.logs.length > 0 ? (
+                  workflowState.logs.map((line, index) => (
+                    <p key={`${item.id}-${index}`} className="leading-5">
+                      {line}
+                    </p>
+                  ))
+                ) : (
+                  <p className="text-neutral-500">Waiting for logs...</p>
+                )}
+              </div>
+            </MeasuredCollapse>
           </div>
         )
       })}

@@ -25,8 +25,11 @@ document.body.setAttribute('data-window', windowKind)
 const RootComponent =
   windowKind === 'settings' ? Settings : windowKind === 'paste' ? PasteManager : App
 
+const app = <RootComponent />
+
+// StrictMode double-invokes mount effects in development which re-plays
+// entry animations and makes flicker hard to reason about. Keep it for dev
+// only; production renders once.
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
-  <React.StrictMode>
-    <RootComponent />
-  </React.StrictMode>
+  import.meta.env.DEV ? <React.StrictMode>{app}</React.StrictMode> : app
 )

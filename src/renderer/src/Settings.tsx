@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion, useAnimationControls, type Transition } from 'framer-motion'
+import { WINDOW_ENTER_TRANSITION, WINDOW_EXIT_TRANSITION } from './constants/motion'
 import AppFormModal from './components/AppFormModal'
 import ConfirmDeleteModal from './components/ConfirmDeleteModal'
 import CustomSelect from './components/CustomSelect'
@@ -73,8 +74,8 @@ const SETTINGS_NAV_GROUPS: readonly SettingsNavGroup[] = [
   }
 ]
 
-const SETTINGS_WINDOW_ENTER_TRANSITION: Transition = { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
-const SETTINGS_WINDOW_EXIT_TRANSITION: Transition = { duration: 0.16, ease: [0.22, 1, 0.36, 1] }
+const SETTINGS_WINDOW_ENTER_TRANSITION: Transition = WINDOW_ENTER_TRANSITION
+const SETTINGS_WINDOW_EXIT_TRANSITION: Transition = WINDOW_EXIT_TRANSITION
 
 function isSettingsTab(tab: string | null): tab is SettingsTab {
   return typeof tab === 'string' && VALID_SETTINGS_TABS.includes(tab as SettingsTab)
@@ -559,6 +560,7 @@ interface GeneralTabProps {
   onToggleAdvanced: () => void
   onSaveOpenAISettings: () => void
   isSavingApiKey: boolean
+  isConfigLoaded: boolean
   saveFeedbackMessage: string
   launchOnStartup: boolean
   onLaunchOnStartupChange: (value: boolean) => void
@@ -588,6 +590,7 @@ function GeneralTab({
   onToggleAdvanced,
   onSaveOpenAISettings,
   isSavingApiKey,
+  isConfigLoaded,
   saveFeedbackMessage,
   launchOnStartup,
   onLaunchOnStartupChange,
@@ -632,7 +635,7 @@ function GeneralTab({
             <button
               type="button"
               onClick={onSaveOpenAISettings}
-              disabled={isSavingApiKey}
+              disabled={isSavingApiKey || !isConfigLoaded}
               className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSavingApiKey ? 'Saving...' : 'Save'}
@@ -1054,7 +1057,6 @@ function AppLauncherTab({
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-neutral-100">App Launcher</h2>
           <p className="mt-1 text-sm text-neutral-400">Configure shortcuts for apps launched by the App Launcher button.</p>
         </div>
         <button
@@ -1139,7 +1141,6 @@ function WorkflowsTab({
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-neutral-100">Workflows & Prompts</h2>
           <p className="mt-1 text-sm text-neutral-400">Build reusable script and prompt actions for the Workflows button.</p>
         </div>
         <button
@@ -1333,6 +1334,7 @@ export default function Settings(): JSX.Element {
   const [adminApiKey, setAdminApiKey] = useState('')
   const [usageProjectId, setUsageProjectId] = useState('')
   const [proxyUrl, setProxyUrl] = useState('')
+  const [isConfigLoaded, setIsConfigLoaded] = useState(false)
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false)
   const [selectedTheme, setSelectedTheme] = useState(DEFAULT_THEME_GRADIENT)
   const [launchOnStartup, setLaunchOnStartup] = useState(true)
@@ -1340,6 +1342,8 @@ export default function Settings(): JSX.Element {
   const [preferredShell, setPreferredShell] = useState<string | undefined>(undefined)
   const [isSavingApiKey, setIsSavingApiKey] = useState(false)
   const [saveFeedbackMessage, setSaveFeedbackMessage] = useState('')
+  const [isSavingAdminKey, setIsSavingAdminKey] = useState(false)
+  const [adminKeyFeedbackMessage, setAdminKeyFeedbackMessage] = useState('')
   const [chatModel, setChatModel] = useState(DEFAULT_CHAT_MODEL)
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT)
   const [enableWebSearch, setEnableWebSearch] = useState(true)
@@ -1438,6 +1442,7 @@ export default function Settings(): JSX.Element {
         setLauncherShowSystemApps(config.launcherShowSystemApps === true)
         setShortcuts(config.shortcuts ?? { ...DEFAULT_SHORTCUTS })
         setPasteSettings(normalizePasteManagerSettings(config.pasteManager))
+        setIsConfigLoaded(true)
       } catch {
         if (!isMounted) return
         setApiKey('')
@@ -1699,10 +1704,13 @@ const handleMinimizeWindow = (): void => {
   }
 
   const handleSaveOpenAISettings = (): void => {
+    if (!isConfigLoaded) return
     try {
       setIsSavingApiKey(true)
       if (window.api?.config.saveOpenAISettings) {
-        window.api.config.saveOpenAISettings({ apiKey, proxyUrl, adminApiKey })
+        // Only submit the General tab's own fields; the admin key is owned by
+        // the Usage tab so we don't clobber it with possibly-stale state.
+        window.api.config.saveOpenAISettings({ apiKey, proxyUrl })
       } else {
         window.api?.config.saveApiKey?.(apiKey)
       }
@@ -1712,6 +1720,20 @@ const handleMinimizeWindow = (): void => {
       window.setTimeout(() => setSaveFeedbackMessage(''), 1800)
     } finally {
       setIsSavingApiKey(false)
+    }
+  }
+
+  const handleSaveAdminKey = (): void => {
+    if (!isConfigLoaded) return
+    try {
+      setIsSavingAdminKey(true)
+      window.api?.config.saveOpenAISettings?.({ adminApiKey })
+
+      setAdminKeyFeedbackMessage('Admin API key saved locally.')
+      setUsageRefreshSignal((value) => value + 1)
+      window.setTimeout(() => setAdminKeyFeedbackMessage(''), 1800)
+    } finally {
+      setIsSavingAdminKey(false)
     }
   }
 
@@ -2285,6 +2307,7 @@ const handleMinimizeWindow = (): void => {
                 onToggleAdvanced={() => setIsAdvancedOpen((current) => !current)}
                 onSaveOpenAISettings={handleSaveOpenAISettings}
                 isSavingApiKey={isSavingApiKey}
+                isConfigLoaded={isConfigLoaded}
                 saveFeedbackMessage={saveFeedbackMessage}
                 launchOnStartup={launchOnStartup}
                 onLaunchOnStartupChange={handleLaunchOnStartupChange}
@@ -2309,9 +2332,10 @@ const handleMinimizeWindow = (): void => {
               <UsageTab
                 adminKey={adminApiKey}
                 onAdminKeyChange={setAdminApiKey}
-                onSaveAdminKey={handleSaveOpenAISettings}
-                isSavingAdminKey={isSavingApiKey}
-                adminKeyFeedback={saveFeedbackMessage}
+                onSaveAdminKey={handleSaveAdminKey}
+                isSavingAdminKey={isSavingAdminKey}
+                isConfigLoaded={isConfigLoaded}
+                adminKeyFeedback={adminKeyFeedbackMessage}
                 refreshSignal={usageRefreshSignal}
                 projectId={usageProjectId}
                 onProjectChange={handleUsageProjectChange}

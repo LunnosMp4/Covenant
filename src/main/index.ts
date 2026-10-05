@@ -2535,32 +2535,86 @@ function registerPasteProtocol(): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Two-phase window show/hide
+//
+// The window is transparent and frameless, so calling show() before the
+// renderer has painted its entry frame makes the OS composite a stale/blank
+// frame — the "blink" seen just before an animation starts. Instead we:
+//   1. ask the renderer to mount its entry surfaces in their hidden state
+//      ('prepare'),
+//   2. wait for it to confirm the frame is ready (with a safety timeout),
+//   3. show + focus the window, then tell the renderer to run the animation
+//      ('animate').
+// Hiding mirrors this: the renderer plays its exit animation and calls back
+// when it finishes, so the native window disappears exactly in sync.
+// ---------------------------------------------------------------------------
+const RENDERER_READY_TIMEOUT_MS = 160
+const RENDERER_EXIT_TIMEOUT_MS = 700
+
+let rendererReadyResolver: (() => void) | null = null
+let hideTimer: ReturnType<typeof setTimeout> | null = null
+
+function waitForRendererReady(): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = (): void => {
+      if (settled) return
+      settled = true
+      if (rendererReadyResolver === finish) rendererReadyResolver = null
+      resolve()
+    }
+
+    rendererReadyResolver = finish
+    setTimeout(finish, RENDERER_READY_TIMEOUT_MS)
+  })
+}
+
+function completeHide(): void {
+  if (hideTimer) {
+    clearTimeout(hideTimer)
+    hideTimer = null
+  }
+  if (isVisible || !mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.hide()
+  scheduleSleepModeCleanup(mainWindow)
+}
+
 function showWindow(terminalMode = false): void {
-  if (!mainWindow) return
+  if (!mainWindow || mainWindow.isDestroyed()) return
+
+  if (hideTimer) {
+    clearTimeout(hideTimer)
+    hideTimer = null
+  }
 
   const { x, y } = getWindowPosition()
   mainWindow.setBounds({ x, y, width: WINDOW_WIDTH, height: WINDOW_HEIGHT })
 
-  mainWindow.show()
-  mainWindow.focus()
-  mainWindow.webContents.send('toggle-visibility', true, terminalMode)
   isVisible = true
+
+  // Mount the entry surfaces in their hidden state while still off-screen.
+  mainWindow.webContents.send('toggle-visibility', true, terminalMode, 'prepare')
+
+  void waitForRendererReady().then(() => {
+    if (!mainWindow || mainWindow.isDestroyed() || !isVisible) return
+    mainWindow.show()
+    mainWindow.focus()
+    mainWindow.webContents.send('toggle-visibility', true, terminalMode, 'animate')
+  })
 }
 
 function hideWindow(): void {
-  if (!mainWindow) return
+  if (!mainWindow || mainWindow.isDestroyed()) return
   mainWindow.webContents.send('toggle-visibility', false)
   isVisible = false
   isPinned = false
   isWindowExpanded = false
 
-  // Give the exit animation time to play before hiding, then enter sleep mode.
-  setTimeout(() => {
-    if (!isVisible && mainWindow) {
-      mainWindow.hide()
-      scheduleSleepModeCleanup(mainWindow)
-    }
-  }, 250)
+  // The renderer calls back via 'renderer-exit-complete' when its exit
+  // animation finishes; this timer is only a safety net.
+  if (hideTimer) clearTimeout(hideTimer)
+  hideTimer = setTimeout(completeHide, RENDERER_EXIT_TIMEOUT_MS)
 }
 
 /**
@@ -2890,13 +2944,24 @@ app.on('will-quit', () => {
   }
 })
 
-// IPC: renderer can request hide (after close animation)
-ipcMain.on('hide-window', () => {
-  isVisible = false
-  isPinned = false
-  if (mainWindow) {
-    mainWindow.hide()
+// IPC: renderer confirms it has mounted its entry surfaces in the hidden
+// state, so the window can safely be shown.
+ipcMain.on('renderer-ready-to-show', () => {
+  if (rendererReadyResolver) {
+    const resolve = rendererReadyResolver
+    rendererReadyResolver = null
+    resolve()
   }
+})
+
+// IPC: renderer's exit animation has finished — hide the native window now.
+ipcMain.on('renderer-exit-complete', () => {
+  completeHide()
+})
+
+// IPC: renderer can request hide
+ipcMain.on('hide-window', () => {
+  hideWindow()
 })
 
 ipcMain.on('set-pinned', (_event, pinned: boolean) => {
@@ -3274,12 +3339,18 @@ ipcMain.on('save-api-key', (_event, key: string) => {
 })
 
 ipcMain.on('save-openai-settings', (_event, payload: { apiKey?: string; proxyUrl?: string; adminApiKey?: string }) => {
-  const apiKey = typeof payload?.apiKey === 'string' ? payload.apiKey.trim() : ''
-  const proxyUrl = typeof payload?.proxyUrl === 'string' ? payload.proxyUrl.trim() : ''
-  const adminApiKey = typeof payload?.adminApiKey === 'string' ? payload.adminApiKey.trim() : ''
-  updateConfig({ apiKey, proxyUrl, adminApiKey })
-  configureMcpProxy(resolveOpenAIProxyUrl(proxyUrl))
-  void applySessionProxy(resolveOpenAIProxyUrl(proxyUrl))
+  // Only patch fields the renderer actually sends. The command bar's OpenAI
+  // key save and the Usage tab's admin key save share this channel, so treating
+  // an absent field as an empty string would wipe the sibling key.
+  const patch: Partial<AppConfig> = {}
+  if (typeof payload?.apiKey === 'string') patch.apiKey = payload.apiKey.trim()
+  if (typeof payload?.proxyUrl === 'string') patch.proxyUrl = payload.proxyUrl.trim()
+  if (typeof payload?.adminApiKey === 'string') patch.adminApiKey = payload.adminApiKey.trim()
+
+  const merged = updateConfig(patch)
+  const resolvedProxyUrl = resolveOpenAIProxyUrl(merged.proxyUrl)
+  configureMcpProxy(resolvedProxyUrl)
+  void applySessionProxy(resolvedProxyUrl)
 })
 
 ipcMain.handle('usage:get-metrics', async (_event, payload?: { rangeDays?: unknown; projectId?: unknown }) => {

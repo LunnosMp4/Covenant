@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback, type CSSProperties } from 'react'
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, type CSSProperties } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import ModulePopup, { type ActivePopup, type PopupItem } from './components/ModulePopup'
 import LauncherResults from './components/LauncherResults'
@@ -28,6 +28,8 @@ import {
   XIcon
 } from './components/icons'
 import { createId } from './utils/helpers'
+import MeasuredPanel from './components/MeasuredPanel'
+import { TERMINAL_SPRING, WINDOW_SPRING } from './constants/motion'
 import { rankLauncherItems } from './utils/fuzzy'
 import { formatTargetsSummary, normalizeLaunchTargets } from './utils/launcherTargets'
 import {
@@ -382,8 +384,9 @@ export default function App(): JSX.Element {
   const forceNewConversationRef = useRef(false)
   const reasoningAutoCloseTimersRef = useRef<Record<string, number>>({})
   const autoCollapseReasoningRef = useRef(autoCollapseReasoning)
-  // Ref for the hide-delay timer so it can be cancelled on rapid show/hide.
-  const hideDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // When false, the visible surfaces stay at their entry (hidden) state until the
+  // native window has actually been shown by the main process.
+  const [enterReady, setEnterReady] = useState(false)
 
   function getFullPrompt(): string {
     const div = inputRef.current
@@ -545,13 +548,8 @@ export default function App(): JSX.Element {
       // IMPORTANT: capture the returned cleanup function to prevent an IPC
       // listener leak — each call to onToggleVisibility registers a new
       // ipcRenderer listener that must be removed when this effect tears down.
-      const unsubscribe = window.api.window.onToggleVisibility((v, terminalMode) => {
+      const unsubscribe = window.api.window.onToggleVisibility((v, terminalMode, phase) => {
         if (v) {
-          // Cancel any pending hide timer so rapid show/hide doesn't race.
-          if (hideDelayTimerRef.current !== null) {
-            clearTimeout(hideDelayTimerRef.current)
-            hideDelayTimerRef.current = null
-          }
           setIsAppVisible(true)
           setVisible(true)
 
@@ -560,41 +558,45 @@ export default function App(): JSX.Element {
             setMode('terminal')
             setActivePopup(null)
           }
+
+          if (phase === 'prepare') {
+            // Hold every surface at its entry (hidden) state while the window is
+            // still off-screen. The layout effect below confirms the prepared DOM
+            // has committed so main can safely show the window.
+            setEnterReady(false)
+          } else {
+            setEnterReady(true)
+          }
         } else {
           setVisible(false)
           setIsPinned(false)
           window.api?.window.setPinned?.(false)
-          // Wait for the exit animation (~250 ms) before resetting state and
-          // unmounting heavy components to free memory.
-          hideDelayTimerRef.current = setTimeout(() => {
-            hideDelayTimerRef.current = null
-            clearInput()
-            setIsExpanded(false)
-            setIsLoading(false)
-            setIsChatOpen(false)
-            setIsHistoryOpen(false)
-            setMode('ai')
-            setActivePopup(null)
-            // isAppVisible is set to false via AnimatePresence onExitComplete,
-            // which fires once the spring exit animation fully completes.
-          }, 300)
+          // Heavy state is reset in the command bar's onExitComplete callback,
+          // once the exit animation has actually finished.
         }
       })
 
       return () => {
         unsubscribe()
-        if (hideDelayTimerRef.current !== null) {
-          clearTimeout(hideDelayTimerRef.current)
-          hideDelayTimerRef.current = null
-        }
       }
     } else {
       // Dev/browser fallback — always visible.
       setVisible(true)
       setIsAppVisible(true)
+      setEnterReady(true)
       return undefined
     }
   }, [])
+
+  // Once the 'prepare' state has committed (surfaces mounted at their hidden
+  // entry state), tell main it is safe to show the window. Using a layout
+  // effect — not requestAnimationFrame — guarantees this runs even while the
+  // window is still hidden and frame callbacks are throttled.
+  useLayoutEffect(() => {
+    if (visible && !enterReady) {
+      window.api?.window.notifyReadyToShow?.()
+    }
+  }, [visible, enterReady])
 
   useEffect(() => {
     if (!window.api?.window.onOpenTasks) return
@@ -690,14 +692,9 @@ export default function App(): JSX.Element {
     setVisible(false)
     setIsPinned(false)
     window.api?.window.setPinned?.(false)
-    setTimeout(() => {
-      clearInput()
-      setIsExpanded(false)
-      setIsLoading(false)
-      setIsChatOpen(false)
-      setIsHistoryOpen(false)
-      window.api?.window.hideWindow()
-    }, 240)
+    // Ask main to hide; it waits for our exit animation to finish before
+    // actually hiding the native window.
+    window.api?.window.hideWindow()
   }, [])
 
   const loadPreprompts = useCallback(async (): Promise<void> => {
@@ -2441,26 +2438,35 @@ export default function App(): JSX.Element {
         but the terminal host stays mounted so its scrollback survives hide/
         show cycles.
       */}
-      <AnimatePresence onExitComplete={() => setIsAppVisible(false)}>
+      <AnimatePresence
+        onExitComplete={() => {
+          setIsAppVisible(false)
+          clearInput()
+          setIsExpanded(false)
+          setIsLoading(false)
+          setIsChatOpen(false)
+          setIsHistoryOpen(false)
+          setMode('ai')
+          setActivePopup(null)
+          window.api?.window.notifyExitComplete?.()
+        }}
+      >
         {visible && (
           <motion.div
             key="command-bar"
             initial={{ opacity: 0, y: 24, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
+            animate={enterReady ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 24, scale: 0.97 }}
             exit={{ opacity: 0, y: 14, scale: 0.97 }}
-            transition={{ type: 'spring', damping: 15, stiffness: 120, mass: 0.8 }}
+            transition={WINDOW_SPRING}
             className="relative flex flex-col w-[750px] max-w-full"
             style={themeStyles}
           >
             <AnimatePresence>
               {mode === 'ai' && isChatOpen && (
-                <motion.div
+                <MeasuredPanel
                   key="chat-window"
-                  initial={{ opacity: 0, y: -8, height: 0 }}
-                  animate={{ opacity: 1, y: 0, height: 'auto' }}
-                  exit={{ opacity: 0, y: -6, height: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className={`relative mb-2 rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} p-4 chat-surface texture-surface`}
+                  contentClassName="p-4"
+                  className={`relative mb-2 rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} chat-surface texture-surface`}
                 >
                   <div className="relative flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -2987,7 +2993,7 @@ export default function App(): JSX.Element {
                       })
                     )}
                   </div>
-                </motion.div>
+                </MeasuredPanel>
               )}
             </AnimatePresence>
 
@@ -3324,19 +3330,13 @@ export default function App(): JSX.Element {
         <motion.div
           key="terminal-container"
           className="absolute inset-x-0 bottom-5 z-20 pointer-events-auto flex justify-center"
-          initial={false}
+          initial={{ scaleY: 0.12, opacity: 0 }}
           animate={
-            mode === 'terminal'
+            enterReady && mode === 'terminal' && visible
               ? { scaleY: 1, y: 0, opacity: 1 }
               : { scaleY: 0.12, y: 0, opacity: 0 }
           }
-          transition={{
-            type: 'spring',
-            damping: 22,
-            stiffness: 280,
-            mass: 1,
-            duration: 0.2
-          }}
+          transition={TERMINAL_SPRING}
           style={{
             height: isExpanded ? 'calc(100vh - 160px)' : '400px',
             pointerEvents: mode === 'terminal' && visible ? 'auto' : 'none',

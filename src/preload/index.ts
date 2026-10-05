@@ -22,6 +22,8 @@ const api = {
   platform: process.platform,
   window: {
     hideWindow: () => ipcRenderer.send('hide-window'),
+    notifyReadyToShow: () => ipcRenderer.send('renderer-ready-to-show'),
+    notifyExitComplete: () => ipcRenderer.send('renderer-exit-complete'),
     setPinned: (pinned: boolean) => ipcRenderer.send('set-pinned', pinned),
     setExpanded: (expanded: boolean) => ipcRenderer.send('set-window-expanded', expanded),
     openSettings: (tab?: string) => ipcRenderer.send('open-settings', tab),
@@ -45,9 +47,16 @@ const api = {
         ipcRenderer.removeListener('settings-shown', listener)
       }
     },
-    onToggleVisibility: (callback: (visible: boolean, terminalMode?: boolean) => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, visible: boolean, terminalMode?: boolean) => {
-        callback(visible, terminalMode)
+    onToggleVisibility: (
+      callback: (visible: boolean, terminalMode?: boolean, phase?: 'prepare' | 'animate') => void
+    ) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        visible: boolean,
+        terminalMode?: boolean,
+        phase?: 'prepare' | 'animate'
+      ) => {
+        callback(visible, terminalMode, phase)
       }
 
       ipcRenderer.on('toggle-visibility', listener)
@@ -78,7 +87,7 @@ const api = {
   config: {
     getConfig: () => ipcRenderer.invoke('get-config') as Promise<AppConfig>,
     saveApiKey: (apiKey: string) => ipcRenderer.send('save-api-key', apiKey),
-    saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string; adminApiKey?: string }) =>
+    saveOpenAISettings: (settings: { apiKey?: string; proxyUrl?: string; adminApiKey?: string }) =>
       ipcRenderer.send('save-openai-settings', settings),
     markOnboarded: () => ipcRenderer.send('mark-onboarded'),
     getMcpServers: () => ipcRenderer.invoke('get-mcp-servers') as Promise<McpServer[]>,
@@ -478,6 +487,8 @@ contextBridge.exposeInMainWorld('api', api)
 
 contextBridge.exposeInMainWorld('electronAPI', {
   hideWindow: api.window.hideWindow,
+  notifyReadyToShow: api.window.notifyReadyToShow,
+  notifyExitComplete: api.window.notifyExitComplete,
   setPinned: api.window.setPinned,
   setExpanded: api.window.setExpanded,
   openSettings: api.window.openSettings,

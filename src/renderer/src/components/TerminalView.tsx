@@ -85,36 +85,28 @@ function CopyIcon(): JSX.Element {
   )
 }
 
+// The terminal canvas is always transparent; the surface color is painted by
+// the panel behind it. In light themes we draw a soft dark scrim that fades
+// from top to bottom, so shell/prompt ANSI colors (zsh, oh-my-posh) stay
+// readable without looking like a hard black box.
+const LIGHT_TERMINAL_SURFACE =
+  'linear-gradient(165deg, rgba(30,30,35,0.80) 0%, rgba(12,12,15,0.94) 100%)'
+
 const TERMINAL_OPTIONS = {
   allowProposedApi: false,
+  allowTransparency: true,
   convertEol: true,
   cursorBlink: true,
   scrollback: 10000,
   fontSize: 13,
   lineHeight: 1.2,
   theme: {
-    background: '#05050500',
+    background: '#00000000',
     foreground: '#e6e6e6',
     cursor: '#fb923c',
     selectionBackground: '#f8fafc33'
   }
 } as const
-
-function buildTerminalTheme(isLight: boolean): Terminal['options']['theme'] {
-  return isLight
-    ? {
-        background: '#00000000',
-        foreground: '#1f2937',
-        cursor: '#b45309',
-        selectionBackground: '#0f172a22'
-      }
-    : {
-        background: '#05050500',
-        foreground: '#e6e6e6',
-        cursor: '#fb923c',
-        selectionBackground: '#f8fafc33'
-      }
-}
 
 function TerminalView({
   active,
@@ -143,13 +135,9 @@ function TerminalView({
     setTabs(next)
   }, [])
 
-  const isLightRef = useRef(isLight)
-  isLightRef.current = isLight
-
   const createTerminal = useCallback((host: HTMLElement) => {
     const terminal = new Terminal({
       ...TERMINAL_OPTIONS,
-      theme: buildTerminalTheme(isLightRef.current),
       fontFamily
     })
 
@@ -225,7 +213,7 @@ function TerminalView({
     terminal.options.scrollback = TERMINAL_OPTIONS.scrollback
     terminal.options.fontSize = TERMINAL_OPTIONS.fontSize
     terminal.options.lineHeight = TERMINAL_OPTIONS.lineHeight
-    terminal.options.theme = buildTerminalTheme(isLight)
+    terminal.options.theme = TERMINAL_OPTIONS.theme
 
     if (next.buffer) {
       terminal.write(next.buffer)
@@ -239,7 +227,7 @@ function TerminalView({
     requestAnimationFrame(() => {
       fitAndResize(sessionId)
     })
-  }, [fitAndResize, fontFamily, isLight])
+  }, [fitAndResize, fontFamily])
 
   const addTab = useCallback(async () => {
     const terminalApi = window.api?.terminal
@@ -372,13 +360,6 @@ function TerminalView({
     fitAndResize()
   }, [fitAndResize, fontFamily])
 
-  // Update terminal color theme on light/dark change
-  useEffect(() => {
-    const terminal = terminalRef.current
-    if (!terminal) return
-    terminal.options.theme = buildTerminalTheme(isLight)
-  }, [isLight])
-
   // Start initial tab when active becomes true
   useEffect(() => {
     if (!active) return
@@ -460,7 +441,12 @@ function TerminalView({
   const activeTab = tabs.find((t) => t.sessionId === activeTabId)
 
   return (
-    <div className="h-full w-full flex flex-col overflow-hidden rounded-xl border border-white/10 bg-neutral-950/30">
+    <div
+      className={`terminal-surface h-full w-full flex flex-col overflow-hidden rounded-xl border transition-[background] duration-200 ${
+        isLight ? 'border-white/15' : 'border-white/10 bg-neutral-950/30'
+      }`}
+      style={isLight ? { background: LIGHT_TERMINAL_SURFACE } : undefined}
+    >
       {/* Header bar */}
       <div className="relative flex items-center justify-between px-3 py-2 shrink-0">
         <div className="flex items-center gap-2 min-w-0">

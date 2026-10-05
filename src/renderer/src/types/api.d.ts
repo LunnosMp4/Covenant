@@ -16,6 +16,8 @@ interface CovenantAPI {
   platform: string
   window: {
     hideWindow: () => void
+    notifyReadyToShow: () => void
+    notifyExitComplete: () => void
     setPinned: (pinned: boolean) => void
     openSettings: (tab?: string) => void
     closeSettings: () => void
@@ -23,15 +25,17 @@ interface CovenantAPI {
     setExpanded: (expanded: boolean) => void
     onNavigateSettingsTab: (callback: (tab: string) => void) => () => void
     onSettingsShown: (callback: (isRestore: boolean) => void) => () => void
-    onToggleVisibility: (callback: (visible: boolean, terminalMode?: boolean) => void) => () => void
+    onToggleVisibility: (
+      callback: (visible: boolean, terminalMode?: boolean, phase?: 'prepare' | 'animate') => void
+    ) => () => void
     onOpenTasks: (callback: () => void) => () => void
     onChatPrompt: (callback: (text: string) => void) => () => void
   }
   config: {
     getConfig: () => Promise<AppConfig>
-    saveApiKey: (apiKey: string) => void
-    saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string; adminApiKey?: string }) => void
-    markOnboarded: () => void
+      saveApiKey: (apiKey: string) => void
+      saveOpenAISettings: (settings: { apiKey?: string; proxyUrl?: string; adminApiKey?: string }) => void
+      markOnboarded: () => void
     getMcpServers: () => Promise<McpServer[]>
     saveMcpServer: (server: Partial<McpServer>) => Promise<McpServer[]>
 deleteMcpServer: (serverId: string) => Promise<McpServer[]>
@@ -171,6 +175,8 @@ declare global {
     api?: CovenantAPI
     electronAPI?: {
       hideWindow: () => void
+      notifyReadyToShow: () => void
+      notifyExitComplete: () => void
       setPinned: (pinned: boolean) => void
       setExpanded: (expanded: boolean) => void
       openSettings: (tab?: string) => void
@@ -178,7 +184,7 @@ declare global {
       minimizeSettings: () => void
       getConfig: () => Promise<AppConfig>
       saveApiKey: (apiKey: string) => void
-      saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string; adminApiKey?: string }) => void
+    saveOpenAISettings: (settings: { apiKey?: string; proxyUrl?: string; adminApiKey?: string }) => void
       markOnboarded: () => void
       getMcpServers: () => Promise<McpServer[]>
       saveMcpServer: (server: Partial<McpServer>) => Promise<McpServer[]>

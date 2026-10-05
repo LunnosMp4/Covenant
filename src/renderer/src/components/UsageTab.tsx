@@ -13,6 +13,7 @@ interface UsageTabProps {
   onAdminKeyChange: (value: string) => void
   onSaveAdminKey: () => void
   isSavingAdminKey: boolean
+  isConfigLoaded: boolean
   adminKeyFeedback: string
   refreshSignal: number
   projectId: string
@@ -316,6 +317,7 @@ export default function UsageTab({
   onAdminKeyChange,
   onSaveAdminKey,
   isSavingAdminKey,
+  isConfigLoaded,
   adminKeyFeedback,
   refreshSignal,
   projectId,
@@ -417,7 +419,7 @@ export default function UsageTab({
           <button
             type="button"
             onClick={onSaveAdminKey}
-            disabled={isSavingAdminKey}
+            disabled={isSavingAdminKey || !isConfigLoaded}
             className="flex-shrink-0 rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSavingAdminKey ? 'Saving...' : 'Save'}
