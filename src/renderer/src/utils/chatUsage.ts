@@ -1,27 +1,8 @@
 import type { ChatMessage } from '../../../shared/chat'
 import { CHAT_MODEL_OPTIONS } from '../../../shared/config'
+import { CHAT_MODEL_PRICING } from '../../../shared/usage'
 
-interface ModelPricing {
-  inputPerMillion: number
-  cachedInputPerMillion: number
-  cacheWritePerMillion: number
-  outputPerMillion: number
-}
-
-export const CHAT_MODEL_PRICING: Record<string, ModelPricing> = {
-  'gpt-6-luna': {
-    inputPerMillion: 0.1,
-    cachedInputPerMillion: 0.01,
-    cacheWritePerMillion: 0.125,
-    outputPerMillion: 0.5
-  },
-  'gpt-6.1-sol': {
-    inputPerMillion: 2.0,
-    cachedInputPerMillion: 0.1,
-    cacheWritePerMillion: 2.5,
-    outputPerMillion: 10
-  }
-}
+export { CHAT_MODEL_PRICING }
 
 export function formatTokenCount(tokens: number): string {
   return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(tokens)

@@ -8,6 +8,7 @@ import McpServersTab, { type McpPreset } from './components/McpServersTab'
 import PrepromptFormModal from './components/PrepromptFormModal'
 import WorkflowFormModal from './components/WorkflowFormModal'
 import PasteSettingsTab from './components/PasteSettingsTab'
+import UsageTab from './components/UsageTab'
 import {
   DEFAULT_TERMINAL_FONT,
   normalizeTerminalFont
@@ -33,9 +34,44 @@ import type { Workflow } from './types/workflow'
 import { getAppBadgeText } from './utils/helpers'
 import { formatTargetsSummary, normalizeLaunchTargets } from './utils/launcherTargets'
 
-type SettingsTab = 'general' | 'appearance' | 'terminal' | 'appLauncher' | 'workflow' | 'preprompts' | 'mcp' | 'paste'
+type SettingsTab = 'general' | 'appearance' | 'terminal' | 'appLauncher' | 'workflow' | 'preprompts' | 'mcp' | 'paste' | 'usage'
 
-const VALID_SETTINGS_TABS: readonly SettingsTab[] = ['general', 'appearance', 'terminal', 'appLauncher', 'workflow', 'preprompts', 'mcp', 'paste']
+const VALID_SETTINGS_TABS: readonly SettingsTab[] = ['general', 'appearance', 'terminal', 'appLauncher', 'workflow', 'preprompts', 'mcp', 'paste', 'usage']
+
+interface SettingsNavGroup {
+  label: string
+  items: { id: SettingsTab; label: string }[]
+}
+
+const SETTINGS_NAV_GROUPS: readonly SettingsNavGroup[] = [
+  {
+    label: 'Application',
+    items: [
+      { id: 'general', label: 'General' },
+      { id: 'appearance', label: 'Appearance' },
+      { id: 'terminal', label: 'Terminal' }
+    ]
+  },
+  {
+    label: 'AI & Automation',
+    items: [
+      { id: 'preprompts', label: 'Instructions' },
+      { id: 'mcp', label: 'MCP Servers' },
+      { id: 'workflow', label: 'Workflows' }
+    ]
+  },
+  {
+    label: 'Tools',
+    items: [
+      { id: 'appLauncher', label: 'App Launcher' },
+      { id: 'paste', label: 'Clipboard' }
+    ]
+  },
+  {
+    label: 'Account',
+    items: [{ id: 'usage', label: 'Usage & Cost' }]
+  }
+]
 
 const SETTINGS_WINDOW_ENTER_TRANSITION: Transition = { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
 const SETTINGS_WINDOW_EXIT_TRANSITION: Transition = { duration: 0.16, ease: [0.22, 1, 0.36, 1] }
@@ -124,6 +160,15 @@ function SidebarGlyph({ tab }: { tab: SettingsTab }): JSX.Element {
     )
   }
 
+  if (tab === 'usage') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M12 2v20" />
+        <path d="M17 5.5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+      </svg>
+    )
+  }
+
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
       <path d="m8 7-5 5 5 5" />
@@ -175,13 +220,11 @@ function MinimalistToggle({
         type="button"
         disabled={disabled}
         onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-7 w-12 flex-shrink-0 rounded-full border border-neutral-700 transition-all ${
-          disabled
-            ? 'opacity-40 cursor-not-allowed'
-            : checked
-              ? 'border-neutral-600 bg-neutral-700 shadow-lg shadow-neutral-600/20'
-              : 'border-neutral-700 bg-neutral-800'
-        }`}
+        className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full border transition-all ${
+          checked
+            ? 'border-emerald-400/60 bg-emerald-400/30 shadow-lg shadow-emerald-500/20'
+            : 'border-neutral-700 bg-neutral-800'
+        } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
         role="switch"
         aria-checked={checked}
       >
@@ -1287,6 +1330,8 @@ function PrepromptsTab({
 export default function Settings(): JSX.Element {
   const [activeTab, setActiveTab] = useState<SettingsTab>(getInitialTab)
   const [apiKey, setApiKey] = useState('')
+  const [adminApiKey, setAdminApiKey] = useState('')
+  const [usageProjectId, setUsageProjectId] = useState('')
   const [proxyUrl, setProxyUrl] = useState('')
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false)
   const [selectedTheme, setSelectedTheme] = useState(DEFAULT_THEME_GRADIENT)
@@ -1342,6 +1387,7 @@ export default function Settings(): JSX.Element {
   const [isGlobalInstructionsSaving, setIsGlobalInstructionsSaving] = useState(false)
   const [globalInstructionsFeedbackMessage, setGlobalInstructionsFeedbackMessage] = useState('')
   const [isClosing, setIsClosing] = useState(false)
+  const [usageRefreshSignal, setUsageRefreshSignal] = useState(0)
   const texturePersistTimer = useRef<number | null>(null)
 
   useEffect(() => {
@@ -1370,6 +1416,8 @@ export default function Settings(): JSX.Element {
         if (!isMounted) return
 
         setApiKey(typeof config.apiKey === 'string' ? config.apiKey : '')
+        setAdminApiKey(typeof config.adminApiKey === 'string' ? config.adminApiKey : '')
+        setUsageProjectId(typeof config.usageProjectId === 'string' ? config.usageProjectId : '')
         setProxyUrl(typeof config.proxyUrl === 'string' ? config.proxyUrl : '')
         setSelectedTheme(normalizeThemeGradient(config.themeGradient))
         setLaunchOnStartup(typeof config.launchOnStartup === 'boolean' ? config.launchOnStartup : true)
@@ -1393,6 +1441,8 @@ export default function Settings(): JSX.Element {
       } catch {
         if (!isMounted) return
         setApiKey('')
+        setAdminApiKey('')
+        setUsageProjectId('')
         setProxyUrl('')
         setSelectedTheme(DEFAULT_THEME_GRADIENT)
         setLaunchOnStartup(true)
@@ -1652,16 +1702,22 @@ const handleMinimizeWindow = (): void => {
     try {
       setIsSavingApiKey(true)
       if (window.api?.config.saveOpenAISettings) {
-        window.api.config.saveOpenAISettings({ apiKey, proxyUrl })
+        window.api.config.saveOpenAISettings({ apiKey, proxyUrl, adminApiKey })
       } else {
         window.api?.config.saveApiKey?.(apiKey)
       }
 
       setSaveFeedbackMessage('OpenAI settings saved locally.')
+      setUsageRefreshSignal((value) => value + 1)
       window.setTimeout(() => setSaveFeedbackMessage(''), 1800)
     } finally {
       setIsSavingApiKey(false)
     }
+  }
+
+  const handleUsageProjectChange = (projectId: string): void => {
+    setUsageProjectId(projectId)
+    window.api?.config.updateUsageProject?.(projectId)
   }
 
   const handleThemeSelect = (gradientClass: string): void => {
@@ -2124,6 +2180,7 @@ const handleMinimizeWindow = (): void => {
 
   const pageTitle = useMemo(() => {
     if (activeTab === 'general') return 'General'
+    if (activeTab === 'usage') return 'Usage & Cost'
     if (activeTab === 'appearance') return 'Appearance'
     if (activeTab === 'terminal') return 'Terminal'
     if (activeTab === 'appLauncher') return 'App Launcher'
@@ -2175,43 +2232,40 @@ const handleMinimizeWindow = (): void => {
         </div>
 
         <div className="flex h-[calc(100%-2.5rem)]">
-          <aside className="w-64 border-r border-neutral-800 bg-neutral-950/85 p-4">
-            <div className="px-2 pb-4 pt-2">
-              <p className="text-xs uppercase tracking-[0.1em] text-neutral-500">Covenant</p>
-              <h1 className="mt-2 text-lg font-semibold text-neutral-100">Settings</h1>
-            </div>
+          <aside className="flex w-64 flex-col overflow-y-auto border-r border-neutral-800 bg-neutral-950/85 p-4">
+            <nav className="space-y-5 pt-2">
+              {SETTINGS_NAV_GROUPS.map((group) => (
+                <div key={group.label}>
+                  <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">
+                    {group.label}
+                  </p>
+                  <div className="space-y-1">
+                    {group.items.map((item) => {
+                      const isActive = activeTab === item.id
 
-            <nav className="space-y-1">
-              {[
-                { id: 'general' as const, label: 'General' },
-                { id: 'appearance' as const, label: 'Appearance' },
-                { id: 'terminal' as const, label: 'Terminal' },
-                { id: 'appLauncher' as const, label: 'App Launcher' },
-                { id: 'workflow' as const, label: 'Workflows' },
-                { id: 'preprompts' as const, label: 'Instructions' },
-                { id: 'mcp' as const, label: 'MCP Servers' },
-                { id: 'paste' as const, label: 'Clipboard' }
-              ].map((item) => {
-                const isActive = activeTab === item.id
-
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setActiveTab(item.id)}
-                    className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors ${
-                      isActive
-                        ? 'border-neutral-700 bg-neutral-800 text-neutral-100'
-                        : 'border-transparent text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'
-                    }`}
-                  >
-                    <span className="text-neutral-300">
-                      <SidebarGlyph tab={item.id} />
-                    </span>
-                    <span>{item.label}</span>
-                  </button>
-                )
-              })}
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setActiveTab(item.id)}
+                          aria-current={isActive ? 'page' : undefined}
+                          className={`group flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors ${
+                            isActive
+                              ? 'border-neutral-700 bg-neutral-800 text-neutral-100'
+                              : 'border-transparent text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-200'
+                          }`}
+                        >
+                          <span className={`transition-colors ${isActive ? 'text-neutral-100' : 'text-neutral-500 group-hover:text-neutral-300'}`}>
+                            <SidebarGlyph tab={item.id} />
+                          </span>
+                          <span className="flex-1">{item.label}</span>
+                          {isActive ? <span className="h-1.5 w-1.5 rounded-full bg-neutral-300" /> : null}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
             </nav>
           </aside>
 
@@ -2249,6 +2303,18 @@ const handleMinimizeWindow = (): void => {
                 onInstallUpdate={handleInstallUpdate}
                 shortcuts={shortcuts}
                 onShortcutChange={handleShortcutChange}
+              />
+            )}
+            {activeTab === 'usage' && (
+              <UsageTab
+                adminKey={adminApiKey}
+                onAdminKeyChange={setAdminApiKey}
+                onSaveAdminKey={handleSaveOpenAISettings}
+                isSavingAdminKey={isSavingApiKey}
+                adminKeyFeedback={saveFeedbackMessage}
+                refreshSignal={usageRefreshSignal}
+                projectId={usageProjectId}
+                onProjectChange={handleUsageProjectChange}
               />
             )}
             {activeTab === 'appearance' && (

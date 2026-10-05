@@ -97,6 +97,14 @@ export const DEFAULT_SHORTCUTS: ShortcutConfig = {
   openPaste: 'Ctrl+Alt+V'
 }
 
+export function normalizeAdminApiKey(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+export function normalizeUsageProjectId(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
 export function normalizeShortcuts(raw: unknown): ShortcutConfig {
   if (!raw || typeof raw !== 'object') return { ...DEFAULT_SHORTCUTS }
   const obj = raw as Record<string, unknown>
@@ -110,6 +118,8 @@ export function normalizeShortcuts(raw: unknown): ShortcutConfig {
 
 export interface AppConfig {
   apiKey: string
+  adminApiKey?: string
+  usageProjectId?: string
   themeGradient: string
   proxyUrl: string
   launchOnStartup: boolean

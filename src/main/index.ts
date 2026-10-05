@@ -38,11 +38,23 @@ import {
   modelDoesReasoning,
   modelSupportsTemperature,
   modelSupportsWebSearch,
+  normalizeAdminApiKey,
   normalizeChatModelId,
   normalizeShortcuts,
   normalizeTextureIntensity,
+  normalizeUsageProjectId,
   type ShortcutConfig
 } from '../shared/config'
+import {
+  UsageApiError,
+  buildUsageMetrics,
+  normalizeUsageRangeDays
+} from '../shared/usage'
+import {
+  fetchOrganizationCompletionsUsage,
+  fetchOrganizationCosts,
+  fetchOrganizationProjects
+} from './services/usageClient'
 import type { McpServer, McpTool } from '../shared/mcp'
 import {
   EXCALIDRAW_CREATE_VIEW_TOOL,
@@ -197,6 +209,8 @@ interface AppStoreSchema {
 
 const DEFAULT_CONFIG: AppConfig = {
   apiKey: '',
+  adminApiKey: '',
+  usageProjectId: '',
   themeGradient: 'from-neutral-900/95 to-[#1c0f03]',
   proxyUrl: '',
   launchOnStartup: true,
@@ -1495,6 +1509,8 @@ function normalizeButtonVisibility(raw: unknown): AppConfig['buttonVisibility'] 
 function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined): AppConfig {
   return {
     apiKey: typeof rawConfig?.apiKey === 'string' ? rawConfig.apiKey : DEFAULT_CONFIG.apiKey,
+    adminApiKey: normalizeAdminApiKey(rawConfig?.adminApiKey),
+    usageProjectId: normalizeUsageProjectId(rawConfig?.usageProjectId),
     themeGradient:
       typeof rawConfig?.themeGradient === 'string' && rawConfig.themeGradient.trim()
         ? rawConfig.themeGradient
@@ -3257,12 +3273,86 @@ ipcMain.on('save-api-key', (_event, key: string) => {
   updateConfig({ apiKey })
 })
 
-ipcMain.on('save-openai-settings', (_event, payload: { apiKey?: string; proxyUrl?: string }) => {
+ipcMain.on('save-openai-settings', (_event, payload: { apiKey?: string; proxyUrl?: string; adminApiKey?: string }) => {
   const apiKey = typeof payload?.apiKey === 'string' ? payload.apiKey.trim() : ''
   const proxyUrl = typeof payload?.proxyUrl === 'string' ? payload.proxyUrl.trim() : ''
-  updateConfig({ apiKey, proxyUrl })
+  const adminApiKey = typeof payload?.adminApiKey === 'string' ? payload.adminApiKey.trim() : ''
+  updateConfig({ apiKey, proxyUrl, adminApiKey })
   configureMcpProxy(resolveOpenAIProxyUrl(proxyUrl))
   void applySessionProxy(resolveOpenAIProxyUrl(proxyUrl))
+})
+
+ipcMain.handle('usage:get-metrics', async (_event, payload?: { rangeDays?: unknown; projectId?: unknown }) => {
+  const rangeDays = normalizeUsageRangeDays(payload?.rangeDays)
+  const storedConfig = readConfig()
+  const adminKey = typeof storedConfig.adminApiKey === 'string' ? storedConfig.adminApiKey.trim() : ''
+
+  if (!adminKey) {
+    return {
+      ok: false,
+      code: 'ADMIN_KEY_MISSING',
+      message: 'Add an OpenAI admin API key to load usage and cost metrics.'
+    }
+  }
+
+  const projectId = normalizeUsageProjectId(payload?.projectId ?? storedConfig.usageProjectId)
+  const endTime = Math.floor(Date.now() / 1000)
+  const startTime = endTime - rangeDays * 24 * 60 * 60
+  const proxyUrl = resolveOpenAIProxyUrl(storedConfig.proxyUrl)
+
+  try {
+    const [costBuckets, usageBuckets] = await Promise.all([
+      fetchOrganizationCosts({ adminKey, proxyUrl, projectId, startTime, endTime, limit: rangeDays }),
+      fetchOrganizationCompletionsUsage({ adminKey, proxyUrl, projectId, startTime, endTime, limit: rangeDays })
+    ])
+
+    return {
+      ok: true,
+      metrics: buildUsageMetrics({
+        rangeDays,
+        startTime,
+        endTime,
+        costBuckets,
+        usageBuckets
+      })
+    }
+  } catch (error) {
+    if (error instanceof UsageApiError) {
+      return { ok: false, code: error.code, message: error.message }
+    }
+    const message = error instanceof Error ? error.message : 'Unable to load usage metrics.'
+    return { ok: false, code: 'UNKNOWN', message }
+  }
+})
+
+ipcMain.handle('usage:get-projects', async () => {
+  const storedConfig = readConfig()
+  const adminKey = typeof storedConfig.adminApiKey === 'string' ? storedConfig.adminApiKey.trim() : ''
+
+  if (!adminKey) {
+    return {
+      ok: false,
+      code: 'ADMIN_KEY_MISSING',
+      message: 'Add an OpenAI admin API key to list organization projects.'
+    }
+  }
+
+  const proxyUrl = resolveOpenAIProxyUrl(storedConfig.proxyUrl)
+
+  try {
+    const projects = await fetchOrganizationProjects({ adminKey, proxyUrl })
+    return { ok: true, projects }
+  } catch (error) {
+    if (error instanceof UsageApiError) {
+      return { ok: false, code: error.code, message: error.message }
+    }
+    const message = error instanceof Error ? error.message : 'Unable to load organization projects.'
+    return { ok: false, code: 'UNKNOWN', message }
+  }
+})
+
+ipcMain.on('update-usage-project', (_event, projectId: unknown) => {
+  updateConfig({ usageProjectId: normalizeUsageProjectId(projectId) })
 })
 
 ipcMain.on('mark-onboarded', () => {

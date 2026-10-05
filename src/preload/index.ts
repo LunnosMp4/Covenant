@@ -10,6 +10,7 @@ import type { TerminalExitPayload, TerminalStartResult } from '../shared/termina
 import type { ClearCompletedResult, Task } from '../shared/task'
 import type { GamificationState } from '../shared/gamification'
 import type { UpdateStatus } from '../shared/update'
+import type { UsageMetricsResult, UsageProjectsResult } from '../shared/usage'
 import type { PasteItemDetail, PasteItemMeta, PasteManagerSettings } from '../shared/paste'
 import type {
   Workflow,
@@ -77,7 +78,7 @@ const api = {
   config: {
     getConfig: () => ipcRenderer.invoke('get-config') as Promise<AppConfig>,
     saveApiKey: (apiKey: string) => ipcRenderer.send('save-api-key', apiKey),
-    saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string }) =>
+    saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string; adminApiKey?: string }) =>
       ipcRenderer.send('save-openai-settings', settings),
     markOnboarded: () => ipcRenderer.send('mark-onboarded'),
     getMcpServers: () => ipcRenderer.invoke('get-mcp-servers') as Promise<McpServer[]>,
@@ -117,6 +118,7 @@ const api = {
     updateTextureIntensity: (textureIntensity: number) =>
       ipcRenderer.send('update-texture-intensity', textureIntensity),
     updateAutoUpdate: (enabled: boolean) => ipcRenderer.send('update-auto-update', enabled),
+    updateUsageProject: (projectId: string) => ipcRenderer.send('update-usage-project', projectId),
     checkForUpdates: () => ipcRenderer.invoke('check-for-updates') as Promise<UpdateStatus>,
     getUpdateStatus: () => ipcRenderer.invoke('get-update-status') as Promise<UpdateStatus>,
     installUpdate: () => ipcRenderer.send('install-update'),
@@ -254,6 +256,11 @@ const api = {
       }
     },
     getTerminalFonts: () => ipcRenderer.invoke('get-terminal-fonts') as Promise<string[]>
+  },
+  usage: {
+    getMetrics: (rangeDays?: number, projectId?: string) =>
+      ipcRenderer.invoke('usage:get-metrics', { rangeDays, projectId }) as Promise<UsageMetricsResult>,
+    getProjects: () => ipcRenderer.invoke('usage:get-projects') as Promise<UsageProjectsResult>
   },
   chat: {
     askCovenant: (messages: Array<{ role: ChatRole; content: string | InputContent[] }>) =>
@@ -498,6 +505,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateTextureIntensity: api.config.updateTextureIntensity,
   onTextureIntensityUpdated: api.config.onTextureIntensityUpdated,
   updateAutoUpdate: api.config.updateAutoUpdate,
+  updateUsageProject: api.config.updateUsageProject,
   checkForUpdates: api.config.checkForUpdates,
   getUpdateStatus: api.config.getUpdateStatus,
   installUpdate: api.config.installUpdate,

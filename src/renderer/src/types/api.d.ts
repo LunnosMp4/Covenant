@@ -10,6 +10,7 @@ import type { ChatConversation, ChatRole, ChatStreamEvent, InputContent } from '
 import type { TerminalExitPayload, TerminalStartResult } from '../../../shared/terminal'
 import type { UpdateStatus } from '../../../shared/update'
 import type { PasteItemDetail, PasteItemMeta, PasteManagerSettings } from '../../../shared/paste'
+import type { UsageMetricsResult, UsageProjectsResult } from '../../../shared/usage'
 
 interface CovenantAPI {
   platform: string
@@ -29,7 +30,7 @@ interface CovenantAPI {
   config: {
     getConfig: () => Promise<AppConfig>
     saveApiKey: (apiKey: string) => void
-    saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string }) => void
+    saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string; adminApiKey?: string }) => void
     markOnboarded: () => void
     getMcpServers: () => Promise<McpServer[]>
     saveMcpServer: (server: Partial<McpServer>) => Promise<McpServer[]>
@@ -53,6 +54,7 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     updateAutoCollapseReasoning: (autoCollapseReasoning: boolean) => void
     updateTextureIntensity: (textureIntensity: number) => void
     updateAutoUpdate: (enabled: boolean) => void
+    updateUsageProject: (projectId: string) => void
     checkForUpdates: () => Promise<UpdateStatus>
     getUpdateStatus: () => Promise<UpdateStatus>
     installUpdate: () => void
@@ -70,6 +72,10 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     onAutoCollapseReasoningUpdated: (callback: (autoCollapseReasoning: boolean) => void) => () => void
     onTextureIntensityUpdated: (callback: (textureIntensity: number) => void) => () => void
     onShortcutsUpdated: (callback: (shortcuts: ShortcutConfig) => void) => () => void
+  }
+  usage: {
+    getMetrics: (rangeDays?: number, projectId?: string) => Promise<UsageMetricsResult>
+    getProjects: () => Promise<UsageProjectsResult>
   }
   chat: {
     askCovenant: (messages: Array<{ role: ChatRole; content: string | InputContent[] }>) => Promise<string>
@@ -172,7 +178,7 @@ declare global {
       minimizeSettings: () => void
       getConfig: () => Promise<AppConfig>
       saveApiKey: (apiKey: string) => void
-      saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string }) => void
+      saveOpenAISettings: (settings: { apiKey: string; proxyUrl: string; adminApiKey?: string }) => void
       markOnboarded: () => void
       getMcpServers: () => Promise<McpServer[]>
       saveMcpServer: (server: Partial<McpServer>) => Promise<McpServer[]>
@@ -196,7 +202,8 @@ refreshMcpServerTools: (serverId: string) => Promise<McpServer[]>
       updateAutoCollapseReasoning: (autoCollapseReasoning: boolean) => void
       updateTextureIntensity: (textureIntensity: number) => void
       onTextureIntensityUpdated: (callback: (textureIntensity: number) => void) => () => void
-      updateAutoUpdate: (enabled: boolean) => void
+    updateAutoUpdate: (enabled: boolean) => void
+    updateUsageProject: (projectId: string) => void
       checkForUpdates: () => Promise<UpdateStatus>
       getUpdateStatus: () => Promise<UpdateStatus>
       installUpdate: () => void
