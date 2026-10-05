@@ -7,6 +7,7 @@ import {
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent
 } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import type {
   PasteItemDetail,
   PasteItemMeta,
@@ -17,6 +18,7 @@ import { DEFAULT_TEXTURE_INTENSITY, TEXTURE_MAX_OPACITY } from '../../shared/con
 import PasteDetail from './paste/PasteDetail'
 import { PasteTypeIcon, PinIcon, SearchIcon } from './paste/PasteIcons'
 import { getThemeMode, getThemePalette } from './constants/theme'
+import { PANEL_TRANSITION } from './constants/motion'
 import { normalizeText, scoreMatch } from './utils/launcher/fuzzy'
 import { formatAbsoluteTime, formatRelativeTime } from './utils/paste/pasteFormat'
 
@@ -61,9 +63,16 @@ export default function PasteManager(): JSX.Element {
   const [settings, setSettings] = useState<PasteManagerSettings | null>(null)
   const [themeGradient, setThemeGradient] = useState('from-neutral-900/95 to-[#1c0f03]')
   const [textureIntensity, setTextureIntensity] = useState(DEFAULT_TEXTURE_INTENSITY)
+  // When false the surfaces are unmounted, leaving the native window blank so
+  // the OS never composites a stale frame on open/close.
+  const [enterReady, setEnterReady] = useState(false)
+  // Bumped on every `paste:prepare` so the readiness effect re-runs even when
+  // `enterReady` is already false.
+  const [prepareToken, setPrepareToken] = useState(0)
 
   const searchRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const readySentRef = useRef(false)
 
   const reload = useCallback(async () => {
     if (!window.api?.paste) return
@@ -87,7 +96,16 @@ export default function PasteManager(): JSX.Element {
       void reload()
     })
     const offSettings = window.api?.paste?.onSettingsUpdated((next) => setSettings(next))
+    const offPrepare = window.api?.paste?.onPrepare(() => {
+      readySentRef.current = false
+      setEnterReady(false)
+      setPrepareToken((token) => token + 1)
+    })
+    const offHide = window.api?.paste?.onHide(() => {
+      setEnterReady(false)
+    })
     const offShown = window.api?.paste?.onShown(() => {
+      setEnterReady(true)
       void reload()
       setQuery('')
       window.setTimeout(() => searchRef.current?.focus(), 0)
@@ -104,11 +122,21 @@ export default function PasteManager(): JSX.Element {
     return () => {
       offChanged?.()
       offSettings?.()
+      offPrepare?.()
+      offHide?.()
       offShown?.()
       offTheme?.()
       offTexture?.()
     }
   }, [reload])
+
+  // Confirm the blank entry frame has been committed so the main process can
+  // show the window, then animate in when it signals us.
+  useEffect(() => {
+    if (enterReady || readySentRef.current) return
+    readySentRef.current = true
+    window.api?.paste?.notifyReadyToShow?.()
+  }, [enterReady, prepareToken])
 
   useEffect(() => {
     document.documentElement.style.setProperty(
@@ -269,7 +297,17 @@ export default function PasteManager(): JSX.Element {
   const disabled = settings != null && !settings.enabled
 
   return (
-    <div className="h-screen w-screen bg-transparent p-2 font-sans text-neutral-200" style={themeStyles}>
+    <AnimatePresence onExitComplete={() => window.api?.paste?.notifyExitComplete?.()}>
+      {enterReady && (
+        <motion.div
+          key="paste-manager"
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.98 }}
+          transition={PANEL_TRANSITION}
+          className="h-screen w-screen bg-transparent p-2 font-sans text-neutral-200"
+          style={themeStyles}
+        >
       <div
         className={`relative flex h-full flex-col overflow-hidden rounded-xl border border-neutral-800/85 bg-gradient-to-br ${themeGradient} texture-surface`}
       >
@@ -390,7 +428,9 @@ export default function PasteManager(): JSX.Element {
             </main>
           </div>
         )}
-      </div>
-    </div>
+        </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 }

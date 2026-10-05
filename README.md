@@ -115,7 +115,7 @@ Settings live in a dedicated window with the following tabs: **General** (API ke
 | `Alt+Space` | Toggle the command bar open/close |
 | `Alt+T` | Open directly in terminal mode |
 | `Alt+L` | Open the Tasks quick-capture list |
-| `Ctrl+Alt+V` | Open the Paste Manager window |
+| `Alt+V` | Open the Paste Manager window |
 
 ### In-app shortcuts
 

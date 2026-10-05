@@ -399,6 +399,22 @@ const api = {
       }>,
     hideWindow: () => ipcRenderer.send('paste:hide-window'),
     askInChat: (text: string) => ipcRenderer.send('paste:ask-in-chat', text),
+    notifyReadyToShow: () => ipcRenderer.send('paste-renderer-ready'),
+    notifyExitComplete: () => ipcRenderer.send('paste-renderer-exit-complete'),
+    onPrepare: (callback: () => void) => {
+      const listener = (): void => callback()
+      ipcRenderer.on('paste:prepare', listener)
+      return () => {
+        ipcRenderer.removeListener('paste:prepare', listener)
+      }
+    },
+    onHide: (callback: () => void) => {
+      const listener = (): void => callback()
+      ipcRenderer.on('paste:hide', listener)
+      return () => {
+        ipcRenderer.removeListener('paste:hide', listener)
+      }
+    },
     onChanged: (callback: () => void) => {
       const listener = (): void => callback()
       ipcRenderer.on('paste:changed', listener)

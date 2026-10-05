@@ -94,7 +94,7 @@ export const DEFAULT_SHORTCUTS: ShortcutConfig = {
   openApp: 'Alt+Space',
   openAppTerminal: 'Alt+T',
   openTasks: 'Alt+L',
-  openPaste: 'Ctrl+Alt+V'
+  openPaste: 'Alt+V'
 }
 
 export function normalizeAdminApiKey(value: unknown): string {
@@ -108,11 +108,13 @@ export function normalizeUsageProjectId(value: unknown): string {
 export function normalizeShortcuts(raw: unknown): ShortcutConfig {
   if (!raw || typeof raw !== 'object') return { ...DEFAULT_SHORTCUTS }
   const obj = raw as Record<string, unknown>
+  const openPaste = typeof obj.openPaste === 'string' ? obj.openPaste : DEFAULT_SHORTCUTS.openPaste
   return {
     openApp: typeof obj.openApp === 'string' ? obj.openApp : DEFAULT_SHORTCUTS.openApp,
     openAppTerminal: typeof obj.openAppTerminal === 'string' ? obj.openAppTerminal : DEFAULT_SHORTCUTS.openAppTerminal,
     openTasks: typeof obj.openTasks === 'string' ? obj.openTasks : DEFAULT_SHORTCUTS.openTasks,
-    openPaste: typeof obj.openPaste === 'string' ? obj.openPaste : DEFAULT_SHORTCUTS.openPaste
+    // Migrate the previous default (`Ctrl+Alt+V`) to the new one.
+    openPaste: openPaste === 'Ctrl+Alt+V' ? DEFAULT_SHORTCUTS.openPaste : openPaste
   }
 }
 

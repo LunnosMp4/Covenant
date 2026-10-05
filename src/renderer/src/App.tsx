@@ -1888,20 +1888,6 @@ export default function App(): JSX.Element {
     (event: React.KeyboardEvent<HTMLDivElement>) => {
       if (
         mode === 'ai' &&
-        event.altKey &&
-        !event.ctrlKey &&
-        !event.metaKey &&
-        !event.shiftKey &&
-        (event.key === 'm' || event.key === 'M')
-      ) {
-        event.preventDefault()
-        event.stopPropagation()
-        void toggleRecording()
-        return
-      }
-
-      if (
-        mode === 'ai' &&
         event.ctrlKey &&
         !event.altKey &&
         !event.metaKey &&
@@ -1946,7 +1932,7 @@ export default function App(): JSX.Element {
         switchToAiMode()
       }
     },
-    [activeConversation, activePopup, conversations, isChatOpen, mode, switchToAiMode, toggleMode, toggleRecording, openSearch]
+    [activeConversation, activePopup, conversations, isChatOpen, mode, switchToAiMode, toggleMode, openSearch]
   )
 
   const chatMessages = useMemo(

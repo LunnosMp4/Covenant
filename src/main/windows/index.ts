@@ -31,9 +31,12 @@ let pasteWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let isVisible = false
 let isPinned = false
+let isPasteVisible = false
 
 let rendererReadyResolver: (() => void) | null = null
+let pasteReadyResolver: (() => void) | null = null
 let hideTimer: ReturnType<typeof setTimeout> | null = null
+let pasteHideTimer: ReturnType<typeof setTimeout> | null = null
 
 export function getMainWindow(): BrowserWindow | null {
   return mainWindow
@@ -292,6 +295,7 @@ function createPasteWindow(): BrowserWindow {
     show: false,
     frame: false,
     transparent: true,
+    backgroundMaterial: isWindows ? 'none' : undefined,
     backgroundColor: 'rgba(0, 0, 0, 0)',
     resizable: true,
     skipTaskbar: true,
@@ -308,13 +312,25 @@ function createPasteWindow(): BrowserWindow {
     }
   })
 
+  if (isWindows) {
+    try {
+      pasteWindow.setBackgroundMaterial('none')
+    } catch {
+      // Older Electron/Windows versions can ignore this safely.
+    }
+    pasteWindow.setBackgroundColor('rgba(0, 0, 0, 0)')
+  }
+
   if (isMac) {
     pasteWindow.setBackgroundColor('rgba(0, 0, 0, 0)')
   }
 
-  pasteWindow.on('ready-to-show', () => {
-    pasteWindow?.show()
-    pasteWindow?.focus()
+  // Keep renderer roots transparent so the OS never composites a white frame
+  // while the paste window is being shown.
+  pasteWindow.webContents.on('did-finish-load', () => {
+    pasteWindow?.webContents.insertCSS(
+      'html, body, #root, :root { background: transparent !important; }'
+    )
   })
 
   pasteWindow.on('blur', () => {
@@ -324,6 +340,11 @@ function createPasteWindow(): BrowserWindow {
   })
 
   pasteWindow.on('closed', () => {
+    if (pasteHideTimer) {
+      clearTimeout(pasteHideTimer)
+      pasteHideTimer = null
+    }
+    isPasteVisible = false
     pasteWindow = null
   })
 
@@ -343,16 +364,48 @@ export function showPasteWindow(): void {
 
   if (win.isMinimized()) win.restore()
 
-  // First open: `ready-to-show` reveals the window once the renderer is ready.
-  if (win.webContents.isLoading()) return
+  // Cancel any in-flight hide so it can't slam the window shut mid-reveal.
+  if (pasteHideTimer) {
+    clearTimeout(pasteHideTimer)
+    pasteHideTimer = null
+  }
+  isPasteVisible = true
 
-  win.show()
-  win.focus()
-  win.webContents.send('paste:shown')
+  // Two-phase reveal (mirrors the main window): mount the surfaces in their
+  // hidden entry state while the window is still off-screen, wait for the
+  // renderer to confirm the frame is ready, then show + animate. Showing before
+  // the renderer has painted makes the OS composite a stale/blank frame — the
+  // "blink" seen when the Paste Manager opens.
+  win.webContents.send('paste:prepare')
+
+  void waitForPasteRendererReady().then(() => {
+    if (!isPasteVisible || !pasteWindow || pasteWindow.isDestroyed()) return
+    pasteWindow.show()
+    pasteWindow.focus()
+    pasteWindow.webContents.send('paste:shown')
+  })
 }
 
 export function hidePasteWindow(): void {
   if (!pasteWindow || pasteWindow.isDestroyed()) return
+  isPasteVisible = false
+
+  // Let the renderer animate out and blank its frame while still visible, then
+  // hide. Hiding first would leave the last painted (fully visible) frame in
+  // the compositor, which the OS shows for a frame on the next open — the
+  // "blink".
+  pasteWindow.webContents.send('paste:hide')
+
+  if (pasteHideTimer) clearTimeout(pasteHideTimer)
+  pasteHideTimer = setTimeout(completeHidePasteWindow, RENDERER_EXIT_TIMEOUT_MS)
+}
+
+export function completeHidePasteWindow(): void {
+  if (pasteHideTimer) {
+    clearTimeout(pasteHideTimer)
+    pasteHideTimer = null
+  }
+  if (isPasteVisible || !pasteWindow || pasteWindow.isDestroyed()) return
   pasteWindow.hide()
   scheduleSleepModeCleanup(pasteWindow)
 }
@@ -361,7 +414,7 @@ export function togglePasteWindow(): void {
   const config = readConfig()
   if (!config.pasteManager?.enabled) return
 
-  if (pasteWindow && !pasteWindow.isDestroyed() && pasteWindow.isVisible()) {
+  if (isPasteVisible) {
     hidePasteWindow()
   } else {
     showPasteWindow()
@@ -441,6 +494,29 @@ function waitForRendererReady(): Promise<void> {
     }
 
     rendererReadyResolver = finish
+    setTimeout(finish, RENDERER_READY_TIMEOUT_MS)
+  })
+}
+
+export function markPasteRendererReady(): void {
+  if (pasteReadyResolver) {
+    const resolve = pasteReadyResolver
+    pasteReadyResolver = null
+    resolve()
+  }
+}
+
+function waitForPasteRendererReady(): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = (): void => {
+      if (settled) return
+      settled = true
+      if (pasteReadyResolver === finish) pasteReadyResolver = null
+      resolve()
+    }
+
+    pasteReadyResolver = finish
     setTimeout(finish, RENDERER_READY_TIMEOUT_MS)
   })
 }

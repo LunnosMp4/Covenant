@@ -2,7 +2,15 @@ import { dialog, ipcMain } from 'electron'
 import type { PasteManagerSettings } from '../../shared/paste/paste'
 import { readConfig } from '../config/configStore'
 import { getPasteManager, setPasteBlurSuppressed } from '../paste/runtime'
-import { getMainWindow, getPasteWindow, hidePasteWindow, registerShortcuts, showWindow } from '../windows'
+import {
+  completeHidePasteWindow,
+  getMainWindow,
+  getPasteWindow,
+  hidePasteWindow,
+  markPasteRendererReady,
+  registerShortcuts,
+  showWindow
+} from '../windows'
 import { sendToMain, sendToPaste, sendToSettings } from '../windows/broadcast'
 
 function broadcastPasteSettings(settings: PasteManagerSettings): void {
@@ -102,6 +110,17 @@ export function registerPasteIpc(): void {
 
   ipcMain.on('paste:hide-window', () => {
     hidePasteWindow()
+  })
+
+  // Renderer confirms it has mounted the paste surfaces in their hidden entry
+  // state, so the native window can safely be shown without blinking.
+  ipcMain.on('paste-renderer-ready', () => {
+    markPasteRendererReady()
+  })
+
+  // Renderer's exit animation finished and its frame is blank — hide now.
+  ipcMain.on('paste-renderer-exit-complete', () => {
+    completeHidePasteWindow()
   })
 
   ipcMain.on('paste:ask-in-chat', (_event, rawText: unknown) => {
