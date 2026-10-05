@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import type { McpAuth, McpHeader, McpServer, McpTool } from '../../shared/mcp'
+import type { McpAuth, McpHeader, McpServer, McpTool } from '../../shared/mcp/mcp'
 
 export function normalizeMcpHeaders(rawHeaders: unknown): McpHeader[] {
   if (!Array.isArray(rawHeaders)) {

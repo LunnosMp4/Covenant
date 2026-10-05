@@ -5,7 +5,7 @@ import {
   normalizeUrl,
   truncatePreview,
   type PasteItemType
-} from '../../shared/paste'
+} from '../../shared/paste/paste'
 
 /**
  * Pure clipboard classification/hashing helpers.
@@ -64,10 +64,6 @@ function stripHtml(html: string): string {
 export function isImageFormat(format: string): boolean {
   const lower = format.toLowerCase()
   return lower.startsWith('image/') || /^(png|bmp|tiff|tif|dib|jpeg|jpg|gif)$/.test(lower)
-}
-
-export function isImageMime(format: string): boolean {
-  return isImageFormat(format)
 }
 
 /**

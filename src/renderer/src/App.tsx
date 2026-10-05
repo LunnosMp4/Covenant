@@ -1,13 +1,13 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, type CSSProperties } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import ModulePopup, { type ActivePopup, type PopupItem } from './components/ModulePopup'
-import LauncherResults from './components/LauncherResults'
-import TerminalView from './components/TerminalView'
-import VoiceWaveform from './components/VoiceWaveform'
-import ConfirmDeleteModal from './components/ConfirmDeleteModal'
-import { Favicon } from './components/Favicon'
-import { AssistantMarkdown, CopyButton, ToolStepRow, WebSearchStepRow } from './components/chat/AssistantMarkdown'
-import ExcalidrawEmbed from './components/ExcalidrawEmbed'
+import ModulePopup, { type ActivePopup, type PopupItem } from './launcher/ModulePopup'
+import LauncherResults from './launcher/LauncherResults'
+import TerminalView from './terminal/TerminalView'
+import VoiceWaveform from './chat/VoiceWaveform'
+import ConfirmDeleteModal from './ui/ConfirmDeleteModal'
+import { Favicon } from './chat/Favicon'
+import { AssistantMarkdown, CopyButton, ToolStepRow, WebSearchStepRow } from './chat/AssistantMarkdown'
+import ExcalidrawEmbed from './chat/ExcalidrawEmbed'
 import {
   ChevronDownIcon,
   ChevronUpIcon,
@@ -26,20 +26,18 @@ import {
   TasksIcon,
   TrashIcon,
   XIcon
-} from './components/icons'
+} from './ui/icons'
 import { createId } from './utils/helpers'
-import MeasuredPanel from './components/MeasuredPanel'
+import MeasuredPanel from './ui/MeasuredPanel'
 import { TERMINAL_SPRING, WINDOW_SPRING } from './constants/motion'
-import { rankLauncherItems } from './utils/fuzzy'
-import { formatTargetsSummary, normalizeLaunchTargets } from './utils/launcherTargets'
+import { rankLauncherItems } from './utils/launcher/fuzzy'
+import { formatTargetsSummary, normalizeLaunchTargets } from './utils/launcher/launcherTargets'
 import {
   computeContextStats,
   formatConversationTimestamp,
-  formatCurrency,
   formatSourceUrl,
-  formatTokenCount,
   formatUsageSummary
-} from './utils/chatUsage'
+} from './utils/chat/chatUsage'
 import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from './constants/terminalFonts'
 import {
   DEFAULT_THEME_GRADIENT,
@@ -49,257 +47,56 @@ import {
 } from './constants/theme'
 import type { ButtonVisibility, ReasoningEffort } from '../../shared/config'
 import {
-  CHAT_MODEL_OPTIONS,
   DEFAULT_CHAT_MODEL,
   DEFAULT_REASONING_EFFORT,
   DEFAULT_TEXTURE_INTENSITY,
   TEXTURE_MAX_OPACITY
 } from '../../shared/config'
-import type { UpdateStatus } from '../../shared/update'
+import type { UpdateStatus } from '../../shared/system/update'
 import type {
   ChatConversation,
   ChatMessage,
   ChatRole,
   ChatStreamEvent,
-  ChatUsage,
   InputContent,
-  InputImageContent,
-  InputTextContent,
-  ReasoningStep,
-  Source
-} from '../../shared/chat'
-import { collectExcalidrawCheckpoints } from '../../shared/excalidraw'
-import type { LauncherApp, LauncherAppTarget } from './types/launcher-app'
-import type { InstalledApp, LauncherItem } from '../../shared/launcher'
-import type { Preprompt } from './types/preprompt'
-import type { Task } from './types/task'
-import type { GamificationState, XpToastState } from './types/gamification'
+  ReasoningStep
+} from '../../shared/chat/chat'
+import { collectExcalidrawCheckpoints } from '../../shared/chat/excalidraw'
+import type { LauncherApp, LauncherAppTarget } from './types/renderer'
+import type { InstalledApp, LauncherItem } from '../../shared/launcher/launcher'
+import type { Preprompt } from './types/renderer'
+import type { Task } from './types/renderer'
+import type { GamificationState, XpToastState } from './types/renderer'
 import type {
   Workflow,
   WorkflowExecutionState,
   WorkflowLogPayload,
   WorkflowStatusUpdatePayload
-} from './types/workflow'
-
-interface SelectedSystemPrompt {
-  id: string
-  title: string
-  content: string
-}
-
-type AppMode = 'ai' | 'terminal'
-
-const DEFAULT_GAMIFICATION_STATE: GamificationState = {
-  currentLevel: 1,
-  currentXP: 0,
-  totalLifetimeXP: 0,
-  streakDays: 0,
-  lastActiveDate: null
-}
-
-const MAX_WORKFLOW_LOG_LINES = 200
-const MAX_CONVERSATION_TITLE_LENGTH = 48
-const DEFAULT_CONVERSATION_TITLE = 'New chat'
-const CHAT_SCROLL_HEIGHT = 300
-const CHAT_ROLE_ORDER: ChatRole[] = ['system', 'user', 'assistant']
-
-function splitWorkflowLogLines(text: string): string[] {
-  return text
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .split('\n')
-    .map((line) => line.trimEnd())
-    .filter((line) => line.length > 0)
-}
-
-function normalizeLauncherAppTargets(app: LauncherApp): LauncherAppTarget[] {
-  return normalizeLaunchTargets(app.targets, app.path, app.arguments)
-}
-
-function normalizePopupLaunchTargets(item: PopupItem): LauncherAppTarget[] {
-  return normalizeLaunchTargets(item.appLaunchTargets, item.appPath, item.launchArguments)
-}
-
-interface AttachedImage {
-  id: string
-  base64: string
-  fileName: string
-  mimeType: string
-}
-
-const SUPPORTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
-const MAX_ATTACHED_IMAGES = 10
-
-function createConversationTitle(prompt: string): string {
-  const trimmed = prompt.trim()
-  if (!trimmed) return DEFAULT_CONVERSATION_TITLE
-  const firstLine = trimmed.split('\n')[0] || trimmed
-  if (firstLine.length <= MAX_CONVERSATION_TITLE_LENGTH) return firstLine
-  return `${firstLine.slice(0, MAX_CONVERSATION_TITLE_LENGTH - 3)}...`
-}
-
-function createSelectedSystemPrompt(preprompt: Preprompt): SelectedSystemPrompt {
-  return {
-    id: preprompt.id,
-    title: preprompt.title,
-    content: preprompt.content
-  }
-}
-
-function createCustomSystemPromptSelection(conversationId: string, content: string): SelectedSystemPrompt {
-  return {
-    id: `conversation-${conversationId}`,
-    title: 'Custom system prompt',
-    content
-  }
-}
-
-function sortConversations(conversations: ChatConversation[]): ChatConversation[] {
-  return [...conversations].sort((a, b) => b.updatedAt - a.updatedAt)
-}
-
-function normalizeMessageOrder(messages: ChatMessage[]): ChatMessage[] {
-  return [...messages].sort((a, b) => {
-    if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt
-    return CHAT_ROLE_ORDER.indexOf(a.role) - CHAT_ROLE_ORDER.indexOf(b.role)
-  })
-}
-
-interface SearchMatch {
-  conversationId: string
-  conversationTitle: string
-  messageId: string
-  role: ChatRole
-  snippet: string
-  count: number
-}
-
-interface SearchGroup {
-  conversationId: string
-  conversationTitle: string
-  matches: SearchMatch[]
-}
-
-function getMessageSearchText(message: ChatMessage): string {
-  const parts = [message.content]
-  if (message.reasoning?.trim()) {
-    parts.push(message.reasoning.trim())
-  }
-  return parts.join('\n')
-}
-
-function countOccurrences(text: string, query: string): number {
-  const lowerText = text.toLowerCase()
-  const lowerQuery = query.toLowerCase()
-  let count = 0
-  let index = lowerText.indexOf(lowerQuery)
-  while (index !== -1) {
-    count += 1
-    index = lowerText.indexOf(lowerQuery, index + lowerQuery.length)
-  }
-  return count
-}
-
-function buildSearchSnippet(text: string, query: string, maxLength = 96): string {
-  const lowerText = text.toLowerCase()
-  const lowerQuery = query.toLowerCase()
-  const index = lowerText.indexOf(lowerQuery)
-  if (index === -1) {
-    return text.replace(/\s+/g, ' ').trim().slice(0, maxLength)
-  }
-
-  const start = Math.max(0, index - 28)
-  const end = Math.min(text.length, index + query.length + 28)
-  const prefix = start > 0 ? '…' : ''
-  const suffix = end < text.length ? '…' : ''
-  const snippet = text.slice(start, end).replace(/\s+/g, ' ').trim()
-  return `${prefix}${snippet}${suffix}`
-}
-
-function buildSearchMatches(
-  conversations: ChatConversation[],
-  activeConversation: ChatConversation | null,
-  query: string
-): SearchMatch[] {
-  const trimmed = query.trim()
-  if (!trimmed) return []
-
-  const allConversations = [...conversations]
-  if (activeConversation && !allConversations.some((item) => item.id === activeConversation.id)) {
-    allConversations.unshift(activeConversation)
-  }
-
-  const matches: SearchMatch[] = []
-  for (const conversation of allConversations) {
-    for (const message of normalizeMessageOrder(conversation.messages)) {
-      const text = getMessageSearchText(message)
-      const count = countOccurrences(text, trimmed)
-      if (count <= 0) continue
-
-      matches.push({
-        conversationId: conversation.id,
-        conversationTitle: conversation.title || DEFAULT_CONVERSATION_TITLE,
-        messageId: message.id,
-        role: message.role,
-        snippet: buildSearchSnippet(text, trimmed),
-        count
-      })
-    }
-  }
-
-  return matches
-}
-
-function getSearchHighlightRegistry(): { set(name: string, highlight: unknown): void; delete(name: string): void } | undefined {
-  return (CSS as unknown as { highlights?: { set(name: string, highlight: unknown): void; delete(name: string): void } })
-    .highlights
-}
-
-function clearSearchHighlight(): void {
-  getSearchHighlightRegistry()?.delete('chat-search')
-}
-
-function applySearchHighlight(container: HTMLElement, query: string): void {
-  const registry = getSearchHighlightRegistry()
-  const HighlightCtor = (window as unknown as { Highlight?: new (...ranges: Range[]) => unknown }).Highlight
-
-  if (!registry || !HighlightCtor) {
-    clearSearchHighlight()
-    return
-  }
-
-  const lowerQuery = query.toLowerCase()
-  const ranges: Range[] = []
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
-  let node = walker.nextNode()
-
-  while (node) {
-    const value = node.nodeValue ?? ''
-    if (value) {
-      const lowerValue = value.toLowerCase()
-      let index = lowerValue.indexOf(lowerQuery)
-      while (index !== -1) {
-        try {
-          const range = document.createRange()
-          range.setStart(node, index)
-          range.setEnd(node, index + lowerQuery.length)
-          ranges.push(range)
-        } catch {
-          break
-        }
-        index = lowerValue.indexOf(lowerQuery, index + lowerQuery.length)
-      }
-    }
-    node = walker.nextNode()
-  }
-
-  if (ranges.length === 0) {
-    registry.delete('chat-search')
-    return
-  }
-
-  registry.set('chat-search', new HighlightCtor(...ranges))
-}
+} from './types/renderer'
+import {
+  DEFAULT_CONVERSATION_TITLE,
+  MAX_CONVERSATION_TITLE_LENGTH,
+  createConversationTitle,
+  createCustomSystemPromptSelection,
+  createSelectedSystemPrompt,
+  normalizeMessageOrder,
+  sortConversations
+} from './app/utils/chat'
+import { splitWorkflowLogLines } from './app/utils/workflow'
+import { normalizeLauncherAppTargets, normalizePopupLaunchTargets } from './app/utils/launcher'
+import {
+  CHAT_SCROLL_HEIGHT,
+  DEFAULT_GAMIFICATION_STATE,
+  MAX_ATTACHED_IMAGES,
+  MAX_WORKFLOW_LOG_LINES,
+  SUPPORTED_IMAGE_TYPES
+} from './app/constants'
+import type { AppMode, AttachedImage, SelectedSystemPrompt } from './app/types'
+import OnboardingModal from './app/components/OnboardingModal'
+import ContextStatsDonut from './app/components/ContextStatsDonut'
+import { useAttachments } from './app/hooks/useAttachments'
+import { useVoiceInput } from './app/hooks/useVoiceInput'
+import { useChatSearch } from './app/hooks/useChatSearch'
 
 export default function App(): JSX.Element {
   const [visible, setVisible] = useState(false)
@@ -339,39 +136,26 @@ export default function App(): JSX.Element {
   >({})
   const [workflowLogsOpenById, setWorkflowLogsOpenById] = useState<Record<string, boolean>>({})
   const [activePopup, setActivePopup] = useState<ActivePopup | null>(null)
-  const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
-  const [showImagePanel, setShowImagePanel] = useState(false)
   const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true, tasks: true })
   const [chatModel, setChatModel] = useState<string>(DEFAULT_CHAT_MODEL)
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT)
-  const [enableWebSearch, setEnableWebSearch] = useState(true)
   const [autoCollapseReasoning, setAutoCollapseReasoning] = useState(true)
   const [textureIntensity, setTextureIntensity] = useState(DEFAULT_TEXTURE_INTENSITY)
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
   const [isPinned, setIsPinned] = useState(false)
   const [sourcesPanelMessageId, setSourcesPanelMessageId] = useState<string | null>(null)
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [activeSearchMatchIndex, setActiveSearchMatchIndex] = useState(0)
   const [deletingConversation, setDeletingConversation] = useState<ChatConversation | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [onboardingApiKey, setOnboardingApiKey] = useState('')
   // Prompt handed off from the Paste Manager; consumed once the window is shown.
   const [pendingExternalPrompt, setPendingExternalPrompt] = useState<string | null>(null)
-  const [voiceState, setVoiceState] = useState<'idle' | 'recording' | 'transcribing' | 'error'>('idle')
-  const micStreamRef = useRef<MediaStream | null>(null)
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const audioChunksRef = useRef<Blob[]>([])
   const inputRef = useRef<HTMLDivElement>(null)
   const pasteBlocksRef = useRef<Map<string, string>>(new Map())
   const isComposingRef = useRef(false)
   const popupRef = useRef<HTMLDivElement>(null)
   const moduleButtonsRef = useRef<HTMLDivElement>(null)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
-  const imagePanelRef = useRef<HTMLDivElement>(null)
-  const imageButtonRef = useRef<HTMLButtonElement>(null)
   const chatScrollRef = useRef<HTMLDivElement>(null)
-  const searchInputRef = useRef<HTMLInputElement>(null)
   const historyMenuRef = useRef<HTMLDivElement>(null)
   const historyButtonRef = useRef<HTMLButtonElement>(null)
   const successResetTimersRef = useRef<Record<string, number>>({})
@@ -387,6 +171,42 @@ export default function App(): JSX.Element {
   // When false, the visible surfaces stay at their entry (hidden) state until the
   // native window has actually been shown by the main process.
   const [enterReady, setEnterReady] = useState(false)
+
+  const {
+    attachedImages,
+    setAttachedImages,
+    showImagePanel,
+    setShowImagePanel,
+    imagePanelRef,
+    imageButtonRef
+  } = useAttachments()
+  const { voiceState, micStreamRef, toggleRecording } = useVoiceInput(inputRef, setQuery)
+  const {
+    searchOpen,
+    searchQuery,
+    setSearchQuery,
+    activeSearchMatchIndex,
+    setActiveSearchMatchIndex,
+    searchMatches,
+    searchGroups,
+    searchInputRef,
+    closeSearch,
+    openSearch,
+    toggleSearch,
+    goToNextSearchMatch,
+    goToPreviousSearchMatch,
+    selectSearchMatch,
+    selectSearchGroup
+  } = useChatSearch({
+    conversations,
+    activeConversation,
+    setActiveConversation,
+    isChatOpen,
+    chatScrollRef,
+    setIsChatOpen,
+    setIsHistoryOpen,
+    setActivePopup
+  })
 
   function getFullPrompt(): string {
     const div = inputRef.current
@@ -437,9 +257,6 @@ export default function App(): JSX.Element {
           if (config.reasoningEffort) {
             setReasoningEffort(config.reasoningEffort)
           }
-          if (typeof config.enableWebSearch === 'boolean') {
-            setEnableWebSearch(config.enableWebSearch)
-          }
           if (typeof config.autoCollapseReasoning === 'boolean') {
             setAutoCollapseReasoning(config.autoCollapseReasoning)
           }
@@ -477,10 +294,6 @@ export default function App(): JSX.Element {
       setReasoningEffort(newReasoningEffort)
     })
 
-    const unsubscribeWebSearchListener = window.api?.config.onWebSearchUpdated?.((newWebSearch) => {
-      setEnableWebSearch(newWebSearch)
-    })
-
     const unsubscribeAutoCollapseReasoningListener = window.api?.config.onAutoCollapseReasoningUpdated?.((newAutoCollapse) => {
       setAutoCollapseReasoning(newAutoCollapse)
     })
@@ -505,9 +318,6 @@ export default function App(): JSX.Element {
       }
       if (typeof unsubscribeReasoningEffortListener === 'function') {
         unsubscribeReasoningEffortListener()
-      }
-      if (typeof unsubscribeWebSearchListener === 'function') {
-        unsubscribeWebSearchListener()
       }
       if (typeof unsubscribeAutoCollapseReasoningListener === 'function') {
         unsubscribeAutoCollapseReasoningListener()
@@ -1053,21 +863,6 @@ export default function App(): JSX.Element {
     }
   }, [activePopup])
 
-  useEffect(() => {
-    if (!showImagePanel) return
-
-    const handleClickOutsideImagePanel = (event: MouseEvent) => {
-      const target = event.target as Node
-      if (imagePanelRef.current?.contains(target)) return
-      if (imageButtonRef.current?.contains(target)) return
-      setShowImagePanel(false)
-    }
-
-    document.addEventListener('mousedown', handleClickOutsideImagePanel)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutsideImagePanel)
-    }
-  }, [showImagePanel])
 
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
@@ -2045,61 +1840,6 @@ export default function App(): JSX.Element {
     ]
   )
 
-  const toggleRecording = useCallback(async () => {
-    if (voiceState === 'transcribing') return
-
-    if (voiceState === 'recording') {
-      mediaRecorderRef.current?.stop()
-      micStreamRef.current?.getTracks().forEach((t) => t.stop())
-      micStreamRef.current = null
-      return
-    }
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      micStreamRef.current = stream
-      audioChunksRef.current = []
-
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
-      mediaRecorderRef.current = recorder
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data)
-      }
-
-      recorder.onstop = () => {
-        setVoiceState('transcribing')
-        micStreamRef.current?.getTracks().forEach((t) => t.stop())
-        micStreamRef.current = null
-
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
-        blob.arrayBuffer().then(async (buffer) => {
-          try {
-            const text = await window.api!.voice.transcribe(buffer)
-            if (text.trim()) {
-              const div = inputRef.current
-              if (div) {
-                const separator = div.textContent ? ' ' : ''
-                div.appendChild(document.createTextNode(separator + text.trim()))
-                setQuery(div.textContent ?? '')
-              }
-              setTimeout(() => inputRef.current?.focus(), 50)
-            }
-            setVoiceState('idle')
-          } catch {
-            setVoiceState('error')
-            setTimeout(() => setVoiceState('idle'), 400)
-          }
-        })
-      }
-
-      recorder.start(250)
-      setVoiceState('recording')
-    } catch {
-      setVoiceState('error')
-      setTimeout(() => setVoiceState('idle'), 400)
-    }
-  }, [voiceState])
 
   const handleOverlayClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -2119,24 +1859,6 @@ export default function App(): JSX.Element {
     [activePopup, handleClose, isChatOpen]
   )
 
-  const closeSearch = useCallback(() => {
-    setSearchOpen(false)
-    setSearchQuery('')
-    setActiveSearchMatchIndex(0)
-  }, [])
-
-  const openSearch = useCallback(() => {
-    setSearchOpen(true)
-    window.setTimeout(() => searchInputRef.current?.focus(), 40)
-  }, [])
-
-  const toggleSearch = useCallback(() => {
-    if (searchOpen) {
-      closeSearch()
-    } else {
-      openSearch()
-    }
-  }, [searchOpen, openSearch, closeSearch])
 
   const handleDeleteConversation = useCallback(async () => {
     const target = deletingConversation
@@ -2232,104 +1954,6 @@ export default function App(): JSX.Element {
     [activeConversation]
   )
 
-  const searchMatches = useMemo(
-    () => buildSearchMatches(conversations, activeConversation, searchQuery),
-    [conversations, activeConversation, searchQuery]
-  )
-
-  const searchGroups = useMemo<SearchGroup[]>(() => {
-    const groups: SearchGroup[] = []
-    for (const match of searchMatches) {
-      const last = groups[groups.length - 1]
-      if (last && last.conversationId === match.conversationId) {
-        last.matches.push(match)
-      } else {
-        groups.push({
-          conversationId: match.conversationId,
-          conversationTitle: match.conversationTitle,
-          matches: [match]
-        })
-      }
-    }
-    return groups
-  }, [searchMatches])
-
-  const navigateToSearchMatch = useCallback(
-    (match: SearchMatch) => {
-      if (match.conversationId !== activeConversation?.id) {
-        const conversation = conversations.find((item) => item.id === match.conversationId)
-        if (conversation) {
-          setActiveConversation(conversation)
-        }
-      }
-      setIsChatOpen(true)
-      setIsHistoryOpen(false)
-      setActivePopup(null)
-      window.setTimeout(() => {
-        const scrollElement = chatScrollRef.current
-        const messageElement = scrollElement?.querySelector(`[data-message-id="${match.messageId}"]`)
-        if (messageElement) {
-          messageElement.scrollIntoView({ block: 'center', behavior: 'smooth' })
-        }
-      }, 80)
-    },
-    [activeConversation, conversations]
-  )
-
-  const goToSearchMatch = useCallback(
-    (index: number) => {
-      if (searchMatches.length === 0) return
-      const clamped = ((index % searchMatches.length) + searchMatches.length) % searchMatches.length
-      setActiveSearchMatchIndex(clamped)
-      navigateToSearchMatch(searchMatches[clamped])
-    },
-    [searchMatches, navigateToSearchMatch]
-  )
-
-  const goToNextSearchMatch = useCallback(() => {
-    goToSearchMatch(activeSearchMatchIndex + 1)
-  }, [goToSearchMatch, activeSearchMatchIndex])
-
-  const goToPreviousSearchMatch = useCallback(() => {
-    goToSearchMatch(activeSearchMatchIndex - 1)
-  }, [goToSearchMatch, activeSearchMatchIndex])
-
-  const selectSearchMatch = useCallback(
-    (match: SearchMatch) => {
-      const index = searchMatches.indexOf(match)
-      if (index === -1) return
-      goToSearchMatch(index)
-    },
-    [searchMatches, goToSearchMatch]
-  )
-
-  const selectSearchGroup = useCallback(
-    (conversationId: string) => {
-      const index = searchMatches.findIndex((match) => match.conversationId === conversationId)
-      if (index === -1) return
-      goToSearchMatch(index)
-    },
-    [searchMatches, goToSearchMatch]
-  )
-
-  useEffect(() => {
-    const trimmedQuery = searchQuery.trim()
-    const scrollElement = chatScrollRef.current
-
-    if (!trimmedQuery || !scrollElement || !isChatOpen) {
-      clearSearchHighlight()
-      return
-    }
-
-    const timer = window.setTimeout(() => {
-      applySearchHighlight(scrollElement, trimmedQuery)
-    }, 0)
-
-    return () => {
-      window.clearTimeout(timer)
-      clearSearchHighlight()
-    }
-  }, [searchQuery, chatMessages, activeConversation?.id, isChatOpen])
 
   const themePalette = useMemo(() => getThemePalette(themeGradient), [themeGradient])
   const themeStyles = useMemo<CSSProperties>(
@@ -2615,47 +2239,7 @@ export default function App(): JSX.Element {
                           </div>
                         )}
                       </div>
-                        {(() => {
-                        const stats = contextStats
-                        if (!stats || stats.maxTokens <= 0) return null
-                        const radius = 11
-                        const circumference = 2 * Math.PI * radius
-                        const fillPercent = Math.min(stats.totalTokens / stats.maxTokens, 1)
-                        const dashOffset = circumference * (1 - fillPercent)
-                        let progressClass = 'stroke-white/50'
-                        if (fillPercent > 0.95) progressClass = 'stroke-red-500/80'
-                        else if (fillPercent > 0.8) progressClass = 'stroke-amber-500/80'
-                        return (
-                          <div className="relative group">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 cursor-default">
-                              <svg width="20" height="20" viewBox="0 0 28 28" className="-rotate-90">
-                                <circle cx="14" cy="14" r={radius} fill="none" className="stroke-white/10" strokeWidth="2" />
-                                <circle cx="14" cy="14" r={radius} fill="none" className={progressClass} strokeWidth="2"
-                                  strokeDasharray={circumference} strokeDashoffset={dashOffset}
-                                  strokeLinecap="round" />
-                              </svg>
-                            </div>
-                            <div className="absolute right-0 top-full mt-1 z-50 min-w-[240px] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150">
-                              <div className="rounded-xl border border-white/10 bg-neutral-900 p-3 shadow-lg">
-                                <div className="mb-2">
-                                  <div className="mb-1 flex items-center justify-between text-[11px] text-neutral-400">
-                                    <span>{formatTokenCount(stats.totalTokens)} / {formatTokenCount(stats.maxTokens)} tokens used</span>
-                                    <span>{Math.round(fillPercent * 100)}%</span>
-                                  </div>
-                                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-                                    <div className="h-full rounded-full bg-white/40 transition-all" style={{ width: `${Math.round(fillPercent * 100)}%` }} />
-                                  </div>
-                                </div>
-                                <div className="space-y-0.5 text-[11px] text-neutral-400">
-                                  <p className="font-medium text-neutral-300">{CHAT_MODEL_OPTIONS.find(m => m.id === chatModel)?.label ?? chatModel}</p>
-                                  <p>Cost: {formatCurrency(stats.totalCost)}</p>
-                                  <p>{stats.messageCount} messages &middot; {'>'}{formatTokenCount(stats.totalInputTokens)}tk &middot; {formatTokenCount(stats.totalOutputTokens)}tk</p>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })()}
+                        <ContextStatsDonut stats={contextStats} chatModel={chatModel} />
                       <button
                         ref={historyButtonRef}
                         type="button"
@@ -3382,72 +2966,15 @@ export default function App(): JSX.Element {
 
       <AnimatePresence>
         {showOnboarding && (
-          <motion.div
-            className="fixed inset-0 z-[100] flex items-center justify-center p-6"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="relative w-full max-w-md rounded-2xl border border-neutral-700 bg-neutral-900 p-6 shadow-2xl"
-            >
-              <h2 className="text-lg font-semibold text-neutral-100">Welcome to Covenant</h2>
-              <p className="mt-2 text-sm text-neutral-400">
-                A floating command bar for AI chat, terminal, and workflows. Press{' '}
-                <span className="text-neutral-200">Alt+Space</span> to open it.
-              </p>
-              <ul className="mt-4 space-y-2 text-sm text-neutral-400">
-                <li>
-                  <span className="text-neutral-200">Tab</span> — switch between AI chat and terminal
-                </li>
-                <li>
-                  <span className="text-neutral-200">Ctrl+Tab</span> — open conversation history
-                </li>
-                <li>
-                  <span className="text-neutral-200">Escape</span> — close the bar
-                </li>
-              </ul>
-              <div className="mt-5">
-                <label className="mb-1.5 block text-xs font-medium uppercase tracking-[0.08em] text-neutral-400">
-                  OpenAI API key <span className="normal-case text-neutral-500">(optional)</span>
-                </label>
-                <input
-                  type="password"
-                  value={onboardingApiKey}
-                  onChange={(event) => setOnboardingApiKey(event.target.value)}
-                  placeholder="sk-..."
-                  autoComplete="off"
-                  className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-neutral-500 focus:outline-none"
-                />
-                <p className="mt-2 text-xs text-neutral-500">
-                  You can also add this later in Settings. The key never leaves this device.
-                </p>
-              </div>
-              <div className="mt-6 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    window.api?.config.markOnboarded?.()
-                    setShowOnboarding(false)
-                  }}
-                  className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-2 text-sm font-medium text-neutral-200 transition-colors hover:border-neutral-600"
-                >
-                  Skip
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCompleteOnboarding}
-                  className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-white"
-                >
-                  Get started
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
+          <OnboardingModal
+            apiKey={onboardingApiKey}
+            onApiKeyChange={setOnboardingApiKey}
+            onSkip={() => {
+              window.api?.config.markOnboarded?.()
+              setShowOnboarding(false)
+            }}
+            onComplete={handleCompleteOnboarding}
+          />
         )}
       </AnimatePresence>
     </div>

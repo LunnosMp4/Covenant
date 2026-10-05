@@ -1,5 +1,5 @@
-import type { McpServer } from './mcp'
-import { DEFAULT_PASTE_SETTINGS, normalizePasteManagerSettings, type PasteManagerSettings } from './paste'
+import type { McpServer } from './mcp/mcp'
+import { DEFAULT_PASTE_SETTINGS, normalizePasteManagerSettings, type PasteManagerSettings } from './paste/paste'
 
 export interface ButtonVisibility {
   appLauncher: boolean

@@ -12,12 +12,13 @@ import type {
   PasteItemMeta,
   PasteItemType,
   PasteManagerSettings
-} from '../../shared/paste'
-import PasteDetail from './components/PasteDetail'
-import { PasteTypeIcon, PinIcon, SearchIcon } from './components/PasteIcons'
+} from '../../shared/paste/paste'
+import { DEFAULT_TEXTURE_INTENSITY, TEXTURE_MAX_OPACITY } from '../../shared/config'
+import PasteDetail from './paste/PasteDetail'
+import { PasteTypeIcon, PinIcon, SearchIcon } from './paste/PasteIcons'
 import { getThemeMode, getThemePalette } from './constants/theme'
-import { normalizeText, scoreMatch } from './utils/fuzzy'
-import { formatAbsoluteTime, formatRelativeTime } from './utils/pasteFormat'
+import { normalizeText, scoreMatch } from './utils/launcher/fuzzy'
+import { formatAbsoluteTime, formatRelativeTime } from './utils/paste/pasteFormat'
 
 type TypeFilter = 'all' | PasteItemType
 
@@ -59,6 +60,7 @@ export default function PasteManager(): JSX.Element {
   const [detailLoading, setDetailLoading] = useState(false)
   const [settings, setSettings] = useState<PasteManagerSettings | null>(null)
   const [themeGradient, setThemeGradient] = useState('from-neutral-900/95 to-[#1c0f03]')
+  const [textureIntensity, setTextureIntensity] = useState(DEFAULT_TEXTURE_INTENSITY)
 
   const searchRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -74,7 +76,12 @@ export default function PasteManager(): JSX.Element {
     void window.api?.paste?.getSettings?.().then(setSettings)
     void window.api?.config
       ?.getConfig()
-      .then((config) => setThemeGradient(config.themeGradient || 'from-neutral-900/95 to-[#1c0f03]'))
+      .then((config) => {
+        setThemeGradient(config.themeGradient || 'from-neutral-900/95 to-[#1c0f03]')
+        if (typeof config.textureIntensity === 'number') {
+          setTextureIntensity(config.textureIntensity)
+        }
+      })
 
     const offChanged = window.api?.paste?.onChanged(() => {
       void reload()
@@ -88,6 +95,9 @@ export default function PasteManager(): JSX.Element {
     const offTheme = window.api?.config?.onThemeUpdated?.((gradient) => {
       setThemeGradient(gradient || 'from-neutral-900/95 to-[#1c0f03]')
     })
+    const offTexture = window.api?.config?.onTextureIntensityUpdated?.((newIntensity) => {
+      setTextureIntensity(newIntensity)
+    })
 
     window.setTimeout(() => searchRef.current?.focus(), 30)
 
@@ -96,8 +106,16 @@ export default function PasteManager(): JSX.Element {
       offSettings?.()
       offShown?.()
       offTheme?.()
+      offTexture?.()
     }
   }, [reload])
+
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      '--texture-opacity',
+      String((textureIntensity / 100) * TEXTURE_MAX_OPACITY)
+    )
+  }, [textureIntensity])
 
   const filtered = useMemo(() => {
     let list = items.filter((item) => typeFilter === 'all' || item.type === typeFilter)

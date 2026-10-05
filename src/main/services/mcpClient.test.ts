@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { McpServer } from '../../shared/mcp'
+import type { McpServer } from '../../shared/mcp/mcp'
 import {
   buildOpenAIToolDefinitions,
   callMcpTool,

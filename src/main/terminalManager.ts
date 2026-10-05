@@ -1,16 +1,18 @@
 import { spawn, type IPty } from 'node-pty'
 import { existsSync } from 'fs'
 import { randomUUID } from 'crypto'
-import type { TerminalExitPayload, TerminalStartResult } from '../shared/terminal'
+import {
+  DEFAULT_TERMINAL_COLS,
+  DEFAULT_TERMINAL_ROWS,
+  MAX_TERMINAL_COLS,
+  MAX_TERMINAL_ROWS,
+  MIN_TERMINAL_COLS,
+  MIN_TERMINAL_ROWS,
+  sanitizeTerminalDimension
+} from '../shared/terminal/dimensions'
+import type { TerminalExitPayload, TerminalStartResult } from '../shared/terminal/terminal'
 
 export type { TerminalExitPayload, TerminalStartResult }
-
-const DEFAULT_COLS = 120
-const DEFAULT_ROWS = 30
-const MIN_COLS = 20
-const MAX_COLS = 400
-const MIN_ROWS = 5
-const MAX_ROWS = 200
 
 interface ShellCandidate {
   command: string
@@ -26,15 +28,6 @@ interface PtySession {
   shell: string
   dataListeners: Set<DataListener>
   exitListeners: Set<ExitListener>
-}
-
-function clampDimension(value: number | undefined, fallback: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) {
-    return fallback
-  }
-
-  const normalizedValue = Math.floor(value as number)
-  return Math.min(max, Math.max(min, normalizedValue))
 }
 
 function validateShellPath(command: string): boolean {
@@ -115,8 +108,8 @@ class TerminalManager {
   private readonly globalExitListeners = new Set<ExitListener>()
 
   createSession(cols?: number, rows?: number, preferredShell?: string): TerminalStartResult {
-    const normalizedCols = clampDimension(cols, DEFAULT_COLS, MIN_COLS, MAX_COLS)
-    const normalizedRows = clampDimension(rows, DEFAULT_ROWS, MIN_ROWS, MAX_ROWS)
+    const normalizedCols = sanitizeTerminalDimension(cols, DEFAULT_TERMINAL_COLS, MIN_TERMINAL_COLS, MAX_TERMINAL_COLS)
+    const normalizedRows = sanitizeTerminalDimension(rows, DEFAULT_TERMINAL_ROWS, MIN_TERMINAL_ROWS, MAX_TERMINAL_ROWS)
 
     const shellCandidates = getShellCandidates(preferredShell)
     const errors: Array<{ shell: string; error: string }> = []
@@ -195,8 +188,8 @@ class TerminalManager {
     const session = this.sessionMap.get(sessionId)
     if (!session) return
 
-    const normalizedCols = clampDimension(cols, DEFAULT_COLS, MIN_COLS, MAX_COLS)
-    const normalizedRows = clampDimension(rows, DEFAULT_ROWS, MIN_ROWS, MAX_ROWS)
+    const normalizedCols = sanitizeTerminalDimension(cols, DEFAULT_TERMINAL_COLS, MIN_TERMINAL_COLS, MAX_TERMINAL_COLS)
+    const normalizedRows = sanitizeTerminalDimension(rows, DEFAULT_TERMINAL_ROWS, MIN_TERMINAL_ROWS, MAX_TERMINAL_ROWS)
     session.pty.resize(normalizedCols, normalizedRows)
   }
 

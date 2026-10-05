@@ -9,7 +9,7 @@ import {
   type PasteItemMeta,
   type PasteItemType,
   type PasteManagerSettings
-} from '../../shared/paste'
+} from '../../shared/paste/paste'
 
 const INDEX_VERSION = 1
 const INDEX_FLUSH_DELAY_MS = 1000

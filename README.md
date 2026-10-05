@@ -12,7 +12,7 @@ Floating command bar for Windows and macOS — chat with OpenAI models, run term
 - **Voice input** — push-to-talk transcription (gpt-4o-mini-transcribe) with an animated waveform
 - **Conversation history** with auto-generated titles, plus global instructions and reusable instruction templates
 - **Context & cost tracking** — per-message token usage and client-side cost breakdown (cached/cache-write aware)
-- **Built-in terminal** — multi-session xterm + node-pty, configurable shell and font, shell hooks
+- **Built-in terminal** — multi-session xterm + node-pty, configurable shell and font
 - **Workflow runner** — PowerShell, CMD, Python, Node.js, Shell, or a fully custom command
 - **App launcher** — fuzzy-searched installed apps, manual launcher entries with file pick and icon extraction, toggleable Windows system apps
 - **Tasks** with AI evaluation and gamification — XP, levels, rank titles, streaks, and difficulty tiers
@@ -104,7 +104,7 @@ Choose between GPT-6 Luna and GPT-6.1 Sol under **Settings > General**. Both sup
 
 ### Settings
 
-Settings live in a dedicated window with the following tabs: **General** (API key, proxy, startup, updates, chat model, shortcuts), **Appearance** (theme, texture, bar buttons), **Terminal** (shell, font), **App Launcher**, **Workflows**, **Instructions**, **MCP Servers**, and **Clipboard** (Paste Manager).
+Settings live in a dedicated window with the following tabs: **General** (API key, proxy, startup, updates, chat model, shortcuts), **Appearance** (theme, texture, bar buttons), **Terminal** (shell, font), **App Launcher**, **Workflows**, **Instructions**, **MCP Servers**, **Usage & Cost**, and **Clipboard** (Paste Manager).
 
 ## Usage
 

@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto'
 import { ProxyAgent, type Dispatcher } from 'undici'
-import type { McpAuth, McpHeader, McpServer, McpTool } from '../../shared/mcp'
+import type { McpAuth, McpHeader, McpServer, McpTool } from '../../shared/mcp/mcp'
 
 const DEFAULT_MCP_PROTOCOL_VERSION = '2024-11-05'
 const DEFAULT_MCP_TIMEOUT_MS = 30_000
@@ -39,10 +39,6 @@ const mcpSessionIds = new Map<string, string>()
 
 export function forgetMcpSession(serverId: string): void {
   mcpSessionIds.delete(serverId)
-}
-
-export function forgetAllMcpSessions(): void {
-  mcpSessionIds.clear()
 }
 
 export interface McpServerConnection {

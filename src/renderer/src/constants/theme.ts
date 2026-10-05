@@ -10,7 +10,7 @@ export interface ThemeOption {
   palette: ThemePalette
 }
 
-import type { TaskTier } from '../../../shared/gamification'
+import type { TaskTier } from '../../../shared/tasks/gamification'
 
 export interface ThemePalette {
   accent: string

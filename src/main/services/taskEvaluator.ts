@@ -9,7 +9,7 @@ import {
   type TaskCategory,
   type TaskEvaluation,
   type TaskTier
-} from '../../shared/gamification'
+} from '../../shared/tasks/gamification'
 import { modelSupportsTemperature } from '../../shared/config'
 
 const EVALUATION_MODEL = 'gpt-6-luna'

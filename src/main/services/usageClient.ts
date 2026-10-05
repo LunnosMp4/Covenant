@@ -8,7 +8,7 @@ import {
   type OrganizationUsageBucket,
   type UsageErrorCode,
   type UsageProject
-} from '../../shared/usage'
+} from '../../shared/system/usage'
 
 const OPENAI_API_BASE = 'https://api.openai.com/v1'
 // Guard against pathological pagination; the ranges we expose never need more.

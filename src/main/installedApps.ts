@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto'
 import { promises as fsPromises, type Dirent } from 'fs'
 import { homedir, tmpdir } from 'os'
 import { extname, join } from 'path'
-import type { InstalledApp } from '../shared/launcher'
+import type { InstalledApp } from '../shared/launcher/launcher'
 
 const APP_EXTENSION_PATTERN = /\.(app|lnk|exe|url)$/i
 const WINDOWS_SHORTCUT_PATTERN = /\.(lnk|url)$/i

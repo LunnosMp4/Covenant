@@ -6,7 +6,7 @@ import {
   type PasteItemDetail,
   type PasteItemMeta,
   type PasteManagerSettings
-} from '../../shared/paste'
+} from '../../shared/paste/paste'
 import { hashClip, type CapturedClip } from './clipboardCapture'
 import { ClipboardWatcher } from './clipboardWatcher'
 import { fetchLinkTitle } from './linkPreview'
