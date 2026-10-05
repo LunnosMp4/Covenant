@@ -7,6 +7,7 @@ import {
   Menu,
   protocol,
   screen,
+  session,
   shell,
   Tray,
   type WebContents
@@ -35,13 +36,20 @@ import {
   DEFAULT_SHORTCUTS,
   DEFAULT_TEXTURE_INTENSITY,
   modelDoesReasoning,
+  modelSupportsTemperature,
   modelSupportsWebSearch,
   normalizeChatModelId,
   normalizeShortcuts,
   normalizeTextureIntensity,
   type ShortcutConfig
 } from '../shared/config'
-import type { McpServer } from '../shared/mcp'
+import type { McpServer, McpTool } from '../shared/mcp'
+import {
+  EXCALIDRAW_CREATE_VIEW_TOOL,
+  EXCALIDRAW_EXPORT_TOOL,
+  EXCALIDRAW_READ_CHECKPOINT_TOOL,
+  sanitizeCheckpointId
+} from '../shared/excalidraw'
 import { CHAT_ROLE_SET, type ChatConversation, type ChatRole, type ChatUsage } from '../shared/chat'
 import { normalizeConversation } from '../shared/chatNormalizers'
 import {
@@ -68,6 +76,7 @@ import {
   configureMcpClient,
   configureMcpProxy,
   forgetMcpSession,
+  initializeMcpServer,
   normalizeMcpToolNameSegment,
   refreshMcpServerTools,
   sanitizeResponseOutputForInput,
@@ -460,6 +469,7 @@ const appStore = new StoreClass<AppStoreSchema>({
                       id: { type: 'string' },
                       name: { type: 'string' },
                       serverName: { type: 'string' },
+                      serverId: { type: 'string' },
                       query: { type: 'string' },
                       status: { type: 'string', enum: ['searching', 'running', 'done', 'error'] },
                       content: { type: 'string' },
@@ -1341,6 +1351,69 @@ function resolveOpenAIProxyUrl(configProxyUrl?: string): string | undefined {
   return undefined
 }
 
+function parseProxyUrl(proxyUrl: string): { host: string; port: string; username: string; password: string } | null {
+  try {
+    const parsed = new URL(proxyUrl)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+    const port = parsed.port || (parsed.protocol === 'https:' ? '443' : '80')
+    return {
+      host: parsed.hostname,
+      port,
+      username: decodeURIComponent(parsed.username || ''),
+      password: decodeURIComponent(parsed.password || '')
+    }
+  } catch {
+    return null
+  }
+}
+
+let sessionProxyCredentials: { username: string; password: string } | undefined
+let sessionProxyLoginHandlerRegistered = false
+let lastAppliedSessionProxy: string | undefined
+
+function ensureSessionProxyLoginHandler(): void {
+  if (sessionProxyLoginHandlerRegistered) return
+  sessionProxyLoginHandlerRegistered = true
+
+  app.on('login', (event, _webContents, _details, authInfo, callback) => {
+    if (!authInfo.isProxy || !sessionProxyCredentials) return
+    event.preventDefault()
+    callback(sessionProxyCredentials.username, sessionProxyCredentials.password)
+  })
+}
+
+// Mirrors the configured proxy onto Chromium's session so renderer network
+// traffic (e.g. embedded remote pages) is routed like our Node-side requests.
+async function applySessionProxy(resolvedProxyUrl?: string): Promise<void> {
+  const proxyUrl = resolvedProxyUrl?.trim() || undefined
+  if (proxyUrl === lastAppliedSessionProxy) return
+  lastAppliedSessionProxy = proxyUrl
+
+  const targetSession = session.defaultSession
+  if (!targetSession) return
+
+  const parsed = proxyUrl ? parseProxyUrl(proxyUrl) : null
+  if (!parsed) {
+    sessionProxyCredentials = undefined
+    await targetSession.setProxy({ mode: 'system' }).catch(() => undefined)
+    return
+  }
+
+  ensureSessionProxyLoginHandler()
+  sessionProxyCredentials =
+    parsed.username || parsed.password
+      ? { username: parsed.username, password: parsed.password }
+      : undefined
+
+  const hostPort = `${parsed.host}:${parsed.port}`
+  await targetSession
+    .setProxy({
+      proxyRules: `http=${hostPort};https=${hostPort}`,
+      proxyBypassRules: '<local>,localhost,127.0.0.1,[::1]'
+    })
+    .catch(() => undefined)
+}
+
 function getWindowPosition(): { x: number; y: number } {
   const cursorPoint = screen.getCursorScreenPoint()
   const primaryDisplay = screen.getDisplayNearestPoint(cursorPoint)
@@ -1592,10 +1665,44 @@ function getActiveMcpToolRegistry(): McpToolRegistryEntry[] {
   return registry
 }
 
+function findExcalidrawMcpServer(rawServerId?: unknown): McpServer | undefined {
+  const activeServers = getMcpServers().filter((server) => server.active)
+  const serverId = typeof rawServerId === 'string' ? rawServerId.trim() : ''
+
+  if (serverId) {
+    const direct = activeServers.find((server) => server.id === serverId)
+    if (direct) return direct
+  }
+
+  return (
+    activeServers.find((server) =>
+      server.tools.some(
+        (tool) =>
+          tool.name === EXCALIDRAW_READ_CHECKPOINT_TOOL || tool.name === EXCALIDRAW_EXPORT_TOOL
+      )
+    ) ??
+    activeServers.find((server) =>
+      server.tools.some((tool) => tool.name === EXCALIDRAW_CREATE_VIEW_TOOL)
+    )
+  )
+}
+
+async function callExcalidrawMcpTool(
+  server: McpServer,
+  toolName: string,
+  args: Record<string, unknown>
+): Promise<string> {
+  await initializeMcpServer(server)
+  const tool: McpTool = { name: toolName, enabled: true }
+  const result = await callMcpTool(server, tool, JSON.stringify(args))
+  return result.content
+}
+
 type SanitizedMessage = { role: ChatRole; content: string | Array<{ type: string; text?: string; image_url?: string }> }
 
 const MAX_MCP_TOOL_ROUNDS = 5
 const MAX_TOOL_RESULT_DISPLAY_LENGTH = 1200
+const MAX_EXCALIDRAW_EXPORT_BYTES = 5 * 1024 * 1024
 
 const COVENANT_INSTRUCTIONS =
   "You are Covenant, a helpful, concise AI assistant integrated into a user's operating system. Keep your answers brief and to the point."
@@ -1778,6 +1885,7 @@ async function runStreamingChat(
                 toolType: 'mcp',
                 toolName: entry ? `${entry.server.name} › ${entry.tool.name}` : name,
                 serverName: entry?.server.name,
+                serverId: entry?.server.id,
                 query: name,
                 actionType: 'call'
               })
@@ -2100,7 +2208,7 @@ async function generateConversationTitle(prompt: string): Promise<string> {
     instructions:
       'Generate a very short conversation title (at most 6 words) that summarizes the user prompt. Respond with only the title, without quotes, without trailing punctuation, and without any explanation.',
     input: `User prompt: ${normalizedPrompt}`,
-    temperature: 0.3
+    ...(modelSupportsTemperature(CONVERSATION_TITLE_MODEL) ? { temperature: 0.3 } : {})
   })
 
   const rawTitle = (response as unknown as { output_text?: unknown }).output_text
@@ -2683,6 +2791,7 @@ app.whenReady().then(() => {
 
   configureMcpClient({ name: 'Covenant', version: app.getVersion() })
   configureMcpProxy(resolveOpenAIProxyUrl(config.proxyUrl))
+  void applySessionProxy(resolveOpenAIProxyUrl(config.proxyUrl))
 
   setupAutoUpdater(() => readConfig().autoUpdate === true)
 
@@ -3153,6 +3262,7 @@ ipcMain.on('save-openai-settings', (_event, payload: { apiKey?: string; proxyUrl
   const proxyUrl = typeof payload?.proxyUrl === 'string' ? payload.proxyUrl.trim() : ''
   updateConfig({ apiKey, proxyUrl })
   configureMcpProxy(resolveOpenAIProxyUrl(proxyUrl))
+  void applySessionProxy(resolveOpenAIProxyUrl(proxyUrl))
 })
 
 ipcMain.on('mark-onboarded', () => {
@@ -3211,6 +3321,97 @@ ipcMain.handle('test-mcp-server', async (_event, payload: {
     appendMcpSuffix: payload?.appendMcpSuffix ?? true,
     timeoutMs: 15_000
   })
+})
+
+ipcMain.handle('open-external', async (_event, rawUrl: unknown) => {
+  const url = typeof rawUrl === 'string' ? rawUrl.trim() : ''
+  if (!url) return { success: false }
+
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return { success: false }
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return { success: false }
+  }
+
+  try {
+    await shell.openExternal(parsed.toString())
+    return { success: true }
+  } catch {
+    return { success: false }
+  }
+})
+
+ipcMain.handle(
+  'excalidraw:read-checkpoint',
+  async (_event, payload: { serverId?: unknown; checkpointId?: unknown }) => {
+    const server = findExcalidrawMcpServer(payload?.serverId)
+    const checkpointId = sanitizeCheckpointId(payload?.checkpointId)
+
+    if (!server || !checkpointId) {
+      return { ok: false, error: 'No active Excalidraw MCP server or invalid checkpoint id.' }
+    }
+
+    try {
+      const content = await callExcalidrawMcpTool(server, EXCALIDRAW_READ_CHECKPOINT_TOOL, {
+        id: checkpointId
+      })
+      const parsed = JSON.parse(content) as { elements?: unknown } | null
+      if (!parsed || !Array.isArray(parsed.elements)) {
+        return { ok: false, error: 'Checkpoint could not be read.', serverId: server.id }
+      }
+      return { ok: true, elements: parsed.elements, serverId: server.id }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to read checkpoint.'
+      return { ok: false, error: message, serverId: server.id }
+    }
+  }
+)
+
+ipcMain.handle(
+  'excalidraw:export',
+  async (_event, payload: { serverId?: unknown; json?: unknown }) => {
+    const server = findExcalidrawMcpServer(payload?.serverId)
+    const json = typeof payload?.json === 'string' ? payload.json : ''
+
+    if (!server || !json.trim()) {
+      return { ok: false, error: 'No active Excalidraw MCP server or empty scene.' }
+    }
+    if (json.length > MAX_EXCALIDRAW_EXPORT_BYTES) {
+      return { ok: false, error: 'Diagram is too large to export.' }
+    }
+
+    try {
+      const content = await callExcalidrawMcpTool(server, EXCALIDRAW_EXPORT_TOOL, { json })
+      const url = content.trim()
+      if (!/^https:\/\/excalidraw\.com\//i.test(url)) {
+        return { ok: false, error: 'Unexpected export response from MCP server.', serverId: server.id }
+      }
+      return { ok: true, url, serverId: server.id }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to export diagram.'
+      return { ok: false, error: message, serverId: server.id }
+    }
+  }
+)
+
+// Embedded Excalidraw views are independent, so clear excalidraw.com's persisted
+// scene before navigating. Otherwise loading a new #json link triggers the
+// "replace your existing content" confirmation prompt every time.
+ipcMain.handle('excalidraw:clear-storage', async () => {
+  try {
+    await session.defaultSession.clearStorageData({
+      origin: 'https://excalidraw.com',
+      storages: ['localstorage', 'indexdb', 'websql']
+    })
+    return { ok: true }
+  } catch {
+    return { ok: false }
+  }
 })
 
 ipcMain.on('update-theme', (_event, gradientClass: string) => {

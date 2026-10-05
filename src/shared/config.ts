@@ -73,6 +73,10 @@ export function modelDoesReasoning(modelId: string): boolean {
   return REASONING_MODEL_PREFIXES.some((prefix) => lower.startsWith(prefix))
 }
 
+export function modelSupportsTemperature(modelId: string): boolean {
+  return !modelDoesReasoning(modelId)
+}
+
 export function modelSupportsWebSearch(modelId: string): boolean {
   const lower = modelId.toLowerCase()
   return REASONING_MODEL_PREFIXES.some((prefix) => lower.startsWith(prefix)) ||

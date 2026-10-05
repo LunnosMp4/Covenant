@@ -1,4 +1,4 @@
-export type BrandKind = 'github' | 'slack' | 'brave'
+export type BrandKind = 'github' | 'slack' | 'brave' | 'excalidraw'
 
 export function GitHubLogo({ className }: { className?: string }): JSX.Element {
   return (
@@ -24,6 +24,27 @@ export function BraveLogo({ className }: { className?: string }): JSX.Element {
   )
 }
 
+export function ExcalidrawLogo({ className }: { className?: string }): JSX.Element {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3.5 20.5 5.2 14.7 15.9 4a2.15 2.15 0 0 1 3.05 3.05L8.25 17.75 3.5 20.5Z" />
+      <path d="m13.6 6.3 4.1 4.1" />
+      <path d="M4.2 19.8c2.4-1.1 4.9-1.1 7.3 0" />
+    </svg>
+  )
+}
+
 export function PresetLogo({ kind, className }: { kind: BrandKind; className?: string }): JSX.Element {
   switch (kind) {
     case 'github':
@@ -32,5 +53,7 @@ export function PresetLogo({ kind, className }: { kind: BrandKind; className?: s
       return <SlackLogo className={className} />
     case 'brave':
       return <BraveLogo className={className} />
+    case 'excalidraw':
+      return <ExcalidrawLogo className={className} />
   }
 }

@@ -23,6 +23,7 @@ export type ReasoningStep =
       id: string
       name: string
       serverName?: string
+      serverId?: string
       query?: string
       status: 'running' | 'done' | 'error'
       content?: string
@@ -89,6 +90,7 @@ export interface ChatStreamEvent {
   actionType?: string
   query?: string
   serverName?: string
+  serverId?: string
   status?: 'running' | 'done' | 'error'
   content?: string
   sources?: Source[]

@@ -1,7 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { McpAuth, McpServer } from '../../../shared/mcp'
 import { PresetLogo, type BrandKind } from './brands'
 import { ChevronDownIcon, ChevronUpIcon, MoreIcon } from './icons'
+
+const RECOMMENDED_COLLAPSED_KEY = 'covenant.mcp.recommendedCollapsed'
+
+function readRecommendedCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(RECOMMENDED_COLLAPSED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
 
 export interface McpPreset {
   id: string
@@ -13,6 +23,14 @@ export interface McpPreset {
 }
 
 export const MCP_PRESETS: McpPreset[] = [
+  {
+    id: 'excalidraw',
+    name: 'Excalidraw',
+    url: 'https://mcp.excalidraw.com',
+    description: 'Draw and edit interactive hand-drawn diagrams directly inside chat.',
+    authType: 'none',
+    logo: 'excalidraw'
+  },
   {
     id: 'github',
     name: 'GitHub',
@@ -101,6 +119,18 @@ const CONNECTION_LABELS: Record<ConnectionState, { label: string; className: str
 function findPresetLogo(server: McpServer): BrandKind | undefined {
   const url = server.url.toLowerCase()
   return MCP_PRESETS.find((preset) => url.includes(preset.url.toLowerCase()))?.logo
+}
+
+function normalizeServerUrl(url: string): string {
+  return url.trim().toLowerCase().replace(/\/+$/, '').replace(/\/mcp$/, '')
+}
+
+export function findServerForPreset(
+  servers: McpServer[],
+  preset: McpPreset
+): McpServer | undefined {
+  const target = normalizeServerUrl(preset.url)
+  return servers.find((server) => normalizeServerUrl(server.url) === target)
 }
 
 const TOOL_DESCRIPTION_PREVIEW_LENGTH = 160
@@ -381,11 +411,35 @@ function McpServerCard({
 
 function PresetCard({
   preset,
-  onApply
+  onApply,
+  added,
+  active
 }: {
   preset: McpPreset
   onApply: (preset: McpPreset) => void
+  added: boolean
+  active: boolean
 }): JSX.Element {
+  if (added) {
+    return (
+      <div
+        className="flex flex-col gap-3 rounded-2xl border border-neutral-800/70 bg-neutral-900/40 p-4 opacity-55"
+        aria-disabled="true"
+      >
+        <span className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-neutral-800 bg-neutral-800/60 text-neutral-400">
+            <PresetLogo kind={preset.logo} />
+          </span>
+          <span className="text-sm font-medium text-neutral-300">{preset.name}</span>
+        </span>
+        <span className="text-xs leading-relaxed text-neutral-500">{preset.description}</span>
+        <span className="text-xs font-medium text-neutral-400">
+          {active ? 'Enabled — shown below' : 'Added — shown below'}
+        </span>
+      </div>
+    )
+  }
+
   return (
     <button
       type="button"
@@ -419,8 +473,18 @@ export default function McpServersTab({
   onTest,
   onApplyPreset
 }: McpServersTabProps): JSX.Element {
+  const [isRecommendedOpen, setIsRecommendedOpen] = useState(() => !readRecommendedCollapsed())
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(RECOMMENDED_COLLAPSED_KEY, isRecommendedOpen ? '0' : '1')
+    } catch {
+      // Storage may be unavailable; collapsing simply won't persist.
+    }
+  }, [isRecommendedOpen])
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-neutral-100">MCP Servers</h2>
@@ -437,7 +501,49 @@ export default function McpServersTab({
         </button>
       </div>
 
-      <div className="space-y-3">
+      <section className="space-y-3">
+        <button
+          type="button"
+          onClick={() => setIsRecommendedOpen((open) => !open)}
+          aria-expanded={isRecommendedOpen}
+          className="flex w-full items-center justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-900/60 px-3 py-2 text-left transition-colors hover:border-neutral-700 hover:bg-neutral-800/60"
+        >
+          <span>
+            <span className="block text-sm font-semibold uppercase tracking-[0.08em] text-neutral-300">
+              Recommended
+            </span>
+            <span className="mt-0.5 block text-xs text-neutral-500">
+              One-click presets. Added servers become a regular server below.
+            </span>
+          </span>
+          <span className="text-neutral-400">
+            {isRecommendedOpen ? <ChevronUpIcon /> : <ChevronDownIcon />}
+          </span>
+        </button>
+
+        {isRecommendedOpen ? (
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {MCP_PRESETS.map((preset) => {
+              const match = findServerForPreset(servers, preset)
+              return (
+                <PresetCard
+                  key={preset.id}
+                  preset={preset}
+                  onApply={onApplyPreset}
+                  added={Boolean(match)}
+                  active={match?.active ?? false}
+                />
+              )
+            })}
+          </div>
+        ) : null}
+      </section>
+
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-neutral-300">
+          Your servers
+        </h3>
+
         {isLoading ? (
           <div className="rounded-2xl border border-neutral-800 bg-neutral-900/80 px-4 py-6 text-sm text-neutral-400">
             Loading MCP servers...
@@ -446,21 +552,16 @@ export default function McpServersTab({
 
         {!isLoading && servers.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-neutral-700 bg-neutral-900/70 p-5">
-            <p className="text-sm text-neutral-300">Start with a popular server</p>
+            <p className="text-sm text-neutral-300">No servers yet</p>
             <p className="mt-1 text-xs text-neutral-500">
-              These prefill the connection settings — add your own token where required, or add a custom server below.
+              Add one of the recommended servers above, or configure a custom server.
             </p>
-            <div className="mt-4 grid gap-2 sm:grid-cols-3">
-              {MCP_PRESETS.map((preset) => (
-                <PresetCard key={preset.id} preset={preset} onApply={onApplyPreset} />
-              ))}
-            </div>
             <button
               type="button"
               onClick={onAdd}
-              className="mt-4 text-xs font-medium text-neutral-400 transition-colors hover:text-neutral-200"
+              className="mt-3 text-xs font-medium text-neutral-400 transition-colors hover:text-neutral-200"
             >
-              Or add a custom server…
+              Add a custom server…
             </button>
           </div>
         ) : null}
@@ -478,7 +579,7 @@ export default function McpServersTab({
               onDelete={onDelete}
             />
           ))}
-      </div>
+      </section>
 
       {feedbackMessage ? <p className="text-xs text-emerald-300">{feedbackMessage}</p> : null}
     </div>

@@ -130,6 +130,18 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
   clipboard: {
     writeText: (text: string) => void
   }
+  openExternal: (url: string) => Promise<{ success: boolean }>
+  excalidraw: {
+    readCheckpoint: (
+      serverId: string | undefined,
+      checkpointId: string
+    ) => Promise<{ ok: boolean; elements?: unknown[]; serverId?: string; error?: string }>
+    exportToExcalidraw: (
+      serverId: string | undefined,
+      json: string
+    ) => Promise<{ ok: boolean; url?: string; serverId?: string; error?: string }>
+    clearStorage: () => Promise<{ ok: boolean }>
+  }
   paste: {
     list: () => Promise<PasteItemMeta[]>
     getDetail: (id: string) => Promise<PasteItemDetail | null>

@@ -364,6 +364,25 @@ const api = {
   clipboard: {
     writeText: (text: string) => clipboard.writeText(text)
   },
+  openExternal: (url: string) =>
+    ipcRenderer.invoke('open-external', url) as Promise<{ success: boolean }>,
+  excalidraw: {
+    readCheckpoint: (serverId: string | undefined, checkpointId: string) =>
+      ipcRenderer.invoke('excalidraw:read-checkpoint', { serverId, checkpointId }) as Promise<{
+        ok: boolean
+        elements?: unknown[]
+        serverId?: string
+        error?: string
+      }>,
+    exportToExcalidraw: (serverId: string | undefined, json: string) =>
+      ipcRenderer.invoke('excalidraw:export', { serverId, json }) as Promise<{
+        ok: boolean
+        url?: string
+        serverId?: string
+        error?: string
+      }>,
+    clearStorage: () => ipcRenderer.invoke('excalidraw:clear-storage') as Promise<{ ok: boolean }>
+  },
   paste: {
     list: () => ipcRenderer.invoke('paste:list') as Promise<PasteItemMeta[]>,
     getDetail: (id: string) =>

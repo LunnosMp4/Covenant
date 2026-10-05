@@ -7,6 +7,7 @@ import VoiceWaveform from './components/VoiceWaveform'
 import ConfirmDeleteModal from './components/ConfirmDeleteModal'
 import { Favicon } from './components/Favicon'
 import { AssistantMarkdown, CopyButton, ToolStepRow, WebSearchStepRow } from './components/chat/AssistantMarkdown'
+import ExcalidrawEmbed from './components/ExcalidrawEmbed'
 import {
   ChevronDownIcon,
   ChevronUpIcon,
@@ -65,6 +66,7 @@ import type {
   ReasoningStep,
   Source
 } from '../../shared/chat'
+import { collectExcalidrawCheckpoints } from '../../shared/excalidraw'
 import type { LauncherApp, LauncherAppTarget } from './types/launcher-app'
 import type { InstalledApp, LauncherItem } from '../../shared/launcher'
 import type { Preprompt } from './types/preprompt'
@@ -1340,6 +1342,7 @@ export default function App(): JSX.Element {
           const toolItemId = event.itemId
           const toolName = event.toolName ?? event.query ?? 'MCP tool'
           const serverName = event.serverName
+          const serverId = event.serverId
           const query = event.query
           updateConversationMessage(conversationId, messageId, (message) => ({
             ...message,
@@ -1350,6 +1353,7 @@ export default function App(): JSX.Element {
                 id: toolItemId,
                 name: toolName,
                 serverName,
+                serverId,
                 query,
                 status: 'running'
               }
@@ -2612,15 +2616,15 @@ export default function App(): JSX.Element {
                         const circumference = 2 * Math.PI * radius
                         const fillPercent = Math.min(stats.totalTokens / stats.maxTokens, 1)
                         const dashOffset = circumference * (1 - fillPercent)
-                        let progressColor = 'rgba(255,255,255,0.5)'
-                        if (fillPercent > 0.95) progressColor = 'rgba(239,68,68,0.8)'
-                        else if (fillPercent > 0.8) progressColor = 'rgba(245,158,11,0.8)'
+                        let progressClass = 'stroke-white/50'
+                        if (fillPercent > 0.95) progressClass = 'stroke-red-500/80'
+                        else if (fillPercent > 0.8) progressClass = 'stroke-amber-500/80'
                         return (
                           <div className="relative group">
                             <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 cursor-default">
                               <svg width="20" height="20" viewBox="0 0 28 28" className="-rotate-90">
-                                <circle cx="14" cy="14" r={radius} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="2" />
-                                <circle cx="14" cy="14" r={radius} fill="none" stroke={progressColor} strokeWidth="2"
+                                <circle cx="14" cy="14" r={radius} fill="none" className="stroke-white/10" strokeWidth="2" />
+                                <circle cx="14" cy="14" r={radius} fill="none" className={progressClass} strokeWidth="2"
                                   strokeDasharray={circumference} strokeDashoffset={dashOffset}
                                   strokeLinecap="round" />
                               </svg>
@@ -2944,6 +2948,13 @@ export default function App(): JSX.Element {
                                     </div>
                                   ) : null}
                                   <AssistantMarkdown content={message.content} />
+                                  {collectExcalidrawCheckpoints(reasoningSteps).map((checkpoint) => (
+                                    <ExcalidrawEmbed
+                                      key={`${message.id}-${checkpoint.checkpointId}`}
+                                      checkpointId={checkpoint.checkpointId}
+                                      serverId={checkpoint.serverId}
+                                    />
+                                  ))}
                                 </>
                               ) : (
                                 <>

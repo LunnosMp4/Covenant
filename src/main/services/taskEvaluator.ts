@@ -10,6 +10,7 @@ import {
   type TaskEvaluation,
   type TaskTier
 } from '../../shared/gamification'
+import { modelSupportsTemperature } from '../../shared/config'
 
 const EVALUATION_MODEL = 'gpt-6-luna'
 const EVALUATION_TIMEOUT_MS = 8000
@@ -217,7 +218,7 @@ export async function evaluateTaskWithOpenAI(
     const completion = await client.chat.completions.create(
       {
         model: EVALUATION_MODEL,
-        temperature: 0.2,
+        ...(modelSupportsTemperature(EVALUATION_MODEL) ? { temperature: 0.2 } : {}),
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
