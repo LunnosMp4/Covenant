@@ -407,7 +407,7 @@ export default function GeneralTab({
               Open Covenant Code
             </label>
             <p className="mb-2 text-xs text-neutral-500">
-              Opens the agentic coding workspace window.
+              Opens the OpenCode coding surface above the command bar.
             </p>
             <ShortcutRecorder
               value={shortcuts.openCode}

@@ -20,8 +20,6 @@ const SETTINGS_WINDOW_WIDTH = 1024
 const SETTINGS_WINDOW_HEIGHT = 576
 const PASTE_WINDOW_WIDTH = 960
 const PASTE_WINDOW_HEIGHT = 600
-const CODE_WINDOW_WIDTH = 1120
-const CODE_WINDOW_HEIGHT = 720
 const PASTE_PROTOCOL = 'covenant-paste'
 
 const RENDERER_READY_TIMEOUT_MS = 160
@@ -35,7 +33,6 @@ const WINDOW_EXPANDED_RATIO = 0.8
 let mainWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
 let pasteWindow: BrowserWindow | null = null
-let codeWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let isVisible = false
 let isPinned = false
@@ -68,14 +65,6 @@ export function getSettingsWebContents(): WebContents | null {
 
 export function getPasteWebContents(): WebContents | null {
   return pasteWindow && !pasteWindow.isDestroyed() ? pasteWindow.webContents : null
-}
-
-export function getCodeWindow(): BrowserWindow | null {
-  return codeWindow
-}
-
-export function getCodeWebContents(): WebContents | null {
-  return codeWindow && !codeWindow.isDestroyed() ? codeWindow.webContents : null
 }
 
 function getMainWindowLayout(): { x: number; y: number; width: number; height: number } {
@@ -126,20 +115,9 @@ function getPasteWindowPosition(): { x: number; y: number } {
   }
 }
 
-function getCodeWindowPosition(): { x: number; y: number } {
-  const anchorPoint = screen.getCursorScreenPoint()
-  const display = screen.getDisplayNearestPoint(anchorPoint)
-  const { x: workAreaX, y: workAreaY, width: workAreaWidth, height: workAreaHeight } = display.workArea
-
-  return {
-    x: Math.max(workAreaX, Math.round(workAreaX + (workAreaWidth - CODE_WINDOW_WIDTH) / 2)),
-    y: Math.max(workAreaY, Math.round(workAreaY + (workAreaHeight - CODE_WINDOW_HEIGHT) / 2))
-  }
-}
-
 function loadRendererWindow(
   targetWindow: BrowserWindow,
-  route?: 'settings' | 'paste' | 'code',
+  route?: 'settings' | 'paste',
   tab?: string
 ): void {
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -151,10 +129,6 @@ function loadRendererWindow(
     }
     if (route === 'paste') {
       targetWindow.loadURL(`${rendererUrl}#/paste`)
-      return
-    }
-    if (route === 'code') {
-      targetWindow.loadURL(`${rendererUrl}#/code`)
       return
     }
     targetWindow.loadURL(rendererUrl)
@@ -169,10 +143,6 @@ function loadRendererWindow(
   }
   if (route === 'paste') {
     targetWindow.loadFile(rendererEntryFile, { hash: 'paste' })
-    return
-  }
-  if (route === 'code') {
-    targetWindow.loadFile(rendererEntryFile, { hash: 'code' })
     return
   }
 
@@ -318,69 +288,6 @@ export function createSettingsWindow(tab?: string): void {
   })
 
   loadRendererWindow(settingsWindow, 'settings', tab)
-}
-
-export function createCodeWindow(): BrowserWindow {
-  if (codeWindow && !codeWindow.isDestroyed()) {
-    if (codeWindow.isMinimized()) {
-      codeWindow.restore()
-    } else {
-      codeWindow.show()
-    }
-    codeWindow.focus()
-    return codeWindow
-  }
-
-  const { x, y } = getCodeWindowPosition()
-
-  codeWindow = new BrowserWindow({
-    width: CODE_WINDOW_WIDTH,
-    height: CODE_WINDOW_HEIGHT,
-    x,
-    y,
-    minWidth: 820,
-    minHeight: 520,
-    title: 'Covenant Code',
-    show: false,
-    ...(isMac
-      ? { titleBarStyle: 'hidden' as const, trafficLightPosition: { x: 12, y: 14 } }
-      : { frame: false }),
-    transparent: true,
-    autoHideMenuBar: true,
-    backgroundColor: 'rgba(0, 0, 0, 0)',
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
-      contextIsolation: true,
-      nodeIntegration: false,
-      backgroundThrottling: true
-    }
-  })
-
-  codeWindow.on('ready-to-show', () => {
-    codeWindow?.show()
-    codeWindow?.focus()
-  })
-
-  codeWindow.on('closed', () => {
-    codeWindow = null
-  })
-
-  codeWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
-
-  loadRendererWindow(codeWindow, 'code')
-  return codeWindow
-}
-
-export function openCodeMode(): void {
-  const window = createCodeWindow()
-  if (!window.isDestroyed()) {
-    window.show()
-    window.focus()
-  }
 }
 
 function createPasteWindow(): BrowserWindow {
@@ -751,6 +658,20 @@ function openTasksMode(): void {
   mainWindow.webContents.send('open-tasks')
 }
 
+function openCodeSurface(): void {
+  if (!mainWindow) return
+
+  if (!isVisible) {
+    showWindow()
+  } else {
+    mainWindow.webContents.send('toggle-visibility', true)
+  }
+
+  // Render this in the main window, above the command bar, as the OpenCode
+  // surface (no separate window).
+  mainWindow.webContents.send('open-code')
+}
+
 function getShortcutDisplay(shortcut: string): string {
   return shortcut || 'Disabled'
 }
@@ -813,7 +734,7 @@ export function registerShortcuts(config: AppConfig): void {
 
   if (shortcuts.openCode) {
     try {
-      const ok = globalShortcut.register(shortcuts.openCode, openCodeMode)
+      const ok = globalShortcut.register(shortcuts.openCode, openCodeSurface)
       if (!ok) {
         console.warn(`Failed to register global shortcut: ${shortcuts.openCode} (may conflict with another app)`)
       }

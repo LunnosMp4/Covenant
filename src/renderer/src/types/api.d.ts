@@ -41,7 +41,7 @@ interface CovenantAPI {
     openSettings: (tab?: string) => void
     closeSettings: () => void
     minimizeSettings: () => void
-    openCode: () => void
+    onOpenCode: (callback: () => void) => () => void
     onNavigateSettingsTab: (callback: (tab: string) => void) => () => void
     onSettingsShown: (callback: (isRestore: boolean) => void) => () => void
     onToggleVisibility: (

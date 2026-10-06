@@ -41,7 +41,15 @@ const api = {
     openSettings: (tab?: string) => ipcRenderer.send('open-settings', tab),
     closeSettings: () => ipcRenderer.send('close-settings'),
     minimizeSettings: () => ipcRenderer.send('minimize-settings'),
-    openCode: () => ipcRenderer.send('open-code'),
+    onOpenCode: (callback: () => void) => {
+      const listener = () => {
+        callback()
+      }
+      ipcRenderer.on('open-code', listener)
+      return () => {
+        ipcRenderer.removeListener('open-code', listener)
+      }
+    },
     onNavigateSettingsTab: (callback: (tab: string) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, tab: string) => {
         callback(tab)
