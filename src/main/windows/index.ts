@@ -14,7 +14,7 @@ const isMac = process.platform === 'darwin'
 const isWindows = process.platform === 'win32'
 
 const WINDOW_WIDTH = 800
-const WINDOW_HEIGHT = 520
+const WINDOW_BASE_HEIGHT = 520
 const WINDOW_BOTTOM_MARGIN = 48
 const SETTINGS_WINDOW_WIDTH = 1024
 const SETTINGS_WINDOW_HEIGHT = 576
@@ -24,6 +24,11 @@ const PASTE_PROTOCOL = 'covenant-paste'
 
 const RENDERER_READY_TIMEOUT_MS = 160
 const RENDERER_EXIT_TIMEOUT_MS = 700
+// The main window reserves room for the expanded layout (both axes) at all
+// times and only the content animates inside it. Resizing the native
+// (transparent) window while it is visible both flashes and makes the content
+// jitter, so the window itself never changes size while shown.
+const WINDOW_EXPANDED_RATIO = 0.8
 
 let mainWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
@@ -62,15 +67,20 @@ export function getPasteWebContents(): WebContents | null {
   return pasteWindow && !pasteWindow.isDestroyed() ? pasteWindow.webContents : null
 }
 
-function getWindowPosition(): { x: number; y: number } {
+function getMainWindowLayout(): { x: number; y: number; width: number; height: number } {
   const cursorPoint = screen.getCursorScreenPoint()
-  const primaryDisplay = screen.getDisplayNearestPoint(cursorPoint)
+  const display = screen.getDisplayNearestPoint(cursorPoint)
   const { x: workAreaX, y: workAreaY, width: workAreaWidth, height: workAreaHeight } =
-    primaryDisplay.workArea
+    display.workArea
+
+  const width = Math.max(WINDOW_WIDTH, Math.round(workAreaWidth * WINDOW_EXPANDED_RATIO))
+  const height = Math.max(WINDOW_BASE_HEIGHT, Math.round(workAreaHeight * WINDOW_EXPANDED_RATIO))
 
   return {
-    x: Math.round(workAreaX + (workAreaWidth - WINDOW_WIDTH) / 2),
-    y: Math.round(workAreaY + workAreaHeight - WINDOW_HEIGHT - WINDOW_BOTTOM_MARGIN)
+    x: Math.round(workAreaX + (workAreaWidth - width) / 2),
+    y: Math.round(workAreaY + workAreaHeight - height - WINDOW_BOTTOM_MARGIN),
+    width,
+    height
   }
 }
 
@@ -140,14 +150,14 @@ function loadRendererWindow(
 }
 
 export function createWindow(): void {
-  const { x, y } = getWindowPosition()
+  const layout = getMainWindowLayout()
 
   mainWindow = new BrowserWindow({
-    width: WINDOW_WIDTH,
-    height: WINDOW_HEIGHT,
+    width: layout.width,
+    height: layout.height,
     icon: join(__dirname, 'assets', 'tray-icon.png'),
-    x,
-    y,
+    x: layout.x,
+    y: layout.y,
     show: false,
     frame: false,
     transparent: true,
@@ -539,8 +549,12 @@ export function showWindow(terminalMode = false): void {
     hideTimer = null
   }
 
-  const { x, y } = getWindowPosition()
-  mainWindow.setBounds({ x, y, width: WINDOW_WIDTH, height: WINDOW_HEIGHT })
+  // The window keeps its full expanded size at all times; only the content
+  // animates inside it. Reposition it under the cursor's display.
+  mainWindow.setBounds(getMainWindowLayout())
+  // Start interactive so the bar responds immediately on show; the renderer
+  // re-enables click-through once the pointer moves over empty space.
+  setMainWindowIgnoreMouseEvents(false)
 
   isVisible = true
 
@@ -587,29 +601,15 @@ function scheduleSleepModeCleanup(win: BrowserWindow): void {
   }
 }
 
-function getExpandedHeight(): number {
-  if (!mainWindow) return 0
-  const bounds = mainWindow.getBounds()
-  const display = screen.getDisplayNearestPoint({ x: bounds.x, y: bounds.y })
-  return Math.round(display.workArea.height * 0.8)
-}
-
-function applyWindowHeight(height: number): void {
-  if (!mainWindow) return
-  const bounds = mainWindow.getBounds()
-  const bottomY = bounds.y + bounds.height
-  const newY = bottomY - height
-  mainWindow.setBounds({
-    x: bounds.x,
-    y: Math.max(newY, 0),
-    width: WINDOW_WIDTH,
-    height
-  })
-}
-
-export function setWindowExpanded(expanded: boolean): void {
-  const height = expanded ? getExpandedHeight() : WINDOW_HEIGHT
-  applyWindowHeight(height)
+// Toggles click-through for the transparent regions of the window. The renderer
+// drives this from mousemove so the reserved (empty) area stays usable while the
+// content region remains interactive. `forward` keeps mouse-move messages coming
+// to the renderer while the window is ignoring mouse events. Only Windows and
+// macOS can forward mouse moves, so other platforms stay interactive.
+export function setMainWindowIgnoreMouseEvents(ignore: boolean): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  if (!isWindows && !isMac) return
+  mainWindow.setIgnoreMouseEvents(ignore, { forward: true })
 }
 
 export function setPinned(pinned: boolean): void {

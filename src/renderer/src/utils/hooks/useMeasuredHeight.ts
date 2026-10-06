@@ -15,7 +15,9 @@ interface MeasuredHeight<T extends HTMLElement> {
  * The callback ref means measurement starts as soon as the target mounts, even
  * when it is conditionally rendered (e.g. inside AnimatePresence).
  */
-export function useMeasuredHeight<T extends HTMLElement = HTMLDivElement>(): MeasuredHeight<T> {
+export function useMeasuredHeight<T extends HTMLElement = HTMLDivElement>(
+  { active = true }: { active?: boolean } = {}
+): MeasuredHeight<T> {
   const [element, setElement] = useState<T | null>(null)
   const [height, setHeight] = useState(0)
 
@@ -24,7 +26,7 @@ export function useMeasuredHeight<T extends HTMLElement = HTMLDivElement>(): Mea
   }, [])
 
   useLayoutEffect(() => {
-    if (!element) return
+    if (!element || !active) return
 
     const measure = (): void => {
       setHeight(element.offsetHeight)
@@ -38,7 +40,7 @@ export function useMeasuredHeight<T extends HTMLElement = HTMLDivElement>(): Mea
     observer.observe(element)
 
     return () => observer.disconnect()
-  }, [element])
+  }, [element, active])
 
   return { ref, height }
 }

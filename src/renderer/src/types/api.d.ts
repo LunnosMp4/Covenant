@@ -24,10 +24,10 @@ interface CovenantAPI {
     notifyReadyToShow: () => void
     notifyExitComplete: () => void
     setPinned: (pinned: boolean) => void
+    setIgnoreMouseEvents: (ignore: boolean) => void
     openSettings: (tab?: string) => void
     closeSettings: () => void
     minimizeSettings: () => void
-    setExpanded: (expanded: boolean) => void
     onNavigateSettingsTab: (callback: (tab: string) => void) => () => void
     onSettingsShown: (callback: (isRestore: boolean) => void) => () => void
     onToggleVisibility: (

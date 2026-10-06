@@ -12,7 +12,6 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   CodeIcon,
-  ExpandIcon,
   GridIcon,
   ImageIcon,
   MenuIcon,
@@ -27,6 +26,7 @@ import {
   TrashIcon,
   XIcon
 } from './ui/icons'
+import ExpandButton from './ui/ExpandButton'
 import { createId } from './utils/helpers'
 import MeasuredPanel from './ui/MeasuredPanel'
 import { TERMINAL_SPRING, WINDOW_SPRING } from './constants/motion'
@@ -112,6 +112,10 @@ export default function App(): JSX.Element {
   const [isChatOpen, setIsChatOpen] = useState(false)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
+  const [isWide, setIsWide] = useState(false)
+  const [isAltHeld, setIsAltHeld] = useState(false)
+  const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight)
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
   const [mode, setMode] = useState<AppMode>('ai')
   const [hasInitializedTerminal, setHasInitializedTerminal] = useState(false)
   const [themeGradient, setThemeGradient] = useState<string>(DEFAULT_THEME_GRADIENT)
@@ -150,6 +154,7 @@ export default function App(): JSX.Element {
   // Prompt handed off from the Paste Manager; consumed once the window is shown.
   const [pendingExternalPrompt, setPendingExternalPrompt] = useState<string | null>(null)
   const inputRef = useRef<HTMLDivElement>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
   const pasteBlocksRef = useRef<Map<string, string>>(new Map())
   const isComposingRef = useRef(false)
   const popupRef = useRef<HTMLDivElement>(null)
@@ -398,6 +403,80 @@ export default function App(): JSX.Element {
     }
   }, [])
 
+  // The native window keeps its full expanded size; the renderer measures the
+  // viewport once so it can size the expanded content without resizing the
+  // window (which would flash and jitter).
+  useEffect(() => {
+    const onResize = (): void => {
+      setViewportHeight(window.innerHeight)
+      setViewportWidth(window.innerWidth)
+    }
+    window.addEventListener('resize', onResize)
+    onResize()
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  // Track whether Alt is held so the expand control can switch to the
+  // horizontal expand/collapse variant.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Alt') setIsAltHeld(true)
+    }
+    const onKeyUp = (event: KeyboardEvent): void => {
+      if (event.key === 'Alt') setIsAltHeld(false)
+    }
+    const onBlur = (): void => setIsAltHeld(false)
+
+    window.addEventListener('keydown', onKeyDown, true)
+    window.addEventListener('keyup', onKeyUp, true)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true)
+      window.removeEventListener('keyup', onKeyUp, true)
+      window.removeEventListener('blur', onBlur)
+    }
+  }, [])
+
+  // The horizontal expand only makes sense for the surface currently shown, so
+  // drop it when the mode or chat visibility changes.
+  useEffect(() => {
+    setIsWide(false)
+  }, [mode, isChatOpen])
+
+  // Make the reserved (empty) area of the oversized window click-through so the
+  // desktop/apps behind stay usable, and re-enable mouse events over content.
+  // Only Windows/macOS can forward mouse moves while ignoring them.
+  useEffect(() => {
+    const platform = window.api?.platform
+    if (platform !== 'win32' && platform !== 'darwin') return undefined
+
+    let ignoring = false
+    const setIgnore = (next: boolean): void => {
+      if (next === ignoring) return
+      ignoring = next
+      window.api?.window.setIgnoreMouseEvents?.(next)
+    }
+
+    const onMouseMove = (event: MouseEvent): void => {
+      // Don't toggle mid-drag (text selection, etc.).
+      if (event.buttons !== 0) return
+      const target = document.elementFromPoint(event.clientX, event.clientY)
+      const overBackground =
+        !target ||
+        target === rootRef.current ||
+        target === document.body ||
+        target === document.documentElement
+      setIgnore(overBackground)
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.api?.window.setIgnoreMouseEvents?.(false)
+    }
+  }, [visible])
+
   // Once the 'prepare' state has committed (surfaces mounted at their hidden
   // entry state), tell main it is safe to show the window. Using a layout
   // effect — not requestAnimationFrame — guarantees this runs even while the
@@ -488,13 +567,26 @@ export default function App(): JSX.Element {
     })
   }, [])
 
-  const handleToggleExpand = useCallback(() => {
-    setIsExpanded((prev) => {
-      const next = !prev
-      window.api?.window.setExpanded?.(next)
-      return next
-    })
-  }, [])
+  const handleToggleExpand = useCallback(
+    (event?: React.MouseEvent<HTMLButtonElement>) => {
+      if (event?.altKey) {
+        // Alt expands both axes directly from the small view, then toggles the
+        // horizontal expansion once already expanded.
+        if (!isExpanded) {
+          setIsExpanded(true)
+          setIsWide(true)
+          return
+        }
+        setIsWide((prev) => !prev)
+        return
+      }
+      setIsExpanded((prev) => {
+        if (prev) setIsWide(false)
+        return !prev
+      })
+    },
+    [isExpanded]
+  )
 
   const handleClose = useCallback(() => {
     setActivePopup(null)
@@ -1984,8 +2076,11 @@ export default function App(): JSX.Element {
     setShowOnboarding(false)
   }
 
+  const wideWidth = Math.max(750, viewportWidth - 80)
+
   return (
     <div
+      ref={rootRef}
       className="relative w-screen h-screen flex items-end justify-center pb-5 select-none"
       style={{ background: 'transparent' }}
       onClick={handleOverlayClick}
@@ -2053,6 +2148,8 @@ export default function App(): JSX.Element {
           setIsAppVisible(false)
           clearInput()
           setIsExpanded(false)
+          setIsWide(false)
+          setIsAltHeld(false)
           setIsLoading(false)
           setIsChatOpen(false)
           setIsHistoryOpen(false)
@@ -2068,7 +2165,7 @@ export default function App(): JSX.Element {
             animate={enterReady ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 24, scale: 0.97 }}
             exit={{ opacity: 0, y: 14, scale: 0.97 }}
             transition={WINDOW_SPRING}
-            className="relative flex flex-col w-[750px] max-w-full"
+            className="relative flex flex-col w-full max-w-full items-center pointer-events-none"
             style={themeStyles}
           >
             <AnimatePresence>
@@ -2076,7 +2173,8 @@ export default function App(): JSX.Element {
                 <MeasuredPanel
                   key="chat-window"
                   contentClassName="p-4"
-                  className={`relative mb-2 rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} chat-surface texture-surface`}
+                  className={`relative mb-2 rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} chat-surface texture-surface pointer-events-auto`}
+                  width={isWide ? wideWidth : 750}
                 >
                   <div className="relative flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -2235,19 +2333,12 @@ export default function App(): JSX.Element {
                       >
                         <MenuIcon />
                       </button>
-                      <button
-                        type="button"
+                      <ExpandButton
+                        expanded={isExpanded}
+                        wide={isWide}
+                        altHeld={isAltHeld}
                         onClick={handleToggleExpand}
-                        className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
-                          isExpanded
-                            ? 'border-white/20 bg-white/10 text-neutral-200'
-                            : 'border-white/10 text-neutral-400 hover:border-white/20 hover:bg-white/10 hover:text-neutral-200'
-                        }`}
-                        aria-label={isExpanded ? 'Collapse window' : 'Expand window'}
-                        aria-pressed={isExpanded}
-                      >
-                        <ExpandIcon />
-                      </button>
+                      />
                     </div>
 
                     <AnimatePresence>
@@ -2314,7 +2405,7 @@ export default function App(): JSX.Element {
                     </AnimatePresence>
                   </div>
 
-                  <div
+                  <motion.div
                     ref={chatScrollRef}
                     onScroll={handleChatScroll}
                     onCopy={(e) => {
@@ -2326,7 +2417,13 @@ export default function App(): JSX.Element {
                       e.clipboardData.setData('text/plain', text)
                     }}
                     className="mt-3 overflow-y-auto chat-scrollbar space-y-3 pr-2"
-                    style={{ height: isExpanded ? 'calc(100vh - 210px)' : CHAT_SCROLL_HEIGHT, minHeight: CHAT_SCROLL_HEIGHT }}
+                    initial={false}
+                    animate={{
+                      height: isExpanded
+                        ? Math.max(CHAT_SCROLL_HEIGHT, viewportHeight - 210)
+                        : CHAT_SCROLL_HEIGHT
+                    }}
+                    transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
                   >
                     {chatMessages.length === 0 ? (
                       <p className="text-xs text-neutral-500">No messages yet.</p>
@@ -2562,14 +2659,14 @@ export default function App(): JSX.Element {
                         )
                       })
                     )}
-                  </div>
+                  </motion.div>
                 </MeasuredPanel>
               )}
             </AnimatePresence>
 
             <motion.div
-              className={`relative flex items-center w-full rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10 transition-opacity duration-100 texture-surface ${
-                mode === 'terminal' ? 'opacity-0 pointer-events-none' : 'opacity-100'
+              className={`relative flex items-center w-[750px] max-w-full rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10 transition-opacity duration-100 texture-surface ${
+                mode === 'terminal' ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
               }`}
               style={{
                 WebkitBackdropFilter: 'blur(40px)',
@@ -2899,24 +2996,35 @@ export default function App(): JSX.Element {
       {(hasInitializedTerminal || mode === 'terminal') && (
         <motion.div
           key="terminal-container"
-          className="absolute inset-x-0 bottom-5 z-20 pointer-events-auto flex justify-center"
-          initial={{ scaleY: 0.12, opacity: 0 }}
+          className="absolute inset-x-0 bottom-5 z-20 pointer-events-none flex justify-center"
+          initial={{ scaleY: 0.12, opacity: 0, height: 400 }}
           animate={
             enterReady && mode === 'terminal' && visible
-              ? { scaleY: 1, y: 0, opacity: 1 }
-              : { scaleY: 0.12, y: 0, opacity: 0 }
+              ? {
+                  scaleY: 1,
+                  y: 0,
+                  opacity: 1,
+                  height: isExpanded ? Math.max(400, viewportHeight - 160) : 400
+                }
+              : { scaleY: 0.12, y: 0, opacity: 0, height: 400 }
           }
-          transition={TERMINAL_SPRING}
+          transition={{
+            ...TERMINAL_SPRING,
+            height: { duration: 0.26, ease: [0.22, 1, 0.36, 1] }
+          }}
           style={{
-            height: isExpanded ? 'calc(100vh - 160px)' : '400px',
-            pointerEvents: mode === 'terminal' && visible ? 'auto' : 'none',
+            pointerEvents: 'none',
             transformOrigin: 'bottom center'
           }}
           aria-hidden={mode !== 'terminal' || !visible}
         >
-          <div
-            className={`relative flex h-full w-[750px] max-w-full flex-col overflow-hidden rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10 texture-surface`}
+          <motion.div
+            className={`relative flex h-full max-w-full flex-col overflow-hidden rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10 texture-surface`}
+            initial={false}
+            animate={{ width: isWide ? wideWidth : 750 }}
+            transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
             style={{
+              pointerEvents: mode === 'terminal' && visible ? 'auto' : 'none',
               WebkitBackdropFilter: 'blur(40px)',
               backdropFilter: 'blur(40px)'
             }}
@@ -2926,13 +3034,15 @@ export default function App(): JSX.Element {
                 active={mode === 'terminal' && visible && isAppVisible}
                 fontFamily={terminalFont}
                 isExpanded={isExpanded}
+                isWide={isWide}
+                isAltHeld={isAltHeld}
                 isPinned={isPinned}
                 isLight={getThemeMode(themeGradient) === 'light'}
                 onTogglePin={handleTogglePin}
                 onToggleExpand={handleToggleExpand}
               />
             </div>
-          </div>
+          </motion.div>
         </motion.div>
       )}
 

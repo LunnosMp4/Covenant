@@ -6,8 +6,8 @@ import {
   hideWindow,
   markRendererReady,
   minimizeSettingsWindow,
-  setPinned,
-  setWindowExpanded
+  setMainWindowIgnoreMouseEvents,
+  setPinned
 } from '../windows'
 
 export function registerWindowIpc(): void {
@@ -30,8 +30,8 @@ export function registerWindowIpc(): void {
     setPinned(pinned)
   })
 
-  ipcMain.on('set-window-expanded', (_event, expanded: boolean) => {
-    setWindowExpanded(expanded)
+  ipcMain.on('set-ignore-mouse-events', (_event, ignore: boolean) => {
+    setMainWindowIgnoreMouseEvents(ignore)
   })
 
   ipcMain.on('open-settings', (_event, tab?: string) => {

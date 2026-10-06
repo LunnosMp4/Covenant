@@ -25,7 +25,8 @@ const api = {
     notifyReadyToShow: () => ipcRenderer.send('renderer-ready-to-show'),
     notifyExitComplete: () => ipcRenderer.send('renderer-exit-complete'),
     setPinned: (pinned: boolean) => ipcRenderer.send('set-pinned', pinned),
-    setExpanded: (expanded: boolean) => ipcRenderer.send('set-window-expanded', expanded),
+    setIgnoreMouseEvents: (ignore: boolean) =>
+      ipcRenderer.send('set-ignore-mouse-events', ignore),
     openSettings: (tab?: string) => ipcRenderer.send('open-settings', tab),
     closeSettings: () => ipcRenderer.send('close-settings'),
     minimizeSettings: () => ipcRenderer.send('minimize-settings'),
