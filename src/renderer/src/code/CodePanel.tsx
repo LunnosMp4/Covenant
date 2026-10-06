@@ -2,12 +2,16 @@ import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 
 import { motion } from 'framer-motion'
 import type { CodeFileDiff } from '../../../shared/code/code'
 import { CHAT_SCROLL_HEIGHT } from '../app/constants'
+import ContextStatsDonut from '../app/components/ContextStatsDonut'
+import type { ContextStats } from '../utils/chat/chatUsage'
 import CustomSelect from '../ui/CustomSelect'
 import ExpandButton from '../ui/ExpandButton'
 import { CodeIcon } from '../ui/icons'
 import CodeConversation from './CodeConversation'
 import CodeNavMenu from './CodeNavMenu'
-import { DiffIcon, PlusIcon } from './icons'
+import CodeProjectsSidebar from './CodeProjectsSidebar'
+import CodeInfoSidebar from './CodeInfoSidebar'
+import { DiffIcon, PlusIcon, SessionIcon } from './icons'
 import { useCodeSession } from './useCodeSession'
 
 type CodeSessionApi = ReturnType<typeof useCodeSession>
@@ -61,6 +65,27 @@ export default function CodePanel({
     label: model.label
   }))
 
+  const sessionModelRef = session.activeSession?.model
+  const sessionModelId = sessionModelRef
+    ? `${sessionModelRef.providerID}/${sessionModelRef.id}`
+    : session.selectedModel
+  const activeModel =
+    session.models.find((model) => `${model.providerID}/${model.id}` === sessionModelId) ?? null
+  const modelLabel = activeModel?.label ?? (sessionModelId || null)
+  const transcriptCost = session.transcript.reduce((sum, item) => sum + (item.cost ?? 0), 0)
+  const cost = session.activeSession?.cost ?? (transcriptCost > 0 ? transcriptCost : null)
+  const contextLimit = activeModel?.maxContextTokens ?? 0
+  const codeStats: ContextStats | null = contextLimit
+    ? {
+        totalTokens: session.usage?.input ?? 0,
+        maxTokens: contextLimit,
+        totalCost: cost ?? 0,
+        messageCount: session.transcript.length,
+        totalInputTokens: session.usage?.input ?? 0,
+        totalOutputTokens: session.usage?.output ?? 0
+      }
+    : null
+
   useEffect(() => {
     if (!changesOpen) return
     const handleClickOutside = (event: MouseEvent): void => {
@@ -89,22 +114,78 @@ export default function CodePanel({
     setAutoScroll((previous) => (previous === atBottom ? previous : atBottom))
   }
 
+  const emptyState = (
+    <div className="flex h-full flex-col items-center justify-center gap-3 text-neutral-500">
+      <CodeIcon />
+      {!hasKey ? (
+        <>
+          <p className="text-sm">Add your OpenCode Go API key in Settings → Code.</p>
+          <button
+            type="button"
+            onClick={() => window.api?.window.openSettings('code')}
+            className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-neutral-300 transition-colors hover:bg-white/10 hover:text-neutral-100"
+          >
+            Open Settings
+          </button>
+        </>
+      ) : session.projects.length === 0 ? (
+        <>
+          <p className="text-sm">Add a project folder to start coding.</p>
+          <button
+            type="button"
+            onClick={() => void session.addProject()}
+            className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-neutral-300 transition-colors hover:bg-white/10 hover:text-neutral-100"
+          >
+            <PlusIcon /> Add folder
+          </button>
+        </>
+      ) : (
+        <>
+          <p className="text-sm">Create a session to start coding.</p>
+          <button
+            type="button"
+            onClick={() => void session.createSession()}
+            className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-neutral-300 transition-colors hover:bg-white/10 hover:text-neutral-100"
+          >
+            <PlusIcon /> New session
+          </button>
+        </>
+      )}
+    </div>
+  )
+
   return (
     <>
       <div className="relative flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <CodeNavMenu
-            projects={session.projects}
-            activeProject={session.activeProject}
-            onSelectProject={session.selectProject}
-            onAddProject={() => void session.addProject()}
-            sessions={session.sessions}
-            activeSession={session.activeSession}
-            loadingSessions={session.loadingSessions}
-            onSelectSession={(item) => void session.selectSession(item)}
-            onCreateSession={() => void session.createSession()}
-            onDeleteSession={(item) => void session.deleteSession(item)}
-          />
+          {isWide ? (
+            <div className="flex min-w-0 items-center gap-2 px-1">
+              <span className="shrink-0 text-neutral-400">
+                <SessionIcon />
+              </span>
+              <span className="truncate text-[13px] font-medium text-neutral-200">
+                {session.activeSession?.title ?? 'Select a session'}
+              </span>
+              {session.activeProject && (
+                <span className="truncate text-[11px] text-neutral-500">
+                  · {session.activeProject.name}
+                </span>
+              )}
+            </div>
+          ) : (
+            <CodeNavMenu
+              projects={session.projects}
+              activeProject={session.activeProject}
+              onSelectProject={session.selectProject}
+              onAddProject={() => void session.addProject()}
+              sessions={session.sessions}
+              activeSession={session.activeSession}
+              loadingSessions={session.loadingSessions}
+              onSelectSession={(item) => void session.selectSession(item)}
+              onCreateSession={() => void session.createSession()}
+              onDeleteSession={(item) => void session.deleteSession(item)}
+            />
+          )}
           <span
             className="flex h-8 w-8 items-center justify-center"
             title={statusHint}
@@ -122,6 +203,12 @@ export default function CodePanel({
             value={session.selectedModel}
             onChange={(value) => void session.changeModel(value)}
             disabled={modelOptions.length === 0}
+          />
+
+          <ContextStatsDonut
+            stats={codeStats}
+            chatModel={sessionModelId}
+            modelLabel={modelLabel ?? undefined}
           />
 
           <div ref={changesRef} className="relative">
@@ -204,7 +291,46 @@ export default function CodePanel({
         transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
         className="mt-3 overflow-hidden"
       >
-        {session.activeSession ? (
+        {isWide ? (
+          <div className="flex h-full gap-3">
+            <div className="h-full w-52 shrink-0 overflow-hidden border-r border-white/5 pr-2">
+              <CodeProjectsSidebar
+                projects={session.projects}
+                activeProject={session.activeProject}
+                onSelectProject={session.selectProject}
+                onAddProject={() => void session.addProject()}
+                sessions={session.sessions}
+                activeSession={session.activeSession}
+                loadingSessions={session.loadingSessions}
+                onSelectSession={(item) => void session.selectSession(item)}
+                onCreateSession={() => void session.createSession()}
+                onDeleteSession={(item) => void session.deleteSession(item)}
+              />
+            </div>
+            <div className="h-full min-h-0 min-w-0 flex-1">
+              {session.activeSession ? (
+                <CodeConversation
+                  transcript={session.transcript}
+                  stream={session.stream}
+                  scrollRef={scrollRef}
+                  onScroll={handleScroll}
+                />
+              ) : (
+                emptyState
+              )}
+            </div>
+            <div className="h-full w-56 shrink-0 overflow-hidden border-l border-white/5 pl-3">
+              <CodeInfoSidebar
+                modelLabel={modelLabel}
+                variant={sessionModelRef?.variant ?? null}
+                agent={session.activeSession?.agent}
+                contextLimit={activeModel?.maxContextTokens}
+                usage={session.usage}
+                cost={cost}
+              />
+            </div>
+          </div>
+        ) : session.activeSession ? (
           <CodeConversation
             transcript={session.transcript}
             stream={session.stream}
@@ -212,43 +338,7 @@ export default function CodePanel({
             onScroll={handleScroll}
           />
         ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-3 text-neutral-500">
-            <CodeIcon />
-            {!hasKey ? (
-              <>
-                <p className="text-sm">Add your OpenCode Go API key in Settings → Code.</p>
-                <button
-                  type="button"
-                  onClick={() => window.api?.window.openSettings('code')}
-                  className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-neutral-300 transition-colors hover:bg-white/10 hover:text-neutral-100"
-                >
-                  Open Settings
-                </button>
-              </>
-            ) : session.projects.length === 0 ? (
-              <>
-                <p className="text-sm">Add a project folder to start coding.</p>
-                <button
-                  type="button"
-                  onClick={() => void session.addProject()}
-                  className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-neutral-300 transition-colors hover:bg-white/10 hover:text-neutral-100"
-                >
-                  <PlusIcon /> Add folder
-                </button>
-              </>
-            ) : (
-              <>
-                <p className="text-sm">Create a session to start coding.</p>
-                <button
-                  type="button"
-                  onClick={() => void session.createSession()}
-                  className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-neutral-300 transition-colors hover:bg-white/10 hover:text-neutral-100"
-                >
-                  <PlusIcon /> New session
-                </button>
-              </>
-            )}
-          </div>
+          emptyState
         )}
       </motion.div>
     </>

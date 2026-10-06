@@ -7,7 +7,8 @@ import type {
   CodePermissionRequest,
   CodeProject,
   CodeSession,
-  CodeTranscriptItem
+  CodeTranscriptItem,
+  CodeUsage
 } from '../../../shared/code/code'
 import { parseModelSelector } from '../../../shared/code/codeNormalizers'
 import { EMPTY_STREAM, noteId, type CodeStatusWithKey, type StreamingState, type ToolCard } from './types'
@@ -27,6 +28,7 @@ export function useCodeSession(): {
   selectedModel: string
   transcript: CodeTranscriptItem[]
   stream: StreamingState
+  usage: CodeUsage | null
   permissions: CodePermissionRequest[]
   diffs: CodeFileDiff[]
   totals: { additions: number; deletions: number }
@@ -55,6 +57,7 @@ export function useCodeSession(): {
   const [selectedModel, setSelectedModel] = useState('')
   const [transcript, setTranscript] = useState<CodeTranscriptItem[]>([])
   const [stream, setStream] = useState<StreamingState>(EMPTY_STREAM)
+  const [usage, setUsage] = useState<CodeUsage | null>(null)
   const [permissions, setPermissions] = useState<CodePermissionRequest[]>([])
   const [diffs, setDiffs] = useState<CodeFileDiff[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -110,16 +113,21 @@ export function useCodeSession(): {
         setActiveProject(project)
       }
 
-      const modelsResult = await api.code.listModels()
+      const [modelsResult, settingsResult] = await Promise.all([
+        api.code.listModels(),
+        api.code.getSettings()
+      ])
+      const defaultModel = settingsResult.success ? settingsResult.settings.defaultModel : ''
       if (modelsResult.success) {
         setModels(modelsResult.models)
-        setSelectedModel(
-          (current) =>
-            current ||
-            (modelsResult.models[0]
-              ? `${modelsResult.models[0].providerID}/${modelsResult.models[0].id}`
-              : '')
-        )
+        setSelectedModel((current) => {
+          if (current) return current
+          if (defaultModel) return defaultModel
+          const first = modelsResult.models[0]
+          return first ? `${first.providerID}/${first.id}` : ''
+        })
+      } else if (defaultModel) {
+        setSelectedModel((current) => current || defaultModel)
       }
 
       if (project) {
@@ -209,6 +217,10 @@ export function useCodeSession(): {
         return
       }
 
+      if (activity.type === 'step-ended' && activity.usage) {
+        setUsage(activity.usage)
+      }
+
       if (activity.type === 'done') {
         const finished = streamRef.current
         if (finished.text || finished.reasoning || finished.tools.length > 0) {
@@ -293,6 +305,7 @@ export function useCodeSession(): {
       setActiveSession(result.session)
       setTranscript([])
       setStream(EMPTY_STREAM)
+      setUsage(null)
       setDiffs([])
       setPermissions([])
     } else {
@@ -305,6 +318,7 @@ export function useCodeSession(): {
       if (!api?.code) return
       setActiveSession(session)
       setStream(EMPTY_STREAM)
+      setUsage(null)
       setPermissions([])
       setError(null)
       const [transcriptResult, diffResult, permissionResult] = await Promise.all([
@@ -338,6 +352,8 @@ export function useCodeSession(): {
   const changeModel = useCallback(
     async (value: string) => {
       setSelectedModel(value)
+      // Remember the choice so the next session uses the same model.
+      void api?.code?.setSettings({ defaultModel: value })
       const session = activeSessionRef.current
       if (session && api?.code) {
         const ref = parseModelSelector(value)
@@ -375,6 +391,7 @@ export function useCodeSession(): {
         setSessions((current) => [created.session, ...current])
         setActiveSession(created.session)
         setTranscript([])
+        setUsage(null)
         setDiffs([])
       }
 
@@ -437,6 +454,7 @@ export function useCodeSession(): {
     selectedModel,
     transcript,
     stream,
+    usage,
     permissions,
     diffs,
     totals,

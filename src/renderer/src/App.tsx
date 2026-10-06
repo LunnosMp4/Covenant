@@ -2055,8 +2055,10 @@ export default function App(): JSX.Element {
         return
       }
 
+      const hasChatHistory = Boolean(activeConversation?.messages.length || conversations.length)
       if (
         mode === 'ai' &&
+        hasChatHistory &&
         event.ctrlKey &&
         !event.altKey &&
         !event.metaKey &&
@@ -2065,14 +2067,8 @@ export default function App(): JSX.Element {
       ) {
         event.preventDefault()
         event.stopPropagation()
+        setIsChatOpen((open) => !open)
         setIsHistoryOpen(false)
-        setActivePopup(null)
-        setActiveSurface((current) => {
-          const next: Surface =
-            current === 'chat' ? 'code' : current === 'code' ? 'chat' : lastSurfaceRef.current ?? 'chat'
-          lastSurfaceRef.current = next
-          return next
-        })
         return
       }
 
@@ -3075,28 +3071,6 @@ export default function App(): JSX.Element {
                   </button>
                 )}
 
-                {buttonVisibility.code && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setActivePopup(null)
-                      setActiveSurface((current) => {
-                        if (current === 'code') return null
-                        lastSurfaceRef.current = 'code'
-                        return 'code'
-                      })
-                    }}
-                    className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-150 border ${
-                      isCodeOpen
-                        ? 'text-neutral-100 bg-white/10 border-white/10'
-                        : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border-transparent hover:border-white/10'
-                    }`}
-                    aria-label="Covenant Code"
-                    aria-pressed={isCodeOpen}
-                  >
-                    <CodeIcon />
-                  </button>
-                )}
               </div>
             </motion.div>
           </motion.div>

@@ -298,7 +298,14 @@ export function registerCodeIpc(): void {
 
   ipcMain.handle('code:settings:set', (_event, patch: unknown) => {
     try {
-      const normalized: CodeSettings = normalizeCodeSettings(patch)
+      // Merge the partial patch over the stored settings so callers can update a
+      // single field (e.g. the selected model) without wiping the rest.
+      const current = readConfig().code
+      const merged = {
+        ...current,
+        ...(patch && typeof patch === 'object' ? (patch as Partial<CodeSettings>) : {})
+      }
+      const normalized: CodeSettings = normalizeCodeSettings(merged)
       updateConfig({ code: normalized })
       requireService().applySettings(normalized)
       return { success: true as const, settings: normalized }

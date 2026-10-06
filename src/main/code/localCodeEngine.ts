@@ -504,7 +504,15 @@ export class LocalCodeEngine implements CodeEngine {
     try {
       const result = await client.message.list({ sessionID: sessionId })
       const list = asArray<Record<string, unknown>>(pickData(result))
-      return list.map(toTranscript).filter((item): item is CodeTranscriptItem => item !== null)
+      const items = list
+        .map(toTranscript)
+        .filter((item): item is CodeTranscriptItem => item !== null)
+      // The OpenCode message list is newest-first; the UI expects chronological
+      // order. Sort ascending by creation time, or reverse when the wire carries
+      // no timestamps.
+      const hasTimestamps = items.every((item) => typeof item.createdAt === 'number')
+      if (!hasTimestamps) return items.reverse()
+      return items.sort((a, b) => (a.createdAt as number) - (b.createdAt as number))
     } catch (error) {
       log.warn('Failed to load OpenCode transcript', error)
       return []
