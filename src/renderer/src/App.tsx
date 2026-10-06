@@ -140,7 +140,7 @@ export default function App(): JSX.Element {
   >({})
   const [workflowLogsOpenById, setWorkflowLogsOpenById] = useState<Record<string, boolean>>({})
   const [activePopup, setActivePopup] = useState<ActivePopup | null>(null)
-  const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true, tasks: true })
+  const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true, tasks: true, code: true })
   const [chatModel, setChatModel] = useState<string>(DEFAULT_CHAT_MODEL)
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT)
   const [autoCollapseReasoning, setAutoCollapseReasoning] = useState(true)
@@ -2985,6 +2985,19 @@ export default function App(): JSX.Element {
                     aria-pressed={activePopup === 'tasks'}
                   >
                     <TasksIcon />
+                  </button>
+                )}
+
+                {buttonVisibility.code && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      window.api?.window.openCode?.()
+                    }}
+                    className="flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all duration-150"
+                    aria-label="Covenant Code"
+                  >
+                    <CodeIcon />
                   </button>
                 )}
               </div>

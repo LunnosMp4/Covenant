@@ -1,4 +1,5 @@
 import { registerChatIpc } from './chat'
+import { registerCodeIpc } from './code'
 import { registerConfigIpc } from './config'
 import { registerDialogIpc } from './dialog'
 import { registerExcalidrawIpc } from './excalidraw'
@@ -20,4 +21,5 @@ export function registerIpc(): void {
   registerExcalidrawIpc()
   registerPasteIpc()
   registerChatIpc()
+  registerCodeIpc()
 }

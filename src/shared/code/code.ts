@@ -1,0 +1,205 @@
+// Covenant Code domain types.
+//
+// These are intentionally decoupled from the OpenCode wire protocol. The main
+// process (`CodeEngine`) maps OpenCode events/messages into these DTOs so the
+// renderer and IPC layer never depend on the OpenCode SDK shape. A future
+// remote (SSH) engine can produce the same DTOs unchanged.
+
+export type CodePermissionEffect = 'allow' | 'ask' | 'deny'
+
+export interface CodeProject {
+  id: string
+  name: string
+  directory: string
+  addedAt: number
+}
+
+export interface CodeModelRef {
+  providerID: string
+  id: string
+  variant?: string
+}
+
+export interface CodeModel {
+  providerID: string
+  id: string
+  label: string
+  variants: string[]
+  supportsReasoning: boolean
+  supportsTools: boolean
+  maxContextTokens?: number
+}
+
+export type CodeSessionStatus = 'idle' | 'busy' | 'retry' | 'error'
+
+export interface CodeSession {
+  id: string
+  title: string
+  directory: string
+  parentId?: string
+  createdAt: number
+  updatedAt: number
+  model?: CodeModelRef
+  agent?: string
+  cost?: number
+  status: CodeSessionStatus
+}
+
+export interface CodeFileDiff {
+  file: string
+  additions: number
+  deletions: number
+  status?: 'added' | 'deleted' | 'modified' | string
+  patch?: string
+}
+
+export interface CodePermissionRequest {
+  id: string
+  sessionId: string
+  action: string
+  resources: string[]
+  save?: string[]
+  title?: string
+  createdAt: number
+}
+
+export interface CodeStatus {
+  installed: boolean
+  version?: string
+  running: boolean
+  ready: boolean
+  binaryPath?: string
+  error?: string
+}
+
+// ---------------------------------------------------------------------------
+// Live agent activity stream
+// ---------------------------------------------------------------------------
+
+export type CodeActivityType =
+  | 'text-delta'
+  | 'text-end'
+  | 'reasoning-delta'
+  | 'reasoning-end'
+  | 'tool-input'
+  | 'tool-called'
+  | 'tool-progress'
+  | 'tool-success'
+  | 'tool-failed'
+  | 'shell-started'
+  | 'shell-ended'
+  | 'file-edited'
+  | 'step-started'
+  | 'step-ended'
+  | 'compaction'
+  | 'status'
+  | 'error'
+  | 'done'
+
+export interface CodeUsage {
+  input: number
+  output: number
+  reasoning: number
+  cacheRead: number
+  cacheWrite: number
+  cost?: number
+}
+
+export interface CodeActivityEvent {
+  sessionId: string
+  type: CodeActivityType
+  /** Stable id for coalescing streaming text/reasoning. */
+  partId?: string
+  messageId?: string
+  callId?: string
+  delta?: string
+  text?: string
+  toolName?: string
+  command?: string
+  file?: string
+  title?: string
+  status?: CodeSessionStatus
+  output?: string
+  error?: string
+  usage?: CodeUsage
+  timestamp: number
+}
+
+// ---------------------------------------------------------------------------
+// Persisted (non-secret) settings, stored inside AppConfig
+// ---------------------------------------------------------------------------
+
+export interface CodePermissionSettings {
+  edit: CodePermissionEffect
+  bash: CodePermissionEffect
+  external_directory: CodePermissionEffect
+  webfetch: CodePermissionEffect
+}
+
+export interface CodeSettings {
+  /** Start the OpenCode runtime when the app is ready instead of on first use. */
+  autoStart: boolean
+  /** Model selector, e.g. `opencode-go/kimi-k3` / empty = provider default. */
+  defaultModel: string
+  /** Reasoning variant id, empty = model default. */
+  defaultVariant: string
+  permission: CodePermissionSettings
+  /** Explicit loopback port; 0 = pick a free port automatically. */
+  serverPort: number
+}
+
+export const DEFAULT_CODE_PERMISSIONS: CodePermissionSettings = {
+  edit: 'ask',
+  bash: 'ask',
+  external_directory: 'ask',
+  webfetch: 'allow'
+}
+
+export const DEFAULT_CODE_SETTINGS: CodeSettings = {
+  autoStart: false,
+  defaultModel: '',
+  defaultVariant: '',
+  permission: { ...DEFAULT_CODE_PERMISSIONS },
+  serverPort: 0
+}
+
+export const CODE_PERMISSION_EFFECTS: CodePermissionEffect[] = ['allow', 'ask', 'deny']
+
+export const CODE_PROVIDER_ID = 'opencode-go'
+
+// ---------------------------------------------------------------------------
+// Transcript (projected message history for a session)
+// ---------------------------------------------------------------------------
+
+export type CodeTranscriptRole = 'user' | 'assistant' | 'system' | 'shell' | 'compaction' | 'other'
+
+export interface CodeTranscriptTool {
+  callId: string
+  name: string
+  status: 'pending' | 'running' | 'completed' | 'error'
+  input?: string
+  output?: string
+  title?: string
+  error?: string
+}
+
+export interface CodeTranscriptItem {
+  id: string
+  role: CodeTranscriptRole
+  text: string
+  reasoning?: string
+  tools?: CodeTranscriptTool[]
+  agent?: string
+  model?: CodeModelRef
+  createdAt?: number
+  cost?: number
+  error?: string
+}
+
+/** Events pushed from the main-process code engine to the Code window. */
+export type CodeEngineEvent =
+  | { kind: 'activity'; event: CodeActivityEvent }
+  | { kind: 'permission'; request: CodePermissionRequest }
+  | { kind: 'permission-replied'; sessionId: string; requestId: string }
+  | { kind: 'diff'; sessionId: string; diff: CodeFileDiff[] }
+  | { kind: 'session'; session: CodeSession }

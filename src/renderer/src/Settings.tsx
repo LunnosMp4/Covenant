@@ -52,6 +52,8 @@ import TerminalTab from './settings/tabs/TerminalTab'
 import AppLauncherTab from './settings/tabs/AppLauncherTab'
 import WorkflowsTab from './settings/tabs/WorkflowsTab'
 import PrepromptsTab from './settings/tabs/PrepromptsTab'
+import CodeTab from './settings/tabs/CodeTab'
+import { DEFAULT_CODE_SETTINGS, type CodeModel, type CodeSettings, type CodeStatus } from '../../shared/code/code'
 
 
 
@@ -88,10 +90,13 @@ export default function Settings(): JSX.Element {
   const [textureIntensity, setTextureIntensity] = useState(DEFAULT_TEXTURE_INTENSITY)
   const [autoUpdate, setAutoUpdate] = useState(true)
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: 'idle', currentVersion: '' })
-  const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true, tasks: true })
+  const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true, tasks: true, code: true })
   const [launcherShowSystemApps, setLauncherShowSystemApps] = useState(false)
   const [shortcuts, setShortcuts] = useState<ShortcutConfig>({ ...DEFAULT_SHORTCUTS })
   const [pasteSettings, setPasteSettings] = useState<PasteManagerSettings>({ ...DEFAULT_PASTE_SETTINGS })
+  const [codeSettings, setCodeSettings] = useState<CodeSettings>({ ...DEFAULT_CODE_SETTINGS })
+  const [codeStatus, setCodeStatus] = useState<(CodeStatus & { hasApiKey: boolean }) | null>(null)
+  const [codeModels, setCodeModels] = useState<CodeModel[]>([])
   const [pasteFeedbackMessage, setPasteFeedbackMessage] = useState('')
   const [mcpServers, setMcpServers] = useState<McpServer[]>([])
   const [isMcpServersLoading, setIsMcpServersLoading] = useState(false)
@@ -175,10 +180,11 @@ export default function Settings(): JSX.Element {
         setAutoCollapseReasoning(typeof config.autoCollapseReasoning === 'boolean' ? config.autoCollapseReasoning : true)
         setTextureIntensity(typeof config.textureIntensity === 'number' ? config.textureIntensity : DEFAULT_TEXTURE_INTENSITY)
         setAutoUpdate(typeof config.autoUpdate === 'boolean' ? config.autoUpdate : true)
-        setButtonVisibility(config.buttonVisibility ?? { appLauncher: true, workflow: true, tasks: true })
+        setButtonVisibility(config.buttonVisibility ?? { appLauncher: true, workflow: true, tasks: true, code: true })
         setLauncherShowSystemApps(config.launcherShowSystemApps === true)
         setShortcuts(config.shortcuts ?? { ...DEFAULT_SHORTCUTS })
         setPasteSettings(normalizePasteManagerSettings(config.pasteManager))
+        setCodeSettings(config.code ?? { ...DEFAULT_CODE_SETTINGS })
         setIsConfigLoaded(true)
       } catch {
         if (!isMounted) return
@@ -192,7 +198,7 @@ export default function Settings(): JSX.Element {
         setPreferredShell(undefined)
         setMcpServers([])
         setChatModel(DEFAULT_CHAT_MODEL)
-        setButtonVisibility({ appLauncher: true, workflow: true, tasks: true })
+        setButtonVisibility({ appLauncher: true, workflow: true, tasks: true, code: true })
         setLauncherShowSystemApps(false)
         setAutoUpdate(true)
         setPasteSettings({ ...DEFAULT_PASTE_SETTINGS })
@@ -937,6 +943,71 @@ const handleMinimizeWindow = (): void => {
     }
   }
 
+  const refreshCodeStatus = async (): Promise<void> => {
+    if (!window.api?.code) return
+    const result = await window.api.code.getStatus()
+    if (result.success) setCodeStatus(result.status)
+  }
+
+  useEffect(() => {
+    if (activeTab !== 'code') return
+    void refreshCodeStatus()
+    void (async () => {
+      const result = await window.api?.code?.listModels()
+      if (result?.success) setCodeModels(result.models)
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab])
+
+  const handleCodeSettingsChange = (patch: Partial<CodeSettings>): void => {
+    setCodeSettings((current) => {
+      const next: CodeSettings = {
+        ...current,
+        ...patch,
+        permission: { ...current.permission, ...(patch.permission ?? {}) }
+      }
+      void window.api?.code?.setSettings(next)
+      return next
+    })
+  }
+
+  const handleSetCodeApiKey = async (key: string): Promise<{ ok: boolean; error?: string }> => {
+    const result = await window.api?.code?.setApiKey(key)
+    if (result?.success) {
+      setCodeStatus(result.status)
+      void refreshCodeStatus()
+      return { ok: true }
+    }
+    return { ok: false, error: result && !result.success ? result.error : 'Failed to save key.' }
+  }
+
+  const handleClearCodeApiKey = async (): Promise<void> => {
+    const result = await window.api?.code?.clearApiKey()
+    if (result?.success) setCodeStatus(result.status)
+  }
+
+  const handleTestCodeConnection = async (): Promise<{ ok: boolean; error?: string }> => {
+    const result = await window.api?.code?.testConnection()
+    if (result?.success) {
+      void refreshCodeStatus()
+      return { ok: result.connected, error: result.connected ? undefined : 'OpenCode Go is not connected.' }
+    }
+    return { ok: false, error: result && !result.success ? result.error : 'Connection failed.' }
+  }
+
+  const handleRestartCodeRuntime = async (): Promise<{ ok: boolean; error?: string }> => {
+    const result = await window.api?.code?.restartRuntime()
+    if (result?.success) {
+      setCodeStatus(result.status)
+      void (async () => {
+        const models = await window.api?.code?.listModels()
+        if (models?.success) setCodeModels(models.models)
+      })()
+      return { ok: true }
+    }
+    return { ok: false, error: result && !result.success ? result.error : 'Restart failed.' }
+  }
+
   const pageTitle = useMemo(() => {
     if (activeTab === 'general') return 'General'
     if (activeTab === 'usage') return 'Usage & Cost'
@@ -946,6 +1017,7 @@ const handleMinimizeWindow = (): void => {
     if (activeTab === 'workflow') return 'Workflows'
     if (activeTab === 'preprompts') return 'Instructions'
     if (activeTab === 'mcp') return 'MCP Servers'
+    if (activeTab === 'code') return 'OpenCode'
     return 'Clipboard'
   }, [activeTab])
 
@@ -1155,6 +1227,19 @@ const handleMinimizeWindow = (): void => {
                 onChange={handlePasteSettingChange}
                 onClearHistory={handleClearPasteHistory}
                 feedbackMessage={pasteFeedbackMessage}
+              />
+            )}
+            {activeTab === 'code' && (
+              <CodeTab
+                settings={codeSettings}
+                status={codeStatus}
+                models={codeModels}
+                onSettingsChange={handleCodeSettingsChange}
+                onSetApiKey={handleSetCodeApiKey}
+                onClearApiKey={handleClearCodeApiKey}
+                onTestConnection={handleTestCodeConnection}
+                onRestartRuntime={handleRestartCodeRuntime}
+                onOpenLogs={() => void window.api?.code?.openLogs()}
               />
             )}
           </main>

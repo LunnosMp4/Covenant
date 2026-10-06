@@ -152,6 +152,12 @@ export default function AppearanceTab({
             label="Tasks"
             description="Show the Tasks button to quickly capture and check off to-dos."
           />
+          <MinimalistToggle
+            checked={buttonVisibility.code}
+            onChange={(checked) => onButtonVisibilityChange({ ...buttonVisibility, code: checked })}
+            label="Covenant Code"
+            description="Show the Code button to open the agentic coding workspace."
+          />
         </div>
       </SectionCard>
 

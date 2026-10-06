@@ -7,6 +7,8 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
+    "prepare:opencode-cli": "node scripts/prepare-opencode-cli.mjs",
+    "predist": "node scripts/prepare-opencode-cli.mjs",
     "dist": "electron-builder",
     "start": "electron .",
     "typecheck": "tsc --noEmit",
@@ -21,6 +23,13 @@
       "out/**/*",
       "node_modules/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/opencode-cli",
+        "to": "opencode-cli",
+        "filter": ["**/*"]
+      }
     ],
     "directories": {
       "buildResources": "build"
@@ -69,6 +78,7 @@
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",
     "@excalidraw/excalidraw": "^0.18.1",
+    "@opencode/client": "2.0.24",
     "dotenv": "^17.4.2",
     "electron-log": "^5.4.4",
     "electron-store": "^11.0.2",

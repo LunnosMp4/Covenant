@@ -5,6 +5,7 @@ import type { LauncherApp } from '../../shared/launcher/launcher-app'
 import type { Preprompt } from '../../shared/domain/preprompt'
 import type { Task } from '../../shared/tasks/task'
 import type { Workflow } from '../../shared/domain/workflow'
+import type { CodeProject } from '../../shared/code/code'
 
 export interface AppStoreSchema {
   preprompts: Preprompt[]
@@ -14,6 +15,7 @@ export interface AppStoreSchema {
   conversations: ChatConversation[]
   tasks: Task[]
   gamification: GamificationState
+  codeProjects: CodeProject[]
 }
 
 const StoreClass =
@@ -29,7 +31,8 @@ export const appStore = new StoreClass<AppStoreSchema>({
     workflows: [],
     conversations: [],
     tasks: [],
-    gamification: DEFAULT_GAMIFICATION
+    gamification: DEFAULT_GAMIFICATION,
+    codeProjects: []
   },
   schema: {
     preprompts: {
@@ -243,6 +246,21 @@ export const appStore = new StoreClass<AppStoreSchema>({
           }
         },
         required: ['id', 'title', 'createdAt', 'updatedAt', 'messages']
+      }
+    },
+    codeProjects: {
+      type: 'array',
+      default: [],
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          id: { type: 'string' },
+          name: { type: 'string' },
+          directory: { type: 'string' },
+          addedAt: { type: 'number' }
+        },
+        required: ['id', 'name', 'directory', 'addedAt']
       }
     }
   }

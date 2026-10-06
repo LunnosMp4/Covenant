@@ -2,6 +2,7 @@ import { app, BrowserWindow, globalShortcut, protocol } from 'electron'
 import { join } from 'path'
 import dotenv from 'dotenv'
 import { readConfig, updateConfig } from './config/configStore'
+import { CodeService, getCodeService, setCodeService } from './code/codeService'
 import { warmInstalledAppsCache } from './installedApps'
 import { registerIpc } from './ipc'
 import { setupLogger } from './logger'
@@ -134,6 +135,15 @@ app.whenReady().then(() => {
   void manager.init()
   registerPasteProtocol()
 
+  // Covenant Code: owns the OpenCode runtime. Starts lazily on first use unless
+  // autoStart is enabled in settings.
+  const codeService = new CodeService()
+  setCodeService(codeService)
+  codeService.init()
+  if (config.code.autoStart) {
+    void codeService.isConnectedOrConnect()
+  }
+
   registerShortcuts(config)
 
   app.on('activate', () => {
@@ -157,6 +167,9 @@ app.on('will-quit', () => {
 
   void getPasteManager()?.dispose()
   setPasteManager(null)
+
+  void getCodeService()?.dispose()
+  setCodeService(null)
 
   terminalManager.disposeAll()
 

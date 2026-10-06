@@ -6,6 +6,7 @@ import {
   hideWindow,
   markRendererReady,
   minimizeSettingsWindow,
+  openCodeMode,
   setMainWindowIgnoreMouseEvents,
   setPinned
 } from '../windows'
@@ -44,5 +45,9 @@ export function registerWindowIpc(): void {
 
   ipcMain.on('minimize-settings', () => {
     minimizeSettingsWindow()
+  })
+
+  ipcMain.on('open-code', () => {
+    openCodeMode()
   })
 }

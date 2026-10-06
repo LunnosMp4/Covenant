@@ -16,6 +16,19 @@ import type { TerminalExitPayload, TerminalStartResult } from '../../../shared/t
 import type { UpdateStatus } from '../../../shared/system/update'
 import type { PasteItemDetail, PasteItemMeta, PasteManagerSettings } from '../../../shared/paste/paste'
 import type { UsageMetricsResult, UsageProjectsResult } from '../../../shared/system/usage'
+import type {
+  CodeEngineEvent,
+  CodeFileDiff,
+  CodeModel,
+  CodePermissionRequest,
+  CodeProject,
+  CodeSession,
+  CodeSettings,
+  CodeStatus,
+  CodeTranscriptItem
+} from '../../../shared/code/code'
+
+type CodeResult<T> = ({ success: true } & T) | { success: false; error: string }
 
 interface CovenantAPI {
   platform: string
@@ -28,6 +41,7 @@ interface CovenantAPI {
     openSettings: (tab?: string) => void
     closeSettings: () => void
     minimizeSettings: () => void
+    openCode: () => void
     onNavigateSettingsTab: (callback: (tab: string) => void) => () => void
     onSettingsShown: (callback: (isRestore: boolean) => void) => () => void
     onToggleVisibility: (
@@ -173,6 +187,46 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     onChanged: (callback: () => void) => () => void
     onShown: (callback: () => void) => () => void
     onSettingsUpdated: (callback: (settings: PasteManagerSettings) => void) => () => void
+  }
+  code: {
+    subscribe: () => void
+    onEvent: (callback: (event: CodeEngineEvent) => void) => () => void
+    getStatus: () => Promise<CodeResult<{ status: CodeStatus & { hasApiKey: boolean } }>>
+    setApiKey: (key: string) => Promise<CodeResult<{ status: CodeStatus & { hasApiKey: boolean } }>>
+    clearApiKey: () => Promise<CodeResult<{ status: CodeStatus & { hasApiKey: boolean } }>>
+    testConnection: () => Promise<CodeResult<{ connected: boolean }>>
+    listModels: () => Promise<CodeResult<{ models: CodeModel[] }>>
+    listProjects: () => Promise<CodeResult<{ projects: CodeProject[] }>>
+    addProject: (directory: string, name?: string) => Promise<CodeResult<{ projects: CodeProject[] }>>
+    removeProject: (id: string) => Promise<CodeResult<{ projects: CodeProject[] }>>
+    pickDirectory: () => Promise<CodeResult<{ directory?: string }>>
+    listSessions: (directory?: string) => Promise<CodeResult<{ sessions: CodeSession[] }>>
+    createSession: (payload: {
+      directory: string
+      model?: { providerID: string; id: string; variant?: string }
+      agent?: string
+      title?: string
+    }) => Promise<CodeResult<{ session: CodeSession }>>
+    deleteSession: (sessionId: string) => Promise<CodeResult<Record<string, never>>>
+    getTranscript: (sessionId: string) => Promise<CodeResult<{ transcript: CodeTranscriptItem[] }>>
+    prompt: (payload: { sessionId: string; text: string }) => Promise<CodeResult<Record<string, never>>>
+    interrupt: (sessionId: string) => Promise<CodeResult<Record<string, never>>>
+    switchModel: (payload: {
+      sessionId: string
+      model: { providerID: string; id: string; variant?: string }
+    }) => Promise<CodeResult<Record<string, never>>>
+    listPermissions: (sessionId: string) => Promise<CodeResult<{ requests: CodePermissionRequest[] }>>
+    replyPermission: (payload: {
+      sessionId: string
+      requestId: string
+      reply: 'once' | 'always' | 'reject'
+    }) => Promise<CodeResult<Record<string, never>>>
+    getDiff: (sessionId: string) => Promise<CodeResult<{ diff: CodeFileDiff[] }>>
+    getSettings: () => Promise<CodeResult<{ settings: CodeSettings }>>
+    setSettings: (patch: Partial<CodeSettings>) => Promise<CodeResult<{ settings: CodeSettings }>>
+    openLogs: () => Promise<CodeResult<Record<string, never>>>
+    restartRuntime: () => Promise<CodeResult<{ status: CodeStatus & { hasApiKey: boolean } }>>
+    getLogs: () => Promise<CodeResult<{ logs: string[] }>>
   }
 }
 
