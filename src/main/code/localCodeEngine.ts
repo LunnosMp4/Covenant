@@ -580,10 +580,14 @@ export class LocalCodeEngine implements CodeEngine {
       const ordered = hasTimestamps
         ? items.sort((a, b) => (a.createdAt as number) - (b.createdAt as number))
         : items.reverse()
+      // Drop non-renderable entries (idle/model-selected/agent-selected meta
+      // messages have no text) before merging so they neither render as empty
+      // bubbles nor break up a turn.
+      const renderable = ordered.filter((item) => !isEmptyTranscriptItem(item))
       // A single agent turn is stored as several assistant messages (one per
       // step), which would render as multiple bubbles on reopen. Merge them into
       // one assistant item so it matches the live single-bubble stream.
-      return coalesceTranscript(ordered)
+      return coalesceTranscript(renderable)
     } catch (error) {
       log.warn('Failed to load OpenCode transcript', error)
       return []
@@ -881,9 +885,8 @@ function mergeTranscriptText(left: string | undefined, right: string | undefined
   return `${a}\n\n${b}`
 }
 
-function isEmptyAssistant(item: CodeTranscriptItem): boolean {
+function isEmptyTranscriptItem(item: CodeTranscriptItem): boolean {
   return (
-    item.role === 'assistant' &&
     !item.text.trim() &&
     !item.reasoning?.trim() &&
     !(item.tools && item.tools.length > 0) &&
@@ -891,34 +894,44 @@ function isEmptyAssistant(item: CodeTranscriptItem): boolean {
   )
 }
 
+function sumCost(a: number | undefined, b: number | undefined): number | undefined {
+  if (typeof a !== 'number' && typeof b !== 'number') return undefined
+  return (a ?? 0) + (b ?? 0)
+}
+
 /**
- * Collapses consecutive assistant messages (one per agent step) into a single
- * item so a reopened turn renders as one bubble, matching the live stream.
+ * Collapses every non-user message within a turn into a single assistant item,
+ * so a reopened turn renders as one bubble (matching the live stream) even when
+ * the runtime stores it as several per-step assistant/meta messages.
  */
+function mergeAssistant(base: CodeTranscriptItem, next: CodeTranscriptItem): CodeTranscriptItem {
+  return {
+    ...base,
+    text: mergeTranscriptText(base.text, next.text),
+    reasoning: mergeTranscriptText(base.reasoning, next.reasoning) || undefined,
+    tools: [...(base.tools ?? []), ...(next.tools ?? [])],
+    agent: base.agent ?? next.agent,
+    model: base.model ?? next.model,
+    cost: sumCost(base.cost, next.cost),
+    error: base.error ?? next.error
+  }
+}
+
 function coalesceTranscript(items: CodeTranscriptItem[]): CodeTranscriptItem[] {
-  const merged: CodeTranscriptItem[] = []
+  const result: CodeTranscriptItem[] = []
+  let assistant: CodeTranscriptItem | null = null
+
   for (const item of items) {
-    const previous = merged[merged.length - 1]
-    if (item.role === 'assistant' && previous?.role === 'assistant') {
-      const cost =
-        typeof previous.cost === 'number' || typeof item.cost === 'number'
-          ? (previous.cost ?? 0) + (item.cost ?? 0)
-          : undefined
-      merged[merged.length - 1] = {
-        ...previous,
-        text: mergeTranscriptText(previous.text, item.text),
-        reasoning: mergeTranscriptText(previous.reasoning, item.reasoning) || undefined,
-        tools: [...(previous.tools ?? []), ...(item.tools ?? [])],
-        agent: previous.agent ?? item.agent,
-        model: previous.model ?? item.model,
-        cost,
-        error: previous.error ?? item.error
-      }
+    if (item.role === 'user') {
+      if (assistant && !isEmptyTranscriptItem(assistant)) result.push(assistant)
+      assistant = null
+      result.push(item)
       continue
     }
-    merged.push(item)
+    assistant = assistant ? mergeAssistant(assistant, item) : { ...item, role: 'assistant', id: item.id }
   }
-  return merged.filter((item) => !isEmptyAssistant(item))
+  if (assistant && !isEmptyTranscriptItem(assistant)) result.push(assistant)
+  return result
 }
 
 function toolStatusFromWire(raw: unknown): CodeTranscriptTool['status'] {
