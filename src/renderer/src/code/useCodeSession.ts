@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   CodeActivityEvent,
+  CodeAgent,
   CodeEngineEvent,
   CodeFileDiff,
   CodeModel,
@@ -26,6 +27,10 @@ export function useCodeSession(): {
   activeSession: CodeSession | null
   models: CodeModel[]
   selectedModel: string
+  agents: CodeAgent[]
+  selectedAgent: string
+  selectedVariant: string
+  activeVariants: string[]
   transcript: CodeTranscriptItem[]
   stream: StreamingState
   usage: CodeUsage | null
@@ -42,6 +47,8 @@ export function useCodeSession(): {
   selectSession: (session: CodeSession) => Promise<void>
   deleteSession: (session: CodeSession) => Promise<void>
   changeModel: (value: string) => Promise<void>
+  changeAgent: (value: string) => Promise<void>
+  changeVariant: (value: string) => void
   submit: (text: string) => Promise<void>
   stop: () => Promise<void>
   replyPermission: (request: CodePermissionRequest, reply: 'once' | 'always' | 'reject') => Promise<void>
@@ -55,6 +62,9 @@ export function useCodeSession(): {
   const [activeSession, setActiveSession] = useState<CodeSession | null>(null)
   const [models, setModels] = useState<CodeModel[]>([])
   const [selectedModel, setSelectedModel] = useState('')
+  const [agents, setAgents] = useState<CodeAgent[]>([])
+  const [selectedAgent, setSelectedAgent] = useState('')
+  const [selectedVariant, setSelectedVariant] = useState('')
   const [transcript, setTranscript] = useState<CodeTranscriptItem[]>([])
   const [stream, setStream] = useState<StreamingState>(EMPTY_STREAM)
   const [usage, setUsage] = useState<CodeUsage | null>(null)
@@ -66,6 +76,9 @@ export function useCodeSession(): {
   const activeSessionRef = useRef<CodeSession | null>(null)
   const activeProjectRef = useRef<CodeProject | null>(null)
   const selectedModelRef = useRef('')
+  const selectedAgentRef = useRef('')
+  const selectedVariantRef = useRef('')
+  const modelsRef = useRef<CodeModel[]>([])
   const streamRef = useRef<StreamingState>(EMPTY_STREAM)
   const readyRef = useRef(false)
   const readyPromiseRef = useRef<Promise<void> | null>(null)
@@ -73,7 +86,23 @@ export function useCodeSession(): {
   activeSessionRef.current = activeSession
   activeProjectRef.current = activeProject
   selectedModelRef.current = selectedModel
+  selectedAgentRef.current = selectedAgent
+  selectedVariantRef.current = selectedVariant
+  modelsRef.current = models
   streamRef.current = stream
+
+  const currentModelRef = useCallback((): { providerID: string; id: string; variant?: string } | undefined => {
+    const ref = parseModelSelector(selectedModelRef.current)
+    if (!ref.id) return undefined
+    const model = modelsRef.current.find(
+      (entry) => `${entry.providerID}/${entry.id}` === selectedModelRef.current
+    )
+    const variant =
+      model && model.variants.includes(selectedVariantRef.current)
+        ? selectedVariantRef.current
+        : undefined
+    return { providerID: ref.providerID, id: ref.id, variant }
+  }, [])
 
   const refreshStatus = useCallback(async () => {
     if (!api?.code) return
@@ -113,11 +142,15 @@ export function useCodeSession(): {
         setActiveProject(project)
       }
 
-      const [modelsResult, settingsResult] = await Promise.all([
+      const [modelsResult, settingsResult, agentsResult] = await Promise.all([
         api.code.listModels(),
-        api.code.getSettings()
+        api.code.getSettings(),
+        api.code.listAgents()
       ])
-      const defaultModel = settingsResult.success ? settingsResult.settings.defaultModel : ''
+      const settings = settingsResult.success ? settingsResult.settings : null
+      const defaultModel = settings?.defaultModel ?? ''
+      const defaultVariant = settings?.defaultVariant ?? ''
+
       if (modelsResult.success) {
         setModels(modelsResult.models)
         setSelectedModel((current) => {
@@ -129,6 +162,26 @@ export function useCodeSession(): {
       } else if (defaultModel) {
         setSelectedModel((current) => current || defaultModel)
       }
+      if (defaultVariant) {
+        setSelectedVariant((current) => current || defaultVariant)
+      }
+
+      const listedAgents = (agentsResult.success ? agentsResult.agents : []).filter(
+        (agent) => !agent.hidden && (agent.mode === 'primary' || agent.mode === 'all')
+      )
+      // OpenCode always exposes the `build` and `plan` primary agents, but the
+      // catalog can come back empty before the runtime is warm — fall back to
+      // them so the Plan/Build toggle is always available.
+      const usableAgents: CodeAgent[] =
+        listedAgents.length > 0
+          ? listedAgents
+          : [
+              { id: 'build', name: 'Build', mode: 'primary', hidden: false },
+              { id: 'plan', name: 'Plan', mode: 'primary', hidden: false }
+            ]
+      setAgents(usableAgents)
+      const preferred = usableAgents.find((agent) => agent.id === 'build') ?? usableAgents[0]
+      setSelectedAgent((current) => current || preferred?.id || '')
 
       if (project) {
         setLoadingSessions(true)
@@ -295,10 +348,10 @@ export function useCodeSession(): {
       setError('Add a project folder to start coding.')
       return
     }
-    const ref = parseModelSelector(selectedModelRef.current)
     const result = await api.code.createSession({
       directory: project.directory,
-      model: ref.id ? ref : undefined
+      model: currentModelRef(),
+      agent: selectedAgentRef.current || undefined
     })
     if (result.success) {
       setSessions((current) => [result.session, ...current])
@@ -311,7 +364,7 @@ export function useCodeSession(): {
     } else {
       setError(result.error)
     }
-  }, [api, enable])
+  }, [api, enable, currentModelRef])
 
   const selectSession = useCallback(
     async (session: CodeSession) => {
@@ -321,6 +374,11 @@ export function useCodeSession(): {
       setUsage(null)
       setPermissions([])
       setError(null)
+      if (session.agent) setSelectedAgent(session.agent)
+      if (session.model) {
+        setSelectedModel(`${session.model.providerID}/${session.model.id}`)
+        setSelectedVariant(session.model.variant ?? '')
+      }
       const [transcriptResult, diffResult, permissionResult] = await Promise.all([
         api.code.getTranscript(session.id),
         api.code.getDiff(session.id),
@@ -354,12 +412,47 @@ export function useCodeSession(): {
       setSelectedModel(value)
       // Remember the choice so the next session uses the same model.
       void api?.code?.setSettings({ defaultModel: value })
+
+      const model = modelsRef.current.find((entry) => `${entry.providerID}/${entry.id}` === value)
+      const variant = model?.variants.includes(selectedVariantRef.current)
+        ? selectedVariantRef.current
+        : ''
+      if (variant !== selectedVariantRef.current) setSelectedVariant(variant)
+
+      const session = activeSessionRef.current
+      const ref = parseModelSelector(value)
+      if (session && api?.code && ref.id) {
+        await api.code.switchModel({
+          sessionId: session.id,
+          model: { providerID: ref.providerID, id: ref.id, variant: variant || undefined }
+        })
+      }
+    },
+    [api]
+  )
+
+  const changeAgent = useCallback(
+    async (value: string) => {
+      setSelectedAgent(value)
       const session = activeSessionRef.current
       if (session && api?.code) {
-        const ref = parseModelSelector(value)
-        if (ref.id) {
-          await api.code.switchModel({ sessionId: session.id, model: ref })
-        }
+        await api.code.switchAgent({ sessionId: session.id, agent: value })
+      }
+    },
+    [api]
+  )
+
+  const changeVariant = useCallback(
+    (value: string) => {
+      setSelectedVariant(value)
+      void api?.code?.setSettings({ defaultVariant: value })
+      const session = activeSessionRef.current
+      const ref = parseModelSelector(selectedModelRef.current)
+      if (session && api?.code && ref.id) {
+        void api.code.switchModel({
+          sessionId: session.id,
+          model: { providerID: ref.providerID, id: ref.id, variant: value || undefined }
+        })
       }
     },
     [api]
@@ -378,10 +471,10 @@ export function useCodeSession(): {
           setError('Add a project folder to start coding.')
           return
         }
-        const ref = parseModelSelector(selectedModelRef.current)
         const created = await api.code.createSession({
           directory: project.directory,
-          model: ref.id ? ref : undefined
+          model: currentModelRef(),
+          agent: selectedAgentRef.current || undefined
         })
         if (!created.success) {
           setError(created.error)
@@ -406,7 +499,7 @@ export function useCodeSession(): {
         setStream((current) => ({ ...current, busy: false, error: result.error }))
       }
     },
-    [api, enable]
+    [api, enable, currentModelRef]
   )
 
   const stop = useCallback(async () => {
@@ -444,6 +537,12 @@ export function useCodeSession(): {
     [diffs]
   )
 
+  const activeVariants = useMemo(
+    () =>
+      models.find((model) => `${model.providerID}/${model.id}` === selectedModel)?.variants ?? [],
+    [models, selectedModel]
+  )
+
   return {
     status,
     projects,
@@ -452,6 +551,10 @@ export function useCodeSession(): {
     activeSession,
     models,
     selectedModel,
+    agents,
+    selectedAgent,
+    selectedVariant,
+    activeVariants,
     transcript,
     stream,
     usage,
@@ -468,6 +571,8 @@ export function useCodeSession(): {
     selectSession,
     deleteSession,
     changeModel,
+    changeAgent,
+    changeVariant,
     submit,
     stop,
     replyPermission,

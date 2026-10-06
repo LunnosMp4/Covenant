@@ -1,6 +1,7 @@
 import { log } from '../logger'
 import type {
   CodeActivityEvent,
+  CodeAgent,
   CodeFileDiff,
   CodeModel,
   CodeModelRef,
@@ -440,6 +441,18 @@ export class LocalCodeEngine implements CodeEngine {
     return []
   }
 
+  async listAgents(): Promise<CodeAgent[]> {
+    const client = this.requireClient()
+    try {
+      const result = await client.agent.list()
+      const list = asArray<Record<string, unknown>>(pickData(result))
+      return list.map(toAgent).filter((agent): agent is CodeAgent => agent !== null)
+    } catch (error) {
+      log.warn('Failed to list OpenCode agents', error)
+      return []
+    }
+  }
+
   async listIntegrations(): Promise<CodeIntegrationSummary[]> {
     const client = this.requireClient()
     try {
@@ -536,6 +549,11 @@ export class LocalCodeEngine implements CodeEngine {
       sessionID: sessionId,
       model: { id: model.id, providerID: model.providerID, variant: model.variant }
     })
+  }
+
+  async switchAgent(sessionId: string, agent: string): Promise<void> {
+    const client = this.requireClient()
+    await client.session.switchAgent({ sessionID: sessionId, agent })
   }
 
   async listPermissions(sessionId: string): Promise<CodePermissionRequest[]> {
@@ -675,6 +693,22 @@ function toModel(raw: unknown): CodeModel | null {
     supportsReasoning: Boolean(capabilities.reasoning),
     supportsTools: capabilities.tools !== false,
     maxContextTokens: typeof limit.context === 'number' ? limit.context : undefined
+  }
+}
+
+function toAgent(raw: unknown): CodeAgent | null {
+  if (!raw || typeof raw !== 'object') return null
+  const obj = raw as Record<string, unknown>
+  const id = typeof obj.id === 'string' ? obj.id : ''
+  if (!id) return null
+  const mode =
+    obj.mode === 'subagent' || obj.mode === 'primary' || obj.mode === 'all' ? obj.mode : 'all'
+  return {
+    id,
+    name: typeof obj.name === 'string' && obj.name ? obj.name : id,
+    mode,
+    description: typeof obj.description === 'string' ? obj.description : undefined,
+    hidden: obj.hidden === true
   }
 }
 

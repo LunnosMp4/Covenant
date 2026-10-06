@@ -45,6 +45,14 @@ export interface CodeSession {
   status: CodeSessionStatus
 }
 
+export interface CodeAgent {
+  id: string
+  name: string
+  mode: 'subagent' | 'primary' | 'all'
+  description?: string
+  hidden: boolean
+}
+
 export interface CodeFileDiff {
   file: string
   additions: number

@@ -6,7 +6,7 @@ import ContextStatsDonut from '../app/components/ContextStatsDonut'
 import type { ContextStats } from '../utils/chat/chatUsage'
 import CustomSelect from '../ui/CustomSelect'
 import ExpandButton from '../ui/ExpandButton'
-import { CodeIcon } from '../ui/icons'
+import { CodeIcon, PinIcon } from '../ui/icons'
 import CodeConversation from './CodeConversation'
 import CodeNavMenu from './CodeNavMenu'
 import CodeProjectsSidebar from './CodeProjectsSidebar'
@@ -21,8 +21,10 @@ interface CodePanelProps {
   isExpanded: boolean
   isWide: boolean
   isAltHeld: boolean
+  isPinned: boolean
   viewportHeight: number
   onToggleExpand: (event: ReactMouseEvent<HTMLButtonElement>) => void
+  onTogglePin: () => void
 }
 
 const ICON_BUTTON =
@@ -39,8 +41,10 @@ export default function CodePanel({
   isExpanded,
   isWide,
   isAltHeld,
+  isPinned,
   viewportHeight,
-  onToggleExpand
+  onToggleExpand,
+  onTogglePin
 }: CodePanelProps): JSX.Element {
   const [changesOpen, setChangesOpen] = useState(false)
   const changesRef = useRef<HTMLDivElement>(null)
@@ -64,6 +68,13 @@ export default function CodePanel({
     value: `${model.providerID}/${model.id}`,
     label: model.label
   }))
+
+  const primaryAgents = session.agents.filter(
+    (agent) => !agent.hidden && (agent.mode === 'primary' || agent.mode === 'all')
+  )
+  const variantOptions = [
+    ...session.activeVariants.map((variant) => ({ value: variant, label: variant }))
+  ]
 
   const sessionModelRef = session.activeSession?.model
   const sessionModelId = sessionModelRef
@@ -158,6 +169,20 @@ export default function CodePanel({
     <>
       <div className="relative flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={onTogglePin}
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors ${
+              isPinned
+                ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-400 hover:border-emerald-500/50 hover:bg-emerald-500/25'
+                : 'border-white/10 text-neutral-400 hover:border-white/20 hover:bg-white/10 hover:text-neutral-200'
+            }`}
+            aria-label={isPinned ? 'Unpin window' : 'Pin window'}
+            aria-pressed={isPinned}
+          >
+            <PinIcon active={isPinned} />
+          </button>
+
           {isWide ? (
             <div className="flex min-w-0 items-center gap-2 px-1">
               <span className="shrink-0 text-neutral-400">
@@ -186,8 +211,33 @@ export default function CodePanel({
               onDeleteSession={(item) => void session.deleteSession(item)}
             />
           )}
+
+          {primaryAgents.length > 1 && (
+            <div className="flex h-8 shrink-0 items-center rounded-lg border border-white/10 p-0.5">
+              {primaryAgents.map((agent) => {
+                const active = session.selectedAgent === agent.id
+                return (
+                  <button
+                    key={agent.id}
+                    type="button"
+                    onClick={() => void session.changeAgent(agent.id)}
+                    title={agent.description ?? agent.name}
+                    className={`h-7 rounded-md px-2 text-[11px] font-medium capitalize transition-colors ${
+                      active
+                        ? 'bg-white/10 text-neutral-100'
+                        : 'text-neutral-400 hover:text-neutral-200'
+                    }`}
+                    aria-pressed={active}
+                  >
+                    {agent.name}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
           <span
-            className="flex h-8 w-8 items-center justify-center"
+            className="flex h-8 w-8 shrink-0 items-center justify-center"
             title={statusHint}
             aria-label={statusHint}
           >
@@ -198,12 +248,22 @@ export default function CodePanel({
         <div className="flex shrink-0 items-center gap-1">
           <CustomSelect
             compact
-            className="w-[150px]"
+            className="w-[140px]"
             options={modelOptions}
             value={session.selectedModel}
             onChange={(value) => void session.changeModel(value)}
             disabled={modelOptions.length === 0}
           />
+
+          {variantOptions.length > 0 && (
+            <CustomSelect
+              compact
+              className="w-[104px]"
+              options={[{ value: '', label: 'Default' }, ...variantOptions]}
+              value={session.selectedVariant}
+              onChange={session.changeVariant}
+            />
+          )}
 
           <ContextStatsDonut
             stats={codeStats}

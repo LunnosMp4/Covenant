@@ -103,6 +103,30 @@ export function registerCodeIpc(): void {
     }
   })
 
+  ipcMain.handle('code:agents:list', async () => {
+    try {
+      const service = requireService()
+      await service.isConnectedOrConnect()
+      const agents = await service.getEngine().listAgents()
+      return { success: true as const, agents }
+    } catch (error) {
+      return errorResult(error)
+    }
+  })
+
+  ipcMain.handle('code:agents:switch', async (_event, payload: unknown) => {
+    try {
+      const raw = (payload ?? {}) as Record<string, unknown>
+      const sessionId = typeof raw.sessionId === 'string' ? raw.sessionId : ''
+      const agent = typeof raw.agent === 'string' ? raw.agent : ''
+      if (!sessionId || !agent) throw new Error('A session id and agent are required')
+      await requireService().getEngine().switchAgent(sessionId, agent)
+      return { success: true as const }
+    } catch (error) {
+      return errorResult(error)
+    }
+  })
+
   ipcMain.handle('code:projects:list', () => {
     try {
       return { success: true as const, projects: getCodeProjects() }

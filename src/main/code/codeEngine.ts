@@ -1,5 +1,6 @@
 import type {
   CodeActivityEvent,
+  CodeAgent,
   CodeEngineEvent,
   CodeFileDiff,
   CodeModel,
@@ -53,6 +54,7 @@ export interface CodeEngine {
   subscribe(listener: CodeEngineListener): () => void
 
   listModels(): Promise<CodeModel[]>
+  listAgents(): Promise<CodeAgent[]>
   listIntegrations(): Promise<CodeIntegrationSummary[]>
   connectProviderKey(integrationId: string, key: string): Promise<void>
 
@@ -64,6 +66,7 @@ export interface CodeEngine {
   prompt(input: { sessionId: string; text: string }): Promise<void>
   interrupt(sessionId: string): Promise<void>
   switchModel(sessionId: string, model: CodeModelRefInput): Promise<void>
+  switchAgent(sessionId: string, agent: string): Promise<void>
 
   listPermissions(sessionId: string): Promise<CodePermissionRequest[]>
   replyPermission(input: CodeEnginePermissionReply): Promise<void>

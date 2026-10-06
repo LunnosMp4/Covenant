@@ -1584,6 +1584,9 @@ export default function App(): JSX.Element {
     const text = getFullPrompt().trim()
     if (!text) return
     clearInput()
+    // Sending a prompt pins the window so the run isn't dismissed on blur.
+    window.api?.window.setPinned?.(true)
+    setIsPinned(true)
     void code.submit(text)
   }, [code])
 
@@ -2730,8 +2733,10 @@ export default function App(): JSX.Element {
                       isExpanded={isExpanded}
                       isWide={isWide}
                       isAltHeld={isAltHeld}
+                      isPinned={isPinned}
                       viewportHeight={viewportHeight}
                       onToggleExpand={handleToggleExpand}
+                      onTogglePin={handleTogglePin}
                     />
                   )}
                 </MeasuredPanel>

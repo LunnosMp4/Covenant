@@ -17,6 +17,7 @@ import type { UpdateStatus } from '../../../shared/system/update'
 import type { PasteItemDetail, PasteItemMeta, PasteManagerSettings } from '../../../shared/paste/paste'
 import type { UsageMetricsResult, UsageProjectsResult } from '../../../shared/system/usage'
 import type {
+  CodeAgent,
   CodeEngineEvent,
   CodeFileDiff,
   CodeModel,
@@ -196,6 +197,11 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     clearApiKey: () => Promise<CodeResult<{ status: CodeStatus & { hasApiKey: boolean } }>>
     testConnection: () => Promise<CodeResult<{ connected: boolean }>>
     listModels: () => Promise<CodeResult<{ models: CodeModel[] }>>
+    listAgents: () => Promise<CodeResult<{ agents: CodeAgent[] }>>
+    switchAgent: (payload: {
+      sessionId: string
+      agent: string
+    }) => Promise<CodeResult<Record<string, never>>>
     listProjects: () => Promise<CodeResult<{ projects: CodeProject[] }>>
     addProject: (directory: string, name?: string) => Promise<CodeResult<{ projects: CodeProject[] }>>
     removeProject: (id: string) => Promise<CodeResult<{ projects: CodeProject[] }>>

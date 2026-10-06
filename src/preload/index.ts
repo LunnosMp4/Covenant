@@ -18,6 +18,7 @@ import type {
   WorkflowStatusUpdatePayload
 } from '../shared/domain/workflow'
 import type {
+  CodeAgent,
   CodeEngineEvent,
   CodeFileDiff,
   CodeModel,
@@ -325,6 +326,14 @@ const api = {
     listModels: () =>
       ipcRenderer.invoke('code:models') as Promise<
         { success: true; models: CodeModel[] } | { success: false; error: string }
+      >,
+    listAgents: () =>
+      ipcRenderer.invoke('code:agents:list') as Promise<
+        { success: true; agents: CodeAgent[] } | { success: false; error: string }
+      >,
+    switchAgent: (payload: { sessionId: string; agent: string }) =>
+      ipcRenderer.invoke('code:agents:switch', payload) as Promise<
+        { success: true } | { success: false; error: string }
       >,
     listProjects: () =>
       ipcRenderer.invoke('code:projects:list') as Promise<
