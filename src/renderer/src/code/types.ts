@@ -6,8 +6,11 @@ export interface ToolCard {
   callId: string
   name: string
   status: 'running' | 'completed' | 'error'
+  input?: string
   output?: string
+  title?: string
   error?: string
+  metadata?: Record<string, unknown>
 }
 
 export interface Note {

@@ -322,23 +322,45 @@ export class LocalCodeEngine implements CodeEngine {
         break
       case 'session.tool.input.ended':
       case 'session.next.tool.input.ended':
-        activity({ type: 'tool-input', callId, text: String(payload.text ?? '') })
+        // Carries the full raw argument JSON.
+        activity({ type: 'tool-input', callId, input: String(payload.text ?? '') })
         break
       case 'session.tool.called':
-      case 'session.next.tool.called':
-        activity({ type: 'tool-called', callId, toolName: String(payload.name ?? payload.tool ?? '') })
+      case 'session.next.tool.called': {
+        const name = String(payload.name ?? payload.tool ?? '')
+        activity({
+          type: 'tool-called',
+          callId,
+          ...(name ? { toolName: name } : {}),
+          input:
+            payload.input && typeof payload.input === 'object'
+              ? JSON.stringify(payload.input)
+              : undefined
+        })
         break
+      }
       case 'session.tool.progress':
       case 'session.next.tool.progress':
-        activity({ type: 'tool-progress', callId })
+        activity({ type: 'tool-progress', callId, metadata: toMetadata(payload.metadata) })
         break
       case 'session.tool.success':
       case 'session.next.tool.success':
-        activity({ type: 'tool-success', callId, output: stringifyContent(payload.content) })
+        activity({
+          type: 'tool-success',
+          callId,
+          output: stringifyContent(payload.content),
+          metadata: toMetadata(payload.metadata) ?? toMetadata(payload.resultState)
+        })
         break
       case 'session.tool.failed':
       case 'session.next.tool.failed':
-        activity({ type: 'tool-failed', callId, error: errorMessage(payload.error) })
+        activity({
+          type: 'tool-failed',
+          callId,
+          error: errorMessage(payload.error),
+          output: stringifyContent(payload.content),
+          metadata: toMetadata(payload.metadata) ?? toMetadata(payload.resultState)
+        })
         break
       case 'session.shell.started':
       case 'session.next.shell.started': {
@@ -383,6 +405,37 @@ export class LocalCodeEngine implements CodeEngine {
         activity({ type: 'status', status })
         break
       }
+      case 'session.usage.updated': {
+        const tokens = (payload.tokens && typeof payload.tokens === 'object' ? payload.tokens : {}) as Record<
+          string,
+          unknown
+        >
+        const cache = (tokens.cache && typeof tokens.cache === 'object' ? tokens.cache : {}) as Record<
+          string,
+          unknown
+        >
+        activity({
+          type: 'usage',
+          usage: {
+            input: toNumber(tokens.input),
+            output: toNumber(tokens.output),
+            reasoning: toNumber(tokens.reasoning),
+            cacheRead: toNumber(cache.read),
+            cacheWrite: toNumber(cache.write),
+            cost: typeof payload.cost === 'number' ? payload.cost : undefined
+          }
+        })
+        break
+      }
+      case 'session.model.selected':
+        activity({ type: 'model-selected', model: toModelRef(payload.model) })
+        break
+      case 'session.agent.selected':
+        activity({
+          type: 'agent-selected',
+          agent: typeof payload.agent === 'string' ? payload.agent : undefined
+        })
+        break
       case 'session.idle':
       case 'session.execution.succeeded':
       case 'session.next.interrupt.requested':
@@ -524,8 +577,13 @@ export class LocalCodeEngine implements CodeEngine {
       // order. Sort ascending by creation time, or reverse when the wire carries
       // no timestamps.
       const hasTimestamps = items.every((item) => typeof item.createdAt === 'number')
-      if (!hasTimestamps) return items.reverse()
-      return items.sort((a, b) => (a.createdAt as number) - (b.createdAt as number))
+      const ordered = hasTimestamps
+        ? items.sort((a, b) => (a.createdAt as number) - (b.createdAt as number))
+        : items.reverse()
+      // A single agent turn is stored as several assistant messages (one per
+      // step), which would render as multiple bubbles on reopen. Merge them into
+      // one assistant item so it matches the live single-bubble stream.
+      return coalesceTranscript(ordered)
     } catch (error) {
       log.warn('Failed to load OpenCode transcript', error)
       return []
@@ -663,6 +721,13 @@ function stringifyContent(raw: unknown): string {
   return parts.join('\n')
 }
 
+function toMetadata(raw: unknown): Record<string, unknown> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const entries = Object.entries(raw as Record<string, unknown>)
+  if (entries.length === 0) return undefined
+  return raw as Record<string, unknown>
+}
+
 function toModel(raw: unknown): CodeModel | null {
   if (!raw || typeof raw !== 'object') return null
   const obj = raw as Record<string, unknown>
@@ -761,13 +826,23 @@ function toTranscript(raw: unknown): CodeTranscriptItem | null {
       combinedReasoning = combinedReasoning ? `${combinedReasoning}\n${part.text}` : part.text
     } else if (partType === 'tool') {
       const state = (part.state ?? {}) as Record<string, unknown>
+      const errorObj =
+        state.error && typeof state.error === 'object'
+          ? (state.error as Record<string, unknown>)
+          : undefined
       tools.push({
         callId: String(part.id ?? ''),
         name: String(part.name ?? part.tool ?? 'tool'),
         status: toolStatusFromWire(state.status),
         input: state.input ? JSON.stringify(state.input) : undefined,
-        output: typeof state.output === 'string' ? state.output : undefined,
-        error: typeof state.error === 'string' ? state.error : undefined
+        output:
+          typeof state.output === 'string' ? state.output : stringifyContent(state.content),
+        title: typeof state.title === 'string' ? state.title : undefined,
+        error: errorObj
+          ? errorMessage(errorObj)
+          : typeof state.error === 'string'
+            ? state.error
+            : undefined
       })
     }
   }
@@ -796,6 +871,54 @@ function toTranscript(raw: unknown): CodeTranscriptItem | null {
     cost: typeof obj.cost === 'number' ? obj.cost : undefined,
     error: obj.error ? errorMessage(obj.error) : undefined
   }
+}
+
+function mergeTranscriptText(left: string | undefined, right: string | undefined): string {
+  const a = left?.trim() ?? ''
+  const b = right?.trim() ?? ''
+  if (!a) return b
+  if (!b) return a
+  return `${a}\n\n${b}`
+}
+
+function isEmptyAssistant(item: CodeTranscriptItem): boolean {
+  return (
+    item.role === 'assistant' &&
+    !item.text.trim() &&
+    !item.reasoning?.trim() &&
+    !(item.tools && item.tools.length > 0) &&
+    !item.error
+  )
+}
+
+/**
+ * Collapses consecutive assistant messages (one per agent step) into a single
+ * item so a reopened turn renders as one bubble, matching the live stream.
+ */
+function coalesceTranscript(items: CodeTranscriptItem[]): CodeTranscriptItem[] {
+  const merged: CodeTranscriptItem[] = []
+  for (const item of items) {
+    const previous = merged[merged.length - 1]
+    if (item.role === 'assistant' && previous?.role === 'assistant') {
+      const cost =
+        typeof previous.cost === 'number' || typeof item.cost === 'number'
+          ? (previous.cost ?? 0) + (item.cost ?? 0)
+          : undefined
+      merged[merged.length - 1] = {
+        ...previous,
+        text: mergeTranscriptText(previous.text, item.text),
+        reasoning: mergeTranscriptText(previous.reasoning, item.reasoning) || undefined,
+        tools: [...(previous.tools ?? []), ...(item.tools ?? [])],
+        agent: previous.agent ?? item.agent,
+        model: previous.model ?? item.model,
+        cost,
+        error: previous.error ?? item.error
+      }
+      continue
+    }
+    merged.push(item)
+  }
+  return merged.filter((item) => !isEmptyAssistant(item))
 }
 
 function toolStatusFromWire(raw: unknown): CodeTranscriptTool['status'] {

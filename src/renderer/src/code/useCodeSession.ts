@@ -34,6 +34,7 @@ export function useCodeSession(): {
   transcript: CodeTranscriptItem[]
   stream: StreamingState
   usage: CodeUsage | null
+  liveCost: number | null
   permissions: CodePermissionRequest[]
   diffs: CodeFileDiff[]
   totals: { additions: number; deletions: number }
@@ -68,6 +69,7 @@ export function useCodeSession(): {
   const [transcript, setTranscript] = useState<CodeTranscriptItem[]>([])
   const [stream, setStream] = useState<StreamingState>(EMPTY_STREAM)
   const [usage, setUsage] = useState<CodeUsage | null>(null)
+  const [liveCost, setLiveCost] = useState<number | null>(null)
   const [permissions, setPermissions] = useState<CodePermissionRequest[]>([])
   const [diffs, setDiffs] = useState<CodeFileDiff[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -274,6 +276,27 @@ export function useCodeSession(): {
         setUsage(activity.usage)
       }
 
+      if (activity.type === 'usage') {
+        if (activity.usage) {
+          setUsage(activity.usage)
+          if (typeof activity.usage.cost === 'number') setLiveCost(activity.usage.cost)
+        }
+        return
+      }
+
+      if (activity.type === 'model-selected') {
+        if (activity.model) {
+          setSelectedModel(`${activity.model.providerID}/${activity.model.id}`)
+          setSelectedVariant(activity.model.variant ?? '')
+        }
+        return
+      }
+
+      if (activity.type === 'agent-selected') {
+        if (activity.agent) setSelectedAgent(activity.agent)
+        return
+      }
+
       if (activity.type === 'done') {
         const finished = streamRef.current
         if (finished.text || finished.reasoning || finished.tools.length > 0) {
@@ -301,7 +324,8 @@ export function useCodeSession(): {
         activity.type === 'tool-success' ||
         activity.type === 'tool-failed'
       ) {
-        scheduleDiffRefresh(activity.sessionId)
+        // `filesystem.changed` carries no session id — fall back to the active one.
+        scheduleDiffRefresh(activity.sessionId || activeSessionRef.current?.id || '')
       }
     })
 
@@ -359,6 +383,7 @@ export function useCodeSession(): {
       setTranscript([])
       setStream(EMPTY_STREAM)
       setUsage(null)
+      setLiveCost(null)
       setDiffs([])
       setPermissions([])
     } else {
@@ -372,6 +397,7 @@ export function useCodeSession(): {
       setActiveSession(session)
       setStream(EMPTY_STREAM)
       setUsage(null)
+      setLiveCost(null)
       setPermissions([])
       setError(null)
       if (session.agent) setSelectedAgent(session.agent)
@@ -485,6 +511,7 @@ export function useCodeSession(): {
         setActiveSession(created.session)
         setTranscript([])
         setUsage(null)
+        setLiveCost(null)
         setDiffs([])
       }
 
@@ -558,6 +585,7 @@ export function useCodeSession(): {
     transcript,
     stream,
     usage,
+    liveCost,
     permissions,
     diffs,
     totals,
@@ -590,7 +618,9 @@ function finishedToTranscriptItem(stream: StreamingState): CodeTranscriptItem {
       callId: tool.callId,
       name: tool.name,
       status: tool.status === 'running' ? 'completed' : tool.status,
+      input: tool.input,
       output: tool.output,
+      title: tool.title,
       error: tool.error
     })),
     createdAt: Date.now()
@@ -609,14 +639,26 @@ function applyActivity(current: StreamingState, activity: CodeActivityEvent): St
       return { ...current, reasoning: activity.text ?? current.reasoning }
     case 'tool-input': {
       if (!activity.callId) return current
-      const tools = upsertTool(current.tools, activity.callId, { name: activity.toolName })
+      const patch: Partial<ToolCard> = {}
+      if (activity.toolName) patch.name = activity.toolName
+      if (activity.input) patch.input = activity.input
+      if (Object.keys(patch).length === 0) return current
+      const tools = upsertTool(current.tools, activity.callId, patch)
       return { ...current, tools }
     }
     case 'tool-called': {
       if (!activity.callId) return current
+      const patch: Partial<ToolCard> = { status: 'running' }
+      if (activity.toolName) patch.name = activity.toolName
+      if (activity.input) patch.input = activity.input
+      const tools = upsertTool(current.tools, activity.callId, patch)
+      return { ...current, tools }
+    }
+    case 'tool-progress': {
+      if (!activity.callId) return current
       const tools = upsertTool(current.tools, activity.callId, {
-        name: activity.toolName,
-        status: 'running'
+        status: 'running',
+        metadata: activity.metadata
       })
       return { ...current, tools }
     }
@@ -624,7 +666,8 @@ function applyActivity(current: StreamingState, activity: CodeActivityEvent): St
       if (!activity.callId) return current
       const tools = upsertTool(current.tools, activity.callId, {
         status: 'completed',
-        output: activity.output
+        output: activity.output,
+        metadata: activity.metadata
       })
       return { ...current, tools }
     }
@@ -632,7 +675,9 @@ function applyActivity(current: StreamingState, activity: CodeActivityEvent): St
       if (!activity.callId) return current
       const tools = upsertTool(current.tools, activity.callId, {
         status: 'error',
-        error: activity.error
+        error: activity.error,
+        output: activity.output,
+        metadata: activity.metadata
       })
       return { ...current, tools }
     }
@@ -668,9 +713,12 @@ function applyActivity(current: StreamingState, activity: CodeActivityEvent): St
 function upsertTool(tools: ToolCard[], callId: string, patch: Partial<ToolCard>): ToolCard[] {
   const idx = tools.findIndex((tool) => tool.callId === callId)
   if (idx < 0) {
-    return [...tools, { callId, name: patch.name ?? 'tool', status: patch.status ?? 'running', ...patch }]
+    return [...tools, { callId, name: patch.name || 'tool', status: patch.status ?? 'running', ...patch }]
   }
   const next = [...tools]
-  next[idx] = { ...next[idx], ...patch }
+  const merged = { ...next[idx], ...patch }
+  // Never let an empty patch name clobber a known tool name.
+  if (!merged.name) merged.name = next[idx].name || 'tool'
+  next[idx] = merged
   return next
 }

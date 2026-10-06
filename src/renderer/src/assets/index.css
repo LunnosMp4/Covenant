@@ -815,3 +815,217 @@ body[data-window='paste'] [contenteditable='true'],
 [data-theme='light'] .terminal-surface .text-emerald-400 {
   color: #34d399;
 }
+
+/* ── Covenant Code: tool activity ── */
+.code-tool-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 8px;
+}
+
+.code-tool {
+  min-width: 0;
+}
+
+.code-tool-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  padding: 2px 4px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--chat-meta-text);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.code-tool-row:disabled {
+  cursor: default;
+}
+
+.code-tool-row:not(:disabled):hover {
+  background: rgb(var(--n-50) / 0.05);
+}
+
+.code-tool-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 14px;
+  color: var(--chat-meta-text);
+}
+
+.code-tool-kind-icon {
+  color: var(--chat-meta-text);
+}
+
+.code-tool-kind-icon--error {
+  color: #f87171;
+}
+
+.code-tool-label {
+  flex-shrink: 0;
+  font-weight: 500;
+  color: rgb(var(--n-50) / 0.7);
+}
+
+.code-tool-target {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--chat-meta-text);
+}
+
+.code-tool-state {
+  flex-shrink: 0;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.7;
+}
+
+.code-tool-state--error {
+  color: #f87171;
+  opacity: 1;
+}
+
+.code-tool--error .code-tool-label {
+  color: #f87171;
+}
+
+.code-tool-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 0 6px 20px;
+}
+
+.code-tool-note {
+  font-size: 11px;
+  color: var(--chat-meta-text);
+}
+
+.code-tool-args,
+.code-tool-output {
+  margin: 0;
+  max-height: 200px;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid rgb(var(--n-50) / 0.06);
+  border-radius: 8px;
+  background: rgb(var(--n-950) / 0.5);
+  color: rgb(var(--n-50) / 0.7);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.code-tool-error {
+  padding: 6px 8px;
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  border-radius: 8px;
+  background: rgba(248, 113, 113, 0.08);
+  color: #f87171;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.code-tool-group-body {
+  margin-left: 12px;
+  padding-left: 8px;
+  border-left: 1px solid rgb(var(--n-50) / 0.08);
+}
+
+.code-tool-diff {
+  overflow: hidden;
+  border: 1px solid rgb(var(--n-50) / 0.08);
+  border-radius: 8px;
+}
+
+.code-tool-diff-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 10px;
+  border-bottom: 1px solid rgb(var(--n-50) / 0.06);
+  background: rgb(var(--n-950) / 0.4);
+  color: var(--chat-meta-text);
+  font-size: 11px;
+}
+
+/* ── Diff rendering ── */
+.code-diff {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  background: rgb(var(--n-950) / 0.55);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.code-diff-line {
+  display: flex;
+  align-items: flex-start;
+  white-space: pre;
+}
+
+.code-diff-gutter {
+  flex-shrink: 0;
+  width: 18px;
+  text-align: center;
+  user-select: none;
+  color: rgb(var(--n-50) / 0.35);
+}
+
+.code-diff-content {
+  flex: 1;
+  min-width: 0;
+  padding-right: 10px;
+}
+
+.code-diff-line--add {
+  background: rgba(52, 211, 153, 0.1);
+}
+
+.code-diff-line--add .code-diff-gutter {
+  color: #34d399;
+}
+
+.code-diff-line--del {
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.code-diff-line--del .code-diff-gutter {
+  color: #f87171;
+}
+
+.code-diff-line--hunk {
+  background: rgb(var(--n-50) / 0.04);
+  color: rgb(var(--n-50) / 0.45);
+}
+
+.code-diff-line--meta {
+  color: rgb(var(--n-50) / 0.4);
+}
+
+.code-diff-more {
+  padding: 4px 10px;
+  color: var(--chat-meta-text);
+}

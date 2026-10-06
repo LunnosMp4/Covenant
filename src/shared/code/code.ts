@@ -101,6 +101,9 @@ export type CodeActivityType =
   | 'step-ended'
   | 'compaction'
   | 'status'
+  | 'usage'
+  | 'model-selected'
+  | 'agent-selected'
   | 'error'
   | 'done'
 
@@ -130,6 +133,14 @@ export interface CodeActivityEvent {
   output?: string
   error?: string
   usage?: CodeUsage
+  /** Raw tool arguments as JSON (from tool input events). */
+  input?: string
+  /** Tool-specific structured data (progress/result metadata). */
+  metadata?: Record<string, unknown>
+  /** Selected model ref, for model-selected events. */
+  model?: CodeModelRef
+  /** Selected agent id, for agent-selected events. */
+  agent?: string
   timestamp: number
 }
 

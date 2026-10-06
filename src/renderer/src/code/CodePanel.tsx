@@ -11,6 +11,7 @@ import CodeConversation from './CodeConversation'
 import CodeNavMenu from './CodeNavMenu'
 import CodeProjectsSidebar from './CodeProjectsSidebar'
 import CodeInfoSidebar from './CodeInfoSidebar'
+import CodeChangesSidebar from './CodeChangesSidebar'
 import { DiffIcon, PlusIcon, SessionIcon } from './icons'
 import { useCodeSession } from './useCodeSession'
 
@@ -84,7 +85,8 @@ export default function CodePanel({
     session.models.find((model) => `${model.providerID}/${model.id}` === sessionModelId) ?? null
   const modelLabel = activeModel?.label ?? (sessionModelId || null)
   const transcriptCost = session.transcript.reduce((sum, item) => sum + (item.cost ?? 0), 0)
-  const cost = session.activeSession?.cost ?? (transcriptCost > 0 ? transcriptCost : null)
+  const cost =
+    session.liveCost ?? session.activeSession?.cost ?? (transcriptCost > 0 ? transcriptCost : null)
   const contextLimit = activeModel?.maxContextTokens ?? 0
   const codeStats: ContextStats | null = contextLimit
     ? {
@@ -290,7 +292,7 @@ export default function CodePanel({
               )}
             </button>
 
-            {changesOpen && (
+            {changesOpen && !isWide && (
               <div className="absolute right-0 top-10 z-30 w-80 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/95 shadow-xl shadow-black/50">
                 <div className="flex items-center justify-between px-3 py-2">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">
@@ -372,6 +374,7 @@ export default function CodePanel({
                 <CodeConversation
                   transcript={session.transcript}
                   stream={session.stream}
+                  diffs={session.diffs}
                   scrollRef={scrollRef}
                   onScroll={handleScroll}
                 />
@@ -379,21 +382,26 @@ export default function CodePanel({
                 emptyState
               )}
             </div>
-            <div className="h-full w-56 shrink-0 overflow-hidden border-l border-white/5 pl-3">
-              <CodeInfoSidebar
-                modelLabel={modelLabel}
-                variant={sessionModelRef?.variant ?? null}
-                agent={session.activeSession?.agent}
-                contextLimit={activeModel?.maxContextTokens}
-                usage={session.usage}
-                cost={cost}
-              />
+            <div className="h-full w-64 shrink-0 overflow-hidden border-l border-white/5 pl-3">
+              {changesOpen ? (
+                <CodeChangesSidebar diffs={session.diffs} totals={session.totals} />
+              ) : (
+                <CodeInfoSidebar
+                  modelLabel={modelLabel}
+                  variant={sessionModelRef?.variant ?? null}
+                  agent={session.activeSession?.agent}
+                  contextLimit={activeModel?.maxContextTokens}
+                  usage={session.usage}
+                  cost={cost}
+                />
+              )}
             </div>
           </div>
         ) : session.activeSession ? (
           <CodeConversation
             transcript={session.transcript}
             stream={session.stream}
+            diffs={session.diffs}
             scrollRef={scrollRef}
             onScroll={handleScroll}
           />

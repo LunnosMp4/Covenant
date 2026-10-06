@@ -1,12 +1,14 @@
 import { useState, type RefObject } from 'react'
-import type { CodeTranscriptItem, CodeTranscriptTool } from '../../../shared/code/code'
+import type { CodeFileDiff, CodeTranscriptItem, CodeTranscriptTool } from '../../../shared/code/code'
 import { AssistantMarkdown, CopyButton } from '../chat/AssistantMarkdown'
-import { SpinnerIcon, ToolIcon } from '../ui/icons'
+import { SpinnerIcon } from '../ui/icons'
+import ToolActivityList from './ToolActivity'
 import type { Note, StreamingState, ToolCard } from './types'
 
 interface CodeConversationProps {
   transcript: CodeTranscriptItem[]
   stream: StreamingState
+  diffs: CodeFileDiff[]
   scrollRef: RefObject<HTMLDivElement>
   onScroll: () => void
 }
@@ -65,44 +67,8 @@ function ReasoningBlock({
   )
 }
 
-function ToolRow({ tool }: { tool: ToolCard }): JSX.Element {
-  const hasDetails = Boolean(tool.output || tool.error)
-  const [open, setOpen] = useState(false)
-  const isError = tool.status === 'error'
-
-  return (
-    <div className="chat-thinking-tool">
-      {tool.status === 'running' ? (
-        <SpinnerIcon />
-      ) : (
-        <ToolIcon className={`chat-thinking-tool-icon${isError ? ' chat-thinking-tool-icon--error' : ''}`} />
-      )}
-      <div className="chat-thinking-tool-content">
-        <button
-          type="button"
-          className="flex w-full items-center gap-1.5 text-left"
-          onClick={() => hasDetails && setOpen((value) => !value)}
-        >
-          <span className="chat-thinking-tool-name">{tool.name || 'tool'}</span>
-          <span className="text-[11px] text-[var(--chat-meta-text)] opacity-70">{tool.status}</span>
-          {hasDetails && <Chevron open={open} />}
-        </button>
-        {open && tool.output && (
-          <pre className="chat-thinking-tool-result whitespace-pre-wrap break-words">{tool.output}</pre>
-        )}
-        {open && tool.error && (
-          <div className="chat-thinking-tool-result chat-thinking-tool-result--error">{tool.error}</div>
-        )}
-      </div>
-    </div>
-  )
-}
-
 function NoteRow({ note }: { note: Note }): JSX.Element {
-  const color =
-    note.tone === 'error'
-      ? 'text-red-400'
-      : 'text-[var(--chat-meta-text)]'
+  const color = note.tone === 'error' ? 'text-red-400' : 'text-[var(--chat-meta-text)]'
   const mono = note.tone === 'shell' || note.tone === 'file'
   return (
     <p className={`whitespace-pre-wrap pl-1 text-[11px] leading-relaxed ${color} ${mono ? 'font-mono' : ''}`}>
@@ -116,12 +82,14 @@ function toToolCard(tool: CodeTranscriptTool): ToolCard {
     callId: tool.callId,
     name: tool.name,
     status: tool.status === 'pending' ? 'running' : tool.status,
+    input: tool.input,
     output: tool.output,
+    title: tool.title,
     error: tool.error
   }
 }
 
-function TranscriptBlock({ item }: { item: CodeTranscriptItem }): JSX.Element {
+function TranscriptBlock({ item, diffs }: { item: CodeTranscriptItem; diffs: CodeFileDiff[] }): JSX.Element {
   if (item.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -146,7 +114,9 @@ function TranscriptBlock({ item }: { item: CodeTranscriptItem }): JSX.Element {
     <div className="flex justify-start">
       <div className="chat-message chat-message--assistant max-w-[78%] rounded-2xl border px-3 py-2 text-[13px] leading-relaxed select-text">
         {item.reasoning && <ReasoningBlock text={item.reasoning} defaultOpen={false} />}
-        {item.tools?.map((tool) => <ToolRow key={tool.callId} tool={toToolCard(tool)} />)}
+        {item.tools && item.tools.length > 0 && (
+          <ToolActivityList tools={item.tools.map(toToolCard)} diffs={diffs} />
+        )}
         {item.text && <AssistantMarkdown content={item.text} />}
         {item.error && <p className="text-xs text-red-400">{item.error}</p>}
         <div className="chat-message-meta flex items-center gap-2">
@@ -160,7 +130,7 @@ function TranscriptBlock({ item }: { item: CodeTranscriptItem }): JSX.Element {
   )
 }
 
-function StreamBlock({ stream }: { stream: StreamingState }): JSX.Element {
+function StreamBlock({ stream, diffs }: { stream: StreamingState; diffs: CodeFileDiff[] }): JSX.Element {
   const hasContent =
     Boolean(stream.text) || Boolean(stream.reasoning) || stream.tools.length > 0 || stream.notes.length > 0
   if (!hasContent && !stream.error) return <></>
@@ -169,9 +139,7 @@ function StreamBlock({ stream }: { stream: StreamingState }): JSX.Element {
     <div className="flex justify-start">
       <div className="chat-message chat-message--assistant max-w-[78%] rounded-2xl border px-3 py-2 text-[13px] leading-relaxed select-text">
         {stream.reasoning && <ReasoningBlock text={stream.reasoning} streaming defaultOpen />}
-        {stream.tools.map((tool) => (
-          <ToolRow key={tool.callId} tool={tool} />
-        ))}
+        {stream.tools.length > 0 && <ToolActivityList tools={stream.tools} diffs={diffs} />}
         {stream.notes.map((note) => (
           <NoteRow key={note.id} note={note} />
         ))}
@@ -185,10 +153,16 @@ function StreamBlock({ stream }: { stream: StreamingState }): JSX.Element {
 export default function CodeConversation({
   transcript,
   stream,
+  diffs,
   scrollRef,
   onScroll
 }: CodeConversationProps): JSX.Element {
-  const isEmpty = transcript.length === 0 && !stream.text && !stream.reasoning && stream.tools.length === 0 && stream.notes.length === 0
+  const isEmpty =
+    transcript.length === 0 &&
+    !stream.text &&
+    !stream.reasoning &&
+    stream.tools.length === 0 &&
+    stream.notes.length === 0
 
   return (
     <div ref={scrollRef} onScroll={onScroll} className="h-full overflow-y-auto px-4 py-3 chat-scrollbar">
@@ -197,9 +171,9 @@ export default function CodeConversation({
       ) : (
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
           {transcript.map((item) => (
-            <TranscriptBlock key={item.id} item={item} />
+            <TranscriptBlock key={item.id} item={item} diffs={diffs} />
           ))}
-          <StreamBlock stream={stream} />
+          <StreamBlock stream={stream} diffs={diffs} />
           {stream.busy && !stream.text && !stream.reasoning && stream.tools.length === 0 && (
             <div className="flex items-center gap-2 py-2 text-xs text-neutral-500">
               <SpinnerIcon /> Working…
