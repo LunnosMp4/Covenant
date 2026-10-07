@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { CodeModel, CodePermissionEffect, CodeSettings, CodeStatus } from '../../../../shared/code/code'
 import { CODE_PERMISSION_EFFECTS } from '../../../../shared/code/code'
+import type { CodeConnection } from '../../../../shared/code/connection'
+import CodeConnectionModal from '../../code/CodeConnectionModal'
 import { MinimalistToggle, SectionCard } from '../primitives'
 
 interface CodeTabProps {
@@ -38,6 +40,59 @@ export default function CodeTab({
   const [authBusy, setAuthBusy] = useState(false)
   const [testMessage, setTestMessage] = useState<string | null>(null)
   const [restartMessage, setRestartMessage] = useState<string | null>(null)
+  const [connections, setConnections] = useState<CodeConnection[]>([])
+  const [activeConnectionId, setActiveConnectionId] = useState('local')
+  const [editingConnection, setEditingConnection] = useState<CodeConnection | null>(null)
+  const [addingConnection, setAddingConnection] = useState(false)
+  const [connectionMessage, setConnectionMessage] = useState<string | null>(null)
+
+  const loadConnections = useCallback(async () => {
+    const result = await window.api?.code?.listConnections()
+    if (result?.success) {
+      setConnections(result.connections)
+      setActiveConnectionId(result.activeConnectionId)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadConnections()
+  }, [loadConnections])
+
+  const handleSelectConnection = async (id: string): Promise<void> => {
+    const result = await window.api?.code?.selectConnection(id)
+    if (result?.success) {
+      setActiveConnectionId(result.activeConnectionId)
+      setConnectionMessage(null)
+    } else {
+      setConnectionMessage(result?.error ?? 'Could not switch machine.')
+    }
+  }
+
+  const handleDeleteConnection = async (id: string): Promise<void> => {
+    const result = await window.api?.code?.removeConnection(id)
+    if (result?.success) {
+      setConnections(result.connections)
+      setActiveConnectionId(result.activeConnectionId)
+      setConnectionMessage(null)
+    } else {
+      setConnectionMessage(result?.error ?? 'Could not remove machine.')
+    }
+  }
+
+  const handleTestConnection = async (id: string): Promise<void> => {
+    setConnectionMessage('Testing…')
+    const result = await window.api?.code?.testMachine(id)
+    if (result?.success) {
+      const status = result.status
+      setConnectionMessage(
+        status.ready
+          ? `Connected${status.version ? ` · OpenCode ${status.version}` : ''}`
+          : `Reachable, but OpenCode did not start: ${status.error ?? 'unknown error'}`
+      )
+    } else {
+      setConnectionMessage(result?.error ?? 'Connection failed.')
+    }
+  }
 
   const selectedModel = models.find(
     (model) => `${model.providerID}/${model.id}` === settings.defaultModel
@@ -113,6 +168,83 @@ export default function CodeTab({
           </div>
           {testMessage && <p className="text-xs text-neutral-400">{testMessage}</p>}
           {restartMessage && <p className="text-xs text-neutral-400">{restartMessage}</p>}
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Machines"
+        description="Run Covenant Code here or on a remote machine over SSH. Only one machine is active at a time."
+      >
+        <div className="space-y-2">
+          {connections.map((connection) => {
+            const isActive = connection.id === activeConnectionId
+            return (
+              <div
+                key={connection.id}
+                className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2 ${
+                  isActive ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-neutral-800 bg-neutral-950/50'
+                }`}
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-neutral-100">
+                    {connection.name}
+                    {isActive && <span className="ml-2 text-[11px] text-emerald-400">Active</span>}
+                  </p>
+                  <p className="truncate text-xs text-neutral-500">
+                    {connection.kind === 'local'
+                      ? 'This computer'
+                      : `${connection.username}@${connection.host}:${connection.port}`}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {!isActive && (
+                    <button
+                      type="button"
+                      onClick={() => void handleSelectConnection(connection.id)}
+                      className="rounded-md border border-neutral-700 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
+                    >
+                      Use
+                    </button>
+                  )}
+                  {connection.kind === 'ssh' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => void handleTestConnection(connection.id)}
+                        className="rounded-md border border-neutral-700 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
+                      >
+                        Test
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingConnection(connection)}
+                        className="rounded-md border border-neutral-700 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteConnection(connection.id)}
+                        className="rounded-md border border-red-500/40 px-2 py-1 text-xs text-red-300 hover:bg-red-500/10"
+                      >
+                        Remove
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+          <div className="flex items-center justify-between pt-1">
+            <button
+              type="button"
+              onClick={() => setAddingConnection(true)}
+              className="rounded-md border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800"
+            >
+              Add machine over SSH
+            </button>
+            {connectionMessage && <p className="text-xs text-neutral-400">{connectionMessage}</p>}
+          </div>
         </div>
       </SectionCard>
 
@@ -239,6 +371,22 @@ export default function CodeTab({
           </label>
         </div>
       </SectionCard>
+
+      {(addingConnection || editingConnection) && (
+        <CodeConnectionModal
+          connection={editingConnection ?? undefined}
+          onClose={() => {
+            setAddingConnection(false)
+            setEditingConnection(null)
+          }}
+          onSaved={() => {
+            setAddingConnection(false)
+            setEditingConnection(null)
+            setConnectionMessage(null)
+            void loadConnections()
+          }}
+        />
+      )}
     </div>
   )
 }

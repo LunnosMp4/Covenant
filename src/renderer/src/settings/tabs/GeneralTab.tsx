@@ -421,6 +421,26 @@ export default function GeneralTab({
               onReset={() => onShortcutChange('openCode', DEFAULT_SHORTCUTS.openCode)}
             />
           </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-neutral-300">
+              Toggle Code Mode
+            </label>
+            <p className="mb-2 text-xs text-neutral-500">
+              Switches Covenant Code between Build and Plan mode while the coding surface is open.
+            </p>
+            <ShortcutRecorder
+              value={shortcuts.toggleCodeMode}
+              onChange={(val) => onShortcutChange('toggleCodeMode', val)}
+              conflictWarning={
+                shortcuts.toggleCodeMode && shortcuts.openApp && shortcuts.toggleCodeMode === shortcuts.openApp
+                  ? 'This shortcut is also assigned to Open App'
+                  : null
+              }
+              defaultShortcut={DEFAULT_SHORTCUTS.toggleCodeMode}
+              onReset={() => onShortcutChange('toggleCodeMode', DEFAULT_SHORTCUTS.toggleCodeMode)}
+            />
+          </div>
         </div>
       </SectionCard>
     </div>

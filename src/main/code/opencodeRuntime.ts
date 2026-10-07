@@ -7,15 +7,9 @@ import { app } from 'electron'
 import { EventEmitter } from 'events'
 import { log } from '../logger'
 import { readBinaryVersion, resolveOpenCodeBinary, type ResolvedBinary } from './opencodeBinary'
+import type { CodeRuntime, RuntimeInfo } from './codeRuntime'
 
-export interface RuntimeInfo {
-  baseUrl: string
-  username: string
-  password: string
-  pid?: number
-  version?: string
-  binaryPath?: string
-}
+export type { RuntimeInfo } from './codeRuntime'
 
 const START_TIMEOUT_MS = 20000
 const HEALTH_POLL_MS = 300
@@ -38,7 +32,7 @@ async function findFreePort(): Promise<number> {
   })
 }
 
-export class OpenCodeRuntime extends EventEmitter {
+export class OpenCodeRuntime extends EventEmitter implements CodeRuntime {
   private child?: ChildProcessWithoutNullStreams
   private info?: RuntimeInfo
   private logs: string[] = []

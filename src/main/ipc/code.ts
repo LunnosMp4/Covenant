@@ -5,8 +5,18 @@ import { getLogFilePath } from '../logger'
 import { normalizeCodeSettings } from '../../shared/code/codeNormalizers'
 import type { CodeFormValue, CodeSettings } from '../../shared/code/code'
 import { addCodeProject, getCodeProjects, removeCodeProject } from '../features/codeProjects'
+import {
+  addCodeConnection,
+  getActiveConnectionId,
+  getCodeConnections,
+  removeCodeConnection,
+  updateCodeConnection
+} from '../features/codeConnections'
 import { getCodeService } from '../code/codeService'
 import type { CodeEngineEvent } from '../code/codeEngine'
+import { clearSshCredential, saveSshCredential } from '../code/ssh/sshCredentials'
+import { browseRemote, disposeBrowseSession, statRemote } from '../code/ssh/remoteBrowse'
+import { LOCAL_CONNECTION_ID } from '../../shared/code/connection'
 
 const codeSubscribers = new Set<Electron.WebContents>()
 let serviceSubscribed = false
@@ -135,9 +145,22 @@ export function registerCodeIpc(): void {
     }
   })
 
-  ipcMain.handle('code:projects:add', (_event, payload: unknown) => {
+  ipcMain.handle('code:projects:add', async (_event, payload: unknown) => {
     try {
-      const projects = addCodeProject((payload ?? {}) as { directory?: unknown; name?: unknown })
+      const raw = (payload ?? {}) as Record<string, unknown>
+      const connectionId =
+        typeof raw.connectionId === 'string' && raw.connectionId
+          ? raw.connectionId
+          : LOCAL_CONNECTION_ID
+      const directory = typeof raw.directory === 'string' ? raw.directory.trim() : ''
+      if (connectionId !== LOCAL_CONNECTION_ID) {
+        const type = await statRemote(connectionId, directory)
+        if (type !== 'dir') throw new Error(`Not a directory: ${directory}`)
+      }
+      const projects = addCodeProject(
+        { directory, name: raw.name, connectionId },
+        { validateLocal: connectionId === LOCAL_CONNECTION_ID }
+      )
       return { success: true as const, projects }
     } catch (error) {
       return errorResult(error)
@@ -147,6 +170,127 @@ export function registerCodeIpc(): void {
   ipcMain.handle('code:projects:remove', (_event, id: unknown) => {
     try {
       return { success: true as const, projects: removeCodeProject(id) }
+    } catch (error) {
+      return errorResult(error)
+    }
+  })
+
+  ipcMain.handle('code:connections:list', () => {
+    try {
+      return {
+        success: true as const,
+        connections: getCodeConnections(),
+        activeConnectionId: getActiveConnectionId()
+      }
+    } catch (error) {
+      return errorResult(error)
+    }
+  })
+
+  ipcMain.handle('code:connections:add', (_event, payload: unknown) => {
+    try {
+      const connections = addCodeConnection((payload ?? {}) as Record<string, unknown>)
+      return { success: true as const, connections, activeConnectionId: getActiveConnectionId() }
+    } catch (error) {
+      return errorResult(error)
+    }
+  })
+
+  ipcMain.handle('code:connections:update', (_event, payload: unknown) => {
+    try {
+      const raw = (payload ?? {}) as Record<string, unknown>
+      const id = typeof raw.id === 'string' ? raw.id : ''
+      if (!id) throw new Error('A connection id is required')
+      const connections = updateCodeConnection(id, (raw.patch ?? {}) as Record<string, unknown>)
+      // Host/auth may have changed; drop any cached browse session.
+      disposeBrowseSession(id)
+      return { success: true as const, connections }
+    } catch (error) {
+      return errorResult(error)
+    }
+  })
+
+  ipcMain.handle('code:connections:remove', async (_event, id: unknown) => {
+    try {
+      const targetId = typeof id === 'string' ? id : ''
+      if (!targetId) throw new Error('A connection id is required')
+      const wasActive = getActiveConnectionId() === targetId
+      const connections = removeCodeConnection(targetId)
+      disposeBrowseSession(targetId)
+      clearSshCredential(targetId)
+      if (wasActive) {
+        await requireService().switchConnection(LOCAL_CONNECTION_ID)
+      }
+      return { success: true as const, connections, activeConnectionId: getActiveConnectionId() }
+    } catch (error) {
+      return errorResult(error)
+    }
+  })
+
+  ipcMain.handle('code:connections:select', async (_event, id: unknown) => {
+    try {
+      const targetId = typeof id === 'string' ? id : ''
+      if (!targetId) throw new Error('A connection id is required')
+      await requireService().switchConnection(targetId)
+      return {
+        success: true as const,
+        activeConnectionId: requireService().getActiveConnectionId()
+      }
+    } catch (error) {
+      return errorResult(error)
+    }
+  })
+
+  ipcMain.handle('code:connections:test', async (_event, id: unknown) => {
+    try {
+      const targetId = typeof id === 'string' ? id : ''
+      if (!targetId) throw new Error('A connection id is required')
+      const status = await requireService().testConnection(targetId)
+      return { success: true as const, status }
+    } catch (error) {
+      return errorResult(error)
+    }
+  })
+
+  ipcMain.handle('code:connections:set-credential', (_event, payload: unknown) => {
+    try {
+      const raw = (payload ?? {}) as Record<string, unknown>
+      const id = typeof raw.id === 'string' ? raw.id : ''
+      if (!id) throw new Error('A connection id is required')
+      saveSshCredential(id, {
+        password: typeof raw.password === 'string' ? raw.password : undefined,
+        passphrase: typeof raw.passphrase === 'string' ? raw.passphrase : undefined
+      })
+      return { success: true as const }
+    } catch (error) {
+      return errorResult(error)
+    }
+  })
+
+  ipcMain.handle('code:remote:browse', async (_event, payload: unknown) => {
+    try {
+      const raw = (payload ?? {}) as Record<string, unknown>
+      const connectionId = typeof raw.connectionId === 'string' ? raw.connectionId : ''
+      if (!connectionId) throw new Error('A connection id is required')
+      const path = typeof raw.path === 'string' ? raw.path : undefined
+      const result = await browseRemote(connectionId, path)
+      return { success: true as const, ...result }
+    } catch (error) {
+      return errorResult(error)
+    }
+  })
+
+  ipcMain.handle('code:pick-file', async (event) => {
+    try {
+      const window = BrowserWindow.fromWebContents(event.sender) ?? undefined
+      const options: Electron.OpenDialogOptions = { properties: ['openFile', 'showHiddenFiles'] }
+      const result = window
+        ? await dialog.showOpenDialog(window, options)
+        : await dialog.showOpenDialog(options)
+      if (result.canceled || result.filePaths.length === 0) {
+        return { success: true as const, path: undefined }
+      }
+      return { success: true as const, path: result.filePaths[0] }
     } catch (error) {
       return errorResult(error)
     }

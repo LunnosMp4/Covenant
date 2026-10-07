@@ -672,6 +672,11 @@ function openCodeSurface(): void {
   mainWindow.webContents.send('open-code')
 }
 
+function toggleCodeMode(): void {
+  if (!mainWindow) return
+  mainWindow.webContents.send('toggle-code-mode')
+}
+
 function getShortcutDisplay(shortcut: string): string {
   return shortcut || 'Disabled'
 }
@@ -740,6 +745,17 @@ export function registerShortcuts(config: AppConfig): void {
       }
     } catch (error) {
       console.warn(`Error registering global shortcut '${shortcuts.openCode}':`, error)
+    }
+  }
+
+  if (shortcuts.toggleCodeMode) {
+    try {
+      const ok = globalShortcut.register(shortcuts.toggleCodeMode, toggleCodeMode)
+      if (!ok) {
+        console.warn(`Failed to register global shortcut: ${shortcuts.toggleCodeMode} (may conflict with another app)`)
+      }
+    } catch (error) {
+      console.warn(`Error registering global shortcut '${shortcuts.toggleCodeMode}':`, error)
     }
   }
 

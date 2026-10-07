@@ -30,8 +30,20 @@ import type {
   CodeStatus,
   CodeTranscriptItem
 } from '../../../shared/code/code'
+import type {
+  CodeConnection,
+  CodeConnectionStatus,
+  RemoteBrowseResult
+} from '../../../shared/code/connection'
 
 type CodeResult<T> = ({ success: true } & T) | { success: false; error: string }
+
+type CodeStatusWithConnection = CodeStatus & {
+  hasApiKey: boolean
+  connectionId?: string
+  connectionKind?: 'local' | 'ssh'
+  connectionName?: string
+}
 
 interface CovenantAPI {
   platform: string
@@ -45,6 +57,7 @@ interface CovenantAPI {
     closeSettings: () => void
     minimizeSettings: () => void
     onOpenCode: (callback: () => void) => () => void
+    onToggleCodeMode: (callback: () => void) => () => void
     onNavigateSettingsTab: (callback: (tab: string) => void) => () => void
     onSettingsShown: (callback: (isRestore: boolean) => void) => () => void
     onToggleVisibility: (
@@ -194,9 +207,9 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
   code: {
     subscribe: () => void
     onEvent: (callback: (event: CodeEngineEvent) => void) => () => void
-    getStatus: () => Promise<CodeResult<{ status: CodeStatus & { hasApiKey: boolean } }>>
-    setApiKey: (key: string) => Promise<CodeResult<{ status: CodeStatus & { hasApiKey: boolean } }>>
-    clearApiKey: () => Promise<CodeResult<{ status: CodeStatus & { hasApiKey: boolean } }>>
+    getStatus: () => Promise<CodeResult<{ status: CodeStatusWithConnection }>>
+    setApiKey: (key: string) => Promise<CodeResult<{ status: CodeStatusWithConnection }>>
+    clearApiKey: () => Promise<CodeResult<{ status: CodeStatusWithConnection }>>
     testConnection: () => Promise<CodeResult<{ connected: boolean }>>
     listModels: () => Promise<CodeResult<{ models: CodeModel[] }>>
     listAgents: () => Promise<CodeResult<{ agents: CodeAgent[] }>>
@@ -205,9 +218,51 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
       agent: string
     }) => Promise<CodeResult<Record<string, never>>>
     listProjects: () => Promise<CodeResult<{ projects: CodeProject[] }>>
-    addProject: (directory: string, name?: string) => Promise<CodeResult<{ projects: CodeProject[] }>>
+    addProject: (
+      directory: string,
+      name?: string,
+      connectionId?: string
+    ) => Promise<CodeResult<{ projects: CodeProject[] }>>
     removeProject: (id: string) => Promise<CodeResult<{ projects: CodeProject[] }>>
     pickDirectory: () => Promise<CodeResult<{ directory?: string }>>
+    pickFile: () => Promise<CodeResult<{ path?: string }>>
+    listConnections: () => Promise<
+      CodeResult<{ connections: CodeConnection[]; activeConnectionId: string }>
+    >
+    addConnection: (payload: {
+      name?: string
+      host: string
+      port?: number
+      username: string
+      authMethod: 'password' | 'key' | 'agent'
+      privateKeyPath?: string
+    }) => Promise<CodeResult<{ connections: CodeConnection[]; activeConnectionId: string }>>
+    updateConnection: (
+      id: string,
+      patch: Partial<{
+        name: string
+        host: string
+        port: number
+        username: string
+        authMethod: 'password' | 'key' | 'agent'
+        privateKeyPath: string
+        hostKeyFingerprint: string
+      }>
+    ) => Promise<CodeResult<{ connections: CodeConnection[] }>>
+    removeConnection: (id: string) => Promise<
+      CodeResult<{ connections: CodeConnection[]; activeConnectionId: string }>
+    >
+    selectConnection: (id: string) => Promise<CodeResult<{ activeConnectionId: string }>>
+    testMachine: (id: string) => Promise<CodeResult<{ status: CodeConnectionStatus }>>
+    setConnectionCredential: (payload: {
+      id: string
+      password?: string
+      passphrase?: string
+    }) => Promise<CodeResult<Record<string, never>>>
+    browseRemote: (
+      connectionId: string,
+      path?: string
+    ) => Promise<({ success: true } & RemoteBrowseResult) | { success: false; error: string }>
     listSessions: (directory?: string) => Promise<CodeResult<{ sessions: CodeSession[] }>>
     createSession: (payload: {
       directory: string
@@ -244,7 +299,7 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     getSettings: () => Promise<CodeResult<{ settings: CodeSettings }>>
     setSettings: (patch: Partial<CodeSettings>) => Promise<CodeResult<{ settings: CodeSettings }>>
     openLogs: () => Promise<CodeResult<Record<string, never>>>
-    restartRuntime: () => Promise<CodeResult<{ status: CodeStatus & { hasApiKey: boolean } }>>
+    restartRuntime: () => Promise<CodeResult<{ status: CodeStatusWithConnection }>>
     getLogs: () => Promise<CodeResult<{ logs: string[] }>>
   }
 }

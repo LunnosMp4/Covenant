@@ -3,6 +3,7 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
 import { log } from '../logger'
+import { parseBinaryVersion } from './version'
 
 export const OPENCODE_PINNED_VERSION = '2.0.24'
 
@@ -99,4 +100,19 @@ export function readBinaryVersion(binaryPath: string): string | undefined {
     log.warn('Failed to read OpenCode binary version', error)
     return undefined
   }
+}
+
+let cachedExpectedVersion: string | undefined
+
+/**
+ * The OpenCode version this build of Covenant is pinned to. Read from the
+ * bundled binary when possible so packaging updates do not drift from the
+ * client contract, falling back to the npm pin.
+ */
+export function expectedOpenCodeVersion(): string {
+  if (cachedExpectedVersion) return cachedExpectedVersion
+  const resolved = resolveOpenCodeBinary()
+  const parsed = resolved ? parseBinaryVersion(readBinaryVersion(resolved.path)) : undefined
+  cachedExpectedVersion = parsed ?? OPENCODE_PINNED_VERSION
+  return cachedExpectedVersion
 }

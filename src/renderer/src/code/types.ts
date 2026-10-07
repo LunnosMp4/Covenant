@@ -1,6 +1,11 @@
 import type { CodeStatus } from '../../../shared/code/code'
 
-export type CodeStatusWithKey = CodeStatus & { hasApiKey: boolean }
+export type CodeStatusWithKey = CodeStatus & {
+  hasApiKey: boolean
+  connectionId?: string
+  connectionKind?: 'local' | 'ssh'
+  connectionName?: string
+}
 
 export interface ToolCard {
   callId: string

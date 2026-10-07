@@ -11,6 +11,8 @@ export interface CodeProject {
   id: string
   name: string
   directory: string
+  /** Which connection/machine this project lives on. Defaults to `local`. */
+  connectionId: string
   addedAt: number
 }
 
@@ -277,6 +279,30 @@ export interface CodeTranscriptItem {
   error?: string
 }
 
+// ---------------------------------------------------------------------------
+// Runtime setup progress (e.g. provisioning OpenCode on a remote machine)
+// ---------------------------------------------------------------------------
+
+export type CodeRuntimePhase =
+  | 'connecting'
+  | 'checking'
+  | 'downloading'
+  | 'uploading'
+  | 'starting'
+  | 'waiting'
+  | 'ready'
+  | 'error'
+
+export interface CodeRuntimeProgress {
+  connectionId: string
+  connectionName: string
+  phase: CodeRuntimePhase
+  message: string
+  /** 0..1 for determinate phases (download); null when indeterminate. */
+  percent?: number | null
+  timestamp: number
+}
+
 /** Events pushed from the main-process code engine to the Code window. */
 export type CodeEngineEvent =
   | { kind: 'activity'; event: CodeActivityEvent }
@@ -286,3 +312,4 @@ export type CodeEngineEvent =
   | { kind: 'form-settled'; sessionId: string; formId: string }
   | { kind: 'diff'; sessionId: string; diff: CodeFileDiff[] }
   | { kind: 'session'; session: CodeSession }
+  | { kind: 'progress'; progress: CodeRuntimeProgress }

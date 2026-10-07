@@ -44,7 +44,8 @@ export default function CodeNavMenu({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [open])
 
-  const label = activeSession?.title || activeProject?.name || 'Select session'
+  const projectName = activeProject?.name ?? 'Select project'
+  const label = projectName.length > 20 ? `${projectName.slice(0, 20)}…` : projectName
 
   return (
     <div ref={containerRef} className="relative min-w-0">
@@ -60,7 +61,7 @@ export default function CodeNavMenu({
         aria-expanded={open}
       >
         <span className="shrink-0 text-neutral-400">
-          <SessionIcon />
+          <FolderIcon />
         </span>
         <span className="min-w-0 max-w-[200px] truncate">{label}</span>
         <ChevronDownIcon />

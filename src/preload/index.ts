@@ -31,6 +31,11 @@ import type {
   CodeStatus,
   CodeTranscriptItem
 } from '../shared/code/code'
+import type {
+  CodeConnection,
+  CodeConnectionStatus,
+  RemoteBrowseResult
+} from '../shared/code/connection'
 
 const api = {
   platform: process.platform,
@@ -51,6 +56,15 @@ const api = {
       ipcRenderer.on('open-code', listener)
       return () => {
         ipcRenderer.removeListener('open-code', listener)
+      }
+    },
+    onToggleCodeMode: (callback: () => void) => {
+      const listener = () => {
+        callback()
+      }
+      ipcRenderer.on('toggle-code-mode', listener)
+      return () => {
+        ipcRenderer.removeListener('toggle-code-mode', listener)
       }
     },
     onNavigateSettingsTab: (callback: (tab: string) => void) => {
@@ -341,8 +355,8 @@ const api = {
       ipcRenderer.invoke('code:projects:list') as Promise<
         { success: true; projects: CodeProject[] } | { success: false; error: string }
       >,
-    addProject: (directory: string, name?: string) =>
-      ipcRenderer.invoke('code:projects:add', { directory, name }) as Promise<
+    addProject: (directory: string, name?: string, connectionId?: string) =>
+      ipcRenderer.invoke('code:projects:add', { directory, name, connectionId }) as Promise<
         { success: true; projects: CodeProject[] } | { success: false; error: string }
       >,
     removeProject: (id: string) =>
@@ -352,6 +366,67 @@ const api = {
     pickDirectory: () =>
       ipcRenderer.invoke('code:pick-directory') as Promise<
         { success: true; directory?: string } | { success: false; error: string }
+      >,
+    pickFile: () =>
+      ipcRenderer.invoke('code:pick-file') as Promise<
+        { success: true; path?: string } | { success: false; error: string }
+      >,
+    listConnections: () =>
+      ipcRenderer.invoke('code:connections:list') as Promise<
+        | { success: true; connections: CodeConnection[]; activeConnectionId: string }
+        | { success: false; error: string }
+      >,
+    addConnection: (payload: {
+      name?: string
+      host: string
+      port?: number
+      username: string
+      authMethod: 'password' | 'key' | 'agent'
+      privateKeyPath?: string
+    }) =>
+      ipcRenderer.invoke('code:connections:add', payload) as Promise<
+        | { success: true; connections: CodeConnection[]; activeConnectionId: string }
+        | { success: false; error: string }
+      >,
+    updateConnection: (
+      id: string,
+      patch: Partial<{
+        name: string
+        host: string
+        port: number
+        username: string
+        authMethod: 'password' | 'key' | 'agent'
+        privateKeyPath: string
+        hostKeyFingerprint: string
+      }>
+    ) =>
+      ipcRenderer.invoke('code:connections:update', { id, patch }) as Promise<
+        { success: true; connections: CodeConnection[] } | { success: false; error: string }
+      >,
+    removeConnection: (id: string) =>
+      ipcRenderer.invoke('code:connections:remove', id) as Promise<
+        | { success: true; connections: CodeConnection[]; activeConnectionId: string }
+        | { success: false; error: string }
+      >,
+    selectConnection: (id: string) =>
+      ipcRenderer.invoke('code:connections:select', id) as Promise<
+        { success: true; activeConnectionId: string } | { success: false; error: string }
+      >,
+    testMachine: (id: string) =>
+      ipcRenderer.invoke('code:connections:test', id) as Promise<
+        { success: true; status: CodeConnectionStatus } | { success: false; error: string }
+      >,
+    setConnectionCredential: (payload: {
+      id: string
+      password?: string
+      passphrase?: string
+    }) =>
+      ipcRenderer.invoke('code:connections:set-credential', payload) as Promise<
+        { success: true } | { success: false; error: string }
+      >,
+    browseRemote: (connectionId: string, path?: string) =>
+      ipcRenderer.invoke('code:remote:browse', { connectionId, path }) as Promise<
+        ({ success: true } & RemoteBrowseResult) | { success: false; error: string }
       >,
     listSessions: (directory?: string) =>
       ipcRenderer.invoke('code:sessions:list', { directory }) as Promise<

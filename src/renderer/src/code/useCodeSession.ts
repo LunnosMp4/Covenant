@@ -9,11 +9,13 @@ import type {
   CodeModel,
   CodePermissionRequest,
   CodeProject,
+  CodeRuntimeProgress,
   CodeSession,
   CodeTranscriptItem,
   CodeUsage
 } from '../../../shared/code/code'
 import { parseModelSelector } from '../../../shared/code/codeNormalizers'
+import type { CodeConnection } from '../../../shared/code/connection'
 import { EMPTY_STREAM, noteId, type CodeStatusWithKey, type StreamingState, type ToolCard } from './types'
 
 /**
@@ -23,6 +25,10 @@ import { EMPTY_STREAM, noteId, type CodeStatusWithKey, type StreamingState, type
  */
 export function useCodeSession(): {
   status: CodeStatusWithKey | null
+  runtimeProgress: CodeRuntimeProgress | null
+  connections: CodeConnection[]
+  activeConnection: CodeConnection | null
+  activeConnectionId: string
   projects: CodeProject[]
   activeProject: CodeProject | null
   sessions: CodeSession[]
@@ -44,7 +50,11 @@ export function useCodeSession(): {
   error: string | null
   loadingSessions: boolean
   enable: () => Promise<void>
+  retryRuntime: () => Promise<void>
   addProject: () => Promise<void>
+  addRemoteProject: (directory: string) => Promise<void>
+  switchConnection: (connectionId: string) => Promise<void>
+  refreshConnections: () => Promise<void>
   removeProject: (project: CodeProject) => Promise<void>
   selectProject: (project: CodeProject) => void
   createSession: () => Promise<void>
@@ -52,6 +62,7 @@ export function useCodeSession(): {
   deleteSession: (session: CodeSession) => Promise<void>
   changeModel: (value: string) => Promise<void>
   changeAgent: (value: string) => Promise<void>
+  toggleMode: () => void
   changeVariant: (value: string) => void
   submit: (text: string) => Promise<void>
   stop: () => Promise<void>
@@ -62,6 +73,9 @@ export function useCodeSession(): {
 } {
   const api = window.api
   const [status, setStatus] = useState<CodeStatusWithKey | null>(null)
+  const [runtimeProgress, setRuntimeProgress] = useState<CodeRuntimeProgress | null>(null)
+  const [connections, setConnections] = useState<CodeConnection[]>([])
+  const [activeConnectionId, setActiveConnectionId] = useState<string>('local')
   const [projects, setProjects] = useState<CodeProject[]>([])
   const [activeProject, setActiveProject] = useState<CodeProject | null>(null)
   const [sessions, setSessions] = useState<CodeSession[]>([])
@@ -82,21 +96,25 @@ export function useCodeSession(): {
   const [loadingSessions, setLoadingSessions] = useState(false)
 
   const activeSessionRef = useRef<CodeSession | null>(null)
+  const activeConnectionIdRef = useRef<string>('local')
   const activeProjectRef = useRef<CodeProject | null>(null)
   const selectedModelRef = useRef('')
   const selectedAgentRef = useRef('')
   const selectedVariantRef = useRef('')
   const modelsRef = useRef<CodeModel[]>([])
+  const agentsRef = useRef<CodeAgent[]>([])
   const streamRef = useRef<StreamingState>(EMPTY_STREAM)
   const readyRef = useRef(false)
   const readyPromiseRef = useRef<Promise<void> | null>(null)
 
   activeSessionRef.current = activeSession
+  activeConnectionIdRef.current = activeConnectionId
   activeProjectRef.current = activeProject
   selectedModelRef.current = selectedModel
   selectedAgentRef.current = selectedAgent
   selectedVariantRef.current = selectedVariant
   modelsRef.current = models
+  agentsRef.current = agents
   streamRef.current = stream
 
   const currentModelRef = useCallback((): { providerID: string; id: string; variant?: string } | undefined => {
@@ -142,12 +160,25 @@ export function useCodeSession(): {
       if (!api?.code) return
       api.code.subscribe()
 
+      const connectionsResult = await api.code.listConnections()
+      let connectionId = activeConnectionIdRef.current
+      if (connectionsResult.success) {
+        setConnections(connectionsResult.connections)
+        connectionId = connectionsResult.activeConnectionId || connectionId
+        setActiveConnectionId(connectionId)
+        activeConnectionIdRef.current = connectionId
+      }
+
       const projectsResult = await api.code.listProjects()
       let project = activeProjectRef.current
       if (projectsResult.success) {
-        setProjects(projectsResult.projects)
-        project = project ?? projectsResult.projects[0] ?? null
+        const scoped = projectsResult.projects.filter(
+          (item) => item.connectionId === connectionId
+        )
+        setProjects(scoped)
+        project = project && project.connectionId === connectionId ? project : scoped[0] ?? null
         setActiveProject(project)
+        activeProjectRef.current = project
       }
 
       const [modelsResult, settingsResult, agentsResult] = await Promise.all([
@@ -239,6 +270,10 @@ export function useCodeSession(): {
     }
 
     const unsubscribe = api.code.onEvent((event: CodeEngineEvent) => {
+      if (event.kind === 'progress') {
+        setRuntimeProgress(event.progress.phase === 'ready' ? null : event.progress)
+        return
+      }
       if (event.kind === 'permission') {
         setPermissions((current) =>
           current.some((item) => item.id === event.request.id) ? current : [...current, event.request]
@@ -354,20 +389,100 @@ export function useCodeSession(): {
     }
   }, [api, refreshDiffs])
 
+  const retryRuntime = useCallback(async () => {
+    if (!api?.code) return
+    setRuntimeProgress(null)
+    const result = await api.code.restartRuntime()
+    if (!result.success) setError(result.error)
+    readyRef.current = false
+    await enable()
+  }, [api, enable])
+
   const addProject = useCallback(async () => {
     if (!api?.code) return
+    const connectionId = activeConnectionIdRef.current
+    // Remote folders are chosen through the SFTP browser.
+    if (connectionId !== 'local') return
     const picked = await api.code.pickDirectory()
     if (!picked.success || !picked.directory) return
     await enable()
-    const result = await api.code.addProject(picked.directory)
+    const result = await api.code.addProject(picked.directory, undefined, connectionId)
     if (result.success) {
-      setProjects(result.projects)
-      const created = result.projects.find((project) => project.directory === picked.directory)
-      if (created) setActiveProject(created)
+      const scoped = result.projects.filter((project) => project.connectionId === connectionId)
+      setProjects(scoped)
+      const created = scoped.find((project) => project.directory === picked.directory)
+      if (created) {
+        setActiveProject(created)
+        activeProjectRef.current = created
+      }
     } else {
       setError(result.error)
     }
   }, [api, enable])
+
+  const addRemoteProject = useCallback(
+    async (directory: string) => {
+      if (!api?.code) return
+      const connectionId = activeConnectionIdRef.current
+      if (connectionId === 'local') return
+      await enable()
+      const result = await api.code.addProject(directory, undefined, connectionId)
+      if (result.success) {
+        const scoped = result.projects.filter((project) => project.connectionId === connectionId)
+        setProjects(scoped)
+        const created = scoped.find((project) => project.directory === directory)
+        if (created) {
+          setActiveProject(created)
+          activeProjectRef.current = created
+        }
+      } else {
+        setError(result.error)
+      }
+    },
+    [api, enable]
+  )
+
+  const refreshConnections = useCallback(async () => {
+    if (!api?.code) return
+    const result = await api.code.listConnections()
+    if (result.success) {
+      setConnections(result.connections)
+      setActiveConnectionId(result.activeConnectionId)
+      activeConnectionIdRef.current = result.activeConnectionId
+    }
+  }, [api])
+
+  const switchConnection = useCallback(
+    async (connectionId: string) => {
+      if (!api?.code || connectionId === activeConnectionIdRef.current) return
+      const result = await api.code.selectConnection(connectionId)
+      if (!result.success) {
+        setError(result.error)
+        return
+      }
+      setActiveConnectionId(connectionId)
+      activeConnectionIdRef.current = connectionId
+      setActiveSession(null)
+      activeSessionRef.current = null
+      setActiveProject(null)
+      activeProjectRef.current = null
+      setProjects([])
+      setSessions([])
+      setTranscript([])
+      setStream(EMPTY_STREAM)
+      setUsage(null)
+      setLiveCost(null)
+      setDiffs([])
+      setPermissions([])
+      setForms([])
+      setRuntimeProgress(null)
+      setError(null)
+      void refreshStatus()
+      readyRef.current = false
+      await enable()
+    },
+    [api, enable, refreshStatus]
+  )
 
   const removeProject = useCallback(
     async (project: CodeProject) => {
@@ -490,6 +605,18 @@ export function useCodeSession(): {
     },
     [api]
   )
+
+  const toggleMode = useCallback(() => {
+    const list = agentsRef.current.filter(
+      (agent) => !agent.hidden && (agent.mode === 'primary' || agent.mode === 'all')
+    )
+    if (list.length < 2) return
+    const index = list.findIndex((agent) => agent.id === selectedAgentRef.current)
+    const next = list[(index + 1) % list.length]
+    if (next && next.id !== selectedAgentRef.current) {
+      void changeAgent(next.id)
+    }
+  }, [changeAgent])
 
   const changeVariant = useCallback(
     (value: string) => {
@@ -624,8 +751,17 @@ export function useCodeSession(): {
     [models, selectedModel]
   )
 
+  const activeConnection = useMemo(
+    () => connections.find((connection) => connection.id === activeConnectionId) ?? connections[0] ?? null,
+    [connections, activeConnectionId]
+  )
+
   return {
     status,
+    runtimeProgress,
+    connections,
+    activeConnection,
+    activeConnectionId,
     projects,
     activeProject,
     sessions,
@@ -647,7 +783,11 @@ export function useCodeSession(): {
     error,
     loadingSessions,
     enable,
+    retryRuntime,
     addProject,
+    addRemoteProject,
+    switchConnection,
+    refreshConnections,
     removeProject,
     selectProject,
     createSession,
@@ -655,6 +795,7 @@ export function useCodeSession(): {
     deleteSession,
     changeModel,
     changeAgent,
+    toggleMode,
     changeVariant,
     submit,
     stop,

@@ -539,6 +539,18 @@ export default function App(): JSX.Element {
     }
   }, [])
 
+  // Global shortcut: toggle the Code build/plan mode while the surface is open.
+  useEffect(() => {
+    if (!window.api?.window.onToggleCodeMode) return
+    const unsubscribe = window.api.window.onToggleCodeMode(() => {
+      if (activeSurface !== 'code') return
+      code.toggleMode()
+    })
+    return () => {
+      unsubscribe()
+    }
+  }, [activeSurface, code.toggleMode])
+
   // Lazy-load the OpenCode runtime / sessions the first time the surface opens.
   useEffect(() => {
     if (activeSurface === 'code') {

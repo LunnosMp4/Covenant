@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   formatModelSelector,
+  normalizeCodeConnection,
+  normalizeCodeConnections,
   normalizeCodePermissions,
   normalizeCodeProject,
   normalizeCodeProjects,
@@ -12,6 +14,7 @@ import {
   DEFAULT_CODE_PERMISSIONS,
   DEFAULT_CODE_SETTINGS
 } from './code'
+import { LOCAL_CONNECTION_ID } from './connection'
 
 describe('normalizeCodePermissions', () => {
   it('falls back to defaults for invalid input', () => {
@@ -56,6 +59,37 @@ describe('normalizeCodeProject', () => {
 
   it('normalizeCodeProjects filters invalid entries', () => {
     expect(normalizeCodeProjects([{ directory: '/a' }, { directory: '' }, 5])).toHaveLength(1)
+  })
+
+  it('defaults the connection id to local', () => {
+    expect(normalizeCodeProject({ directory: '/a' })?.connectionId).toBe(LOCAL_CONNECTION_ID)
+    expect(normalizeCodeProject({ directory: '/a', connectionId: 'vm-1' })?.connectionId).toBe('vm-1')
+  })
+})
+
+describe('normalizeCodeConnection', () => {
+  it('rejects incomplete ssh connections', () => {
+    expect(normalizeCodeConnection({ kind: 'ssh', host: 'vm' })).toBeNull()
+    expect(normalizeCodeConnection({ kind: 'ssh', username: 'root' })).toBeNull()
+    expect(normalizeCodeConnection({ id: '', kind: 'ssh', host: 'vm', username: 'root' })).toBeNull()
+  })
+
+  it('normalizes an ssh connection with defaults', () => {
+    const connection = normalizeCodeConnection({ id: 'a', kind: 'ssh', host: 'vm', username: 'root' })
+    expect(connection).toMatchObject({
+      id: 'a',
+      kind: 'ssh',
+      host: 'vm',
+      username: 'root',
+      port: 22,
+      authMethod: 'password',
+      name: 'root@vm'
+    })
+  })
+
+  it('keeps a local connection and drops it from the list', () => {
+    expect(normalizeCodeConnection({ id: 'local', kind: 'local' })?.kind).toBe('local')
+    expect(normalizeCodeConnections([{ id: 'local', kind: 'local' }, { id: 'a', kind: 'ssh', host: 'vm', username: 'r' }])).toHaveLength(1)
   })
 })
 

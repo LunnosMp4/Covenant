@@ -8,6 +8,11 @@ import {
   type CodeProject,
   type CodeSettings
 } from './code'
+import {
+  LOCAL_CONNECTION_ID,
+  type CodeConnection,
+  type CodeSshAuthMethod
+} from './connection'
 
 function isEffect(value: unknown): value is CodePermissionEffect {
   return typeof value === 'string' && (CODE_PERMISSION_EFFECTS as string[]).includes(value)
@@ -57,7 +62,11 @@ export function normalizeCodeProject(raw: unknown): CodeProject | null {
   const fallbackName = directory.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? directory
   const name = typeof obj.name === 'string' && obj.name.trim() ? obj.name.trim() : fallbackName
   const addedAt = typeof obj.addedAt === 'number' && Number.isFinite(obj.addedAt) ? obj.addedAt : Date.now()
-  return { id, name, directory, addedAt }
+  const connectionId =
+    typeof obj.connectionId === 'string' && obj.connectionId.trim()
+      ? obj.connectionId.trim()
+      : LOCAL_CONNECTION_ID
+  return { id, name, directory, connectionId, addedAt }
 }
 
 export function normalizeCodeProjects(raw: unknown): CodeProject[] {
@@ -96,4 +105,59 @@ export function parseModelSelector(
 export function formatModelSelector(ref: { providerID: string; id: string; variant?: string }): string {
   const base = ref.providerID ? `${ref.providerID}/${ref.id}` : ref.id
   return ref.variant ? `${base}#${ref.variant}` : base
+}
+
+const SSH_AUTH_METHODS: CodeSshAuthMethod[] = ['password', 'key', 'agent']
+
+function isSshAuthMethod(value: unknown): value is CodeSshAuthMethod {
+  return typeof value === 'string' && (SSH_AUTH_METHODS as string[]).includes(value)
+}
+
+export function normalizeCodeConnection(raw: unknown): CodeConnection | null {
+  if (!raw || typeof raw !== 'object') return null
+  const obj = raw as Record<string, unknown>
+  const id = typeof obj.id === 'string' && obj.id.trim() ? obj.id.trim() : ''
+  if (!id) return null
+
+  const kind = obj.kind === 'ssh' ? 'ssh' : 'local'
+  if (kind === 'local') {
+    return {
+      id,
+      kind: 'local',
+      name: typeof obj.name === 'string' && obj.name.trim() ? obj.name.trim() : 'This computer',
+      createdAt: typeof obj.createdAt === 'number' && Number.isFinite(obj.createdAt) ? obj.createdAt : 0
+    }
+  }
+
+  const host = typeof obj.host === 'string' ? obj.host.trim() : ''
+  const username = typeof obj.username === 'string' ? obj.username.trim() : ''
+  if (!host || !username) return null
+
+  const portRaw = typeof obj.port === 'number' ? Math.round(obj.port) : 22
+  const port = Number.isFinite(portRaw) && portRaw > 0 && portRaw <= 65535 ? portRaw : 22
+
+  const connection: CodeConnection = {
+    id,
+    kind: 'ssh',
+    name: typeof obj.name === 'string' && obj.name.trim() ? obj.name.trim() : `${username}@${host}`,
+    host,
+    port,
+    username,
+    authMethod: isSshAuthMethod(obj.authMethod) ? obj.authMethod : 'password',
+    createdAt: typeof obj.createdAt === 'number' && Number.isFinite(obj.createdAt) ? obj.createdAt : Date.now()
+  }
+  if (typeof obj.privateKeyPath === 'string' && obj.privateKeyPath.trim()) {
+    connection.privateKeyPath = obj.privateKeyPath.trim()
+  }
+  if (typeof obj.hostKeyFingerprint === 'string' && obj.hostKeyFingerprint.trim()) {
+    connection.hostKeyFingerprint = obj.hostKeyFingerprint.trim()
+  }
+  return connection
+}
+
+export function normalizeCodeConnections(raw: unknown): CodeConnection[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((item) => normalizeCodeConnection(item))
+    .filter((item): item is CodeConnection => item !== null && item.kind === 'ssh')
 }

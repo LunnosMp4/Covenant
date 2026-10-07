@@ -30,7 +30,7 @@ import type {
   CodeModelRefInput,
   CreateCodeSessionInput
 } from './codeEngine'
-import type { OpenCodeRuntime, RuntimeInfo } from './opencodeRuntime'
+import type { CodeRuntime, RuntimeInfo } from './codeRuntime'
 
 // The OpenCode client is ESM-only and its generated types are enormous. We
 // import it dynamically and treat the surface as a loose shape, mapping every
@@ -38,8 +38,8 @@ import type { OpenCodeRuntime, RuntimeInfo } from './opencodeRuntime'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type CodeClient = any
 
-interface LocalCodeEngineOptions {
-  runtime: OpenCodeRuntime
+export interface LocalCodeEngineOptions {
+  runtime: CodeRuntime
   getApiKey: () => string | undefined
 }
 
@@ -234,7 +234,7 @@ function toUsage(raw: unknown): CodeUsage | undefined {
 }
 
 export class LocalCodeEngine implements CodeEngine {
-  private readonly runtime: OpenCodeRuntime
+  private readonly runtime: CodeRuntime
   private readonly getApiKey: () => string | undefined
   private client?: CodeClient
   private info?: RuntimeInfo
@@ -279,6 +279,11 @@ export class LocalCodeEngine implements CodeEngine {
     if (this.client && this.runtime.isRunning()) {
       return
     }
+    // A reconnect supersedes any in-flight event loop/client from a previous
+    // (crashed) runtime; otherwise stale loops retry forever against a dead port.
+    this.eventAbort?.abort()
+    this.eventAbort = undefined
+    this.client = undefined
     this.disposed = false
     const info = await this.runtime.start()
     this.info = info

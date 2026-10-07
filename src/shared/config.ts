@@ -93,6 +93,7 @@ export interface ShortcutConfig {
   openTasks: string
   openPaste: string
   openCode: string
+  toggleCodeMode: string
 }
 
 export const DEFAULT_SHORTCUTS: ShortcutConfig = {
@@ -100,7 +101,8 @@ export const DEFAULT_SHORTCUTS: ShortcutConfig = {
   openAppTerminal: 'Alt+T',
   openTasks: 'Alt+L',
   openPaste: 'Alt+V',
-  openCode: 'Alt+C'
+  openCode: 'Alt+C',
+  toggleCodeMode: 'Alt+M'
 }
 
 export function normalizeAdminApiKey(value: unknown): string {
@@ -121,7 +123,9 @@ export function normalizeShortcuts(raw: unknown): ShortcutConfig {
     openTasks: typeof obj.openTasks === 'string' ? obj.openTasks : DEFAULT_SHORTCUTS.openTasks,
     // Migrate the previous default (`Ctrl+Alt+V`) to the new one.
     openPaste: openPaste === 'Ctrl+Alt+V' ? DEFAULT_SHORTCUTS.openPaste : openPaste,
-    openCode: typeof obj.openCode === 'string' ? obj.openCode : DEFAULT_SHORTCUTS.openCode
+    openCode: typeof obj.openCode === 'string' ? obj.openCode : DEFAULT_SHORTCUTS.openCode,
+    toggleCodeMode:
+      typeof obj.toggleCodeMode === 'string' ? obj.toggleCodeMode : DEFAULT_SHORTCUTS.toggleCodeMode
   }
 }
 

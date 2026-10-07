@@ -4,7 +4,6 @@ import type { CodeFileDiff } from '../../../shared/code/code'
 import { CHAT_SCROLL_HEIGHT } from '../app/constants'
 import ContextStatsDonut from '../app/components/ContextStatsDonut'
 import type { ContextStats } from '../utils/chat/chatUsage'
-import CustomSelect from '../ui/CustomSelect'
 import ExpandButton from '../ui/ExpandButton'
 import { CodeIcon, PinIcon } from '../ui/icons'
 import CodeConversation from './CodeConversation'
@@ -12,6 +11,12 @@ import CodeNavMenu from './CodeNavMenu'
 import CodeProjectsSidebar from './CodeProjectsSidebar'
 import CodeInfoSidebar from './CodeInfoSidebar'
 import CodeChangesSidebar from './CodeChangesSidebar'
+import CodeConnectionMenu from './CodeConnectionMenu'
+import CodeConnectionModal from './CodeConnectionModal'
+import CodeModelMenu from './CodeModelMenu'
+import CodeModeToggle from './CodeModeToggle'
+import CodeRuntimeStatus from './CodeRuntimeStatus'
+import RemoteFolderBrowser from './RemoteFolderBrowser'
 import { DiffIcon, PlusIcon, SessionIcon } from './icons'
 import { useCodeSession } from './useCodeSession'
 
@@ -48,25 +53,30 @@ export default function CodePanel({
   onTogglePin
 }: CodePanelProps): JSX.Element {
   const [changesOpen, setChangesOpen] = useState(false)
+  const [connectionModalOpen, setConnectionModalOpen] = useState(false)
+  const [browserOpen, setBrowserOpen] = useState(false)
   const changesRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [autoScroll, setAutoScroll] = useState(true)
+
+  const isRemote = session.activeConnection?.kind === 'ssh'
+
+  const requestAddProject = (): void => {
+    if (isRemote) {
+      setBrowserOpen(true)
+    } else {
+      void session.addProject()
+    }
+  }
 
   const bodyHeight = isExpanded ? Math.max(CHAT_SCROLL_HEIGHT, viewportHeight - 210) : CHAT_SCROLL_HEIGHT
 
   const hasKey = session.status?.hasApiKey === true
 
-  const modelOptions = session.models.map((model) => ({
-    value: `${model.providerID}/${model.id}`,
-    label: model.label
-  }))
-
   const primaryAgents = session.agents.filter(
     (agent) => !agent.hidden && (agent.mode === 'primary' || agent.mode === 'all')
   )
-  const variantOptions = [
-    ...session.activeVariants.map((variant) => ({ value: variant, label: variant }))
-  ]
+  const isPlanMode = session.selectedAgent.toLowerCase().includes('plan')
 
   const sessionModelRef = session.activeSession?.model
   const sessionModelId = sessionModelRef
@@ -118,7 +128,16 @@ export default function CodePanel({
     setAutoScroll((previous) => (previous === atBottom ? previous : atBottom))
   }
 
-  const emptyState = (
+  const emptyState = session.runtimeProgress ? (
+    <div className="flex h-full items-center justify-center px-6">
+      <div className="w-full max-w-sm">
+        <CodeRuntimeStatus
+          progress={session.runtimeProgress}
+          onRetry={() => void session.retryRuntime()}
+        />
+      </div>
+    </div>
+  ) : (
     <div className="flex h-full flex-col items-center justify-center gap-3 text-neutral-500">
       <CodeIcon />
       {!hasKey ? (
@@ -137,7 +156,7 @@ export default function CodePanel({
           <p className="text-sm">Add a project folder to start coding.</p>
           <button
             type="button"
-            onClick={() => void session.addProject()}
+            onClick={requestAddProject}
             className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-neutral-300 transition-colors hover:bg-white/10 hover:text-neutral-100"
           >
             <PlusIcon /> Add folder
@@ -176,6 +195,15 @@ export default function CodePanel({
             <PinIcon active={isPinned} />
           </button>
 
+          <CodeConnectionMenu
+            connections={session.connections}
+            activeConnectionId={session.activeConnectionId}
+            busy={session.runtimeProgress !== null && session.runtimeProgress.phase !== 'error'}
+            onSelect={(connectionId) => void session.switchConnection(connectionId)}
+            onAdd={() => setConnectionModalOpen(true)}
+            onManage={() => window.api?.window.openSettings('code')}
+          />
+
           {isWide ? (
             <div className="flex min-w-0 items-center gap-2 px-1">
               <span className="shrink-0 text-neutral-400">
@@ -195,7 +223,7 @@ export default function CodePanel({
               projects={session.projects}
               activeProject={session.activeProject}
               onSelectProject={session.selectProject}
-              onAddProject={() => void session.addProject()}
+              onAddProject={requestAddProject}
               sessions={session.sessions}
               activeSession={session.activeSession}
               loadingSessions={session.loadingSessions}
@@ -204,58 +232,26 @@ export default function CodePanel({
               onDeleteSession={(item) => void session.deleteSession(item)}
             />
           )}
-
-          {primaryAgents.length > 1 && (
-            <div className="flex h-8 shrink-0 items-center rounded-lg border border-white/10 p-0.5">
-              {primaryAgents.map((agent) => {
-                const active = session.selectedAgent === agent.id
-                return (
-                  <button
-                    key={agent.id}
-                    type="button"
-                    onClick={() => void session.changeAgent(agent.id)}
-                    title={agent.description ?? agent.name}
-                    className={`h-7 rounded-md px-2 text-[11px] font-medium capitalize transition-colors ${
-                      active
-                        ? 'bg-white/10 text-neutral-100'
-                        : 'text-neutral-400 hover:text-neutral-200'
-                    }`}
-                    aria-pressed={active}
-                  >
-                    {agent.name}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
-          <CustomSelect
-            compact
-            className="w-[140px]"
-            options={modelOptions}
-            value={session.selectedModel}
-            onChange={(value) => void session.changeModel(value)}
-            disabled={modelOptions.length === 0}
+          <CodeModeToggle
+            agents={primaryAgents}
+            selectedAgent={session.selectedAgent}
+            onSelect={(agentId) => void session.changeAgent(agentId)}
           />
 
-          {variantOptions.length > 0 && (
-            <CustomSelect
-              compact
-              className="w-[104px]"
-              options={[{ value: '', label: 'Default' }, ...variantOptions]}
-              value={session.selectedVariant}
-              onChange={session.changeVariant}
-            />
-          )}
-
-          <ContextStatsDonut
-            stats={codeStats}
-            chatModel={sessionModelId}
-            modelLabel={modelLabel ?? undefined}
+          <CodeModelMenu
+            modelLabel={modelLabel}
+            models={session.models}
+            selectedModel={session.selectedModel}
+            onSelectModel={(value) => void session.changeModel(value)}
+            variants={session.activeVariants}
+            selectedVariant={session.selectedVariant}
+            onSelectVariant={session.changeVariant}
           />
+
+          <ContextStatsDonut stats={codeStats} chatModel={sessionModelId} modelLabel={modelLabel ?? undefined} />
 
           <div ref={changesRef} className="relative">
             <button
@@ -335,7 +331,9 @@ export default function CodePanel({
         initial={false}
         animate={{ height: bodyHeight }}
         transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
-        className="mt-3 overflow-hidden"
+        className={`mt-3 overflow-hidden rounded-xl transition-colors ${
+          isPlanMode ? 'border border-dashed border-amber-400/30' : ''
+        }`}
       >
         {isWide ? (
           <div className="flex h-full gap-3">
@@ -344,7 +342,7 @@ export default function CodePanel({
                 projects={session.projects}
                 activeProject={session.activeProject}
                 onSelectProject={session.selectProject}
-                onAddProject={() => void session.addProject()}
+                onAddProject={requestAddProject}
                 sessions={session.sessions}
                 activeSession={session.activeSession}
                 loadingSessions={session.loadingSessions}
@@ -399,6 +397,31 @@ export default function CodePanel({
           emptyState
         )}
       </motion.div>
+
+      {connectionModalOpen && (
+        <CodeConnectionModal
+          onClose={() => setConnectionModalOpen(false)}
+          onSaved={(connectionId) => {
+            setConnectionModalOpen(false)
+            void (async () => {
+              await session.refreshConnections()
+              await session.switchConnection(connectionId)
+            })()
+          }}
+        />
+      )}
+
+      {browserOpen && session.activeConnection && (
+        <RemoteFolderBrowser
+          connectionId={session.activeConnection.id}
+          connectionName={session.activeConnection.name}
+          onClose={() => setBrowserOpen(false)}
+          onSelect={(path) => {
+            setBrowserOpen(false)
+            void session.addRemoteProject(path)
+          }}
+        />
+      )}
     </>
   )
 }

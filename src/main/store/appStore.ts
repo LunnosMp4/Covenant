@@ -6,6 +6,7 @@ import type { Preprompt } from '../../shared/domain/preprompt'
 import type { Task } from '../../shared/tasks/task'
 import type { Workflow } from '../../shared/domain/workflow'
 import type { CodeProject } from '../../shared/code/code'
+import type { CodeConnection } from '../../shared/code/connection'
 
 export interface AppStoreSchema {
   preprompts: Preprompt[]
@@ -16,6 +17,8 @@ export interface AppStoreSchema {
   tasks: Task[]
   gamification: GamificationState
   codeProjects: CodeProject[]
+  codeConnections: CodeConnection[]
+  codeActiveConnectionId: string
 }
 
 const StoreClass =
@@ -32,7 +35,9 @@ export const appStore = new StoreClass<AppStoreSchema>({
     conversations: [],
     tasks: [],
     gamification: DEFAULT_GAMIFICATION,
-    codeProjects: []
+    codeProjects: [],
+    codeConnections: [],
+    codeActiveConnectionId: 'local'
   },
   schema: {
     preprompts: {
@@ -258,10 +263,36 @@ export const appStore = new StoreClass<AppStoreSchema>({
           id: { type: 'string' },
           name: { type: 'string' },
           directory: { type: 'string' },
+          connectionId: { type: 'string' },
           addedAt: { type: 'number' }
         },
         required: ['id', 'name', 'directory', 'addedAt']
       }
+    },
+    codeConnections: {
+      type: 'array',
+      default: [],
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          id: { type: 'string' },
+          kind: { type: 'string', enum: ['local', 'ssh'] },
+          name: { type: 'string' },
+          host: { type: 'string' },
+          port: { type: 'number' },
+          username: { type: 'string' },
+          authMethod: { type: 'string', enum: ['password', 'key', 'agent'] },
+          privateKeyPath: { type: 'string' },
+          hostKeyFingerprint: { type: 'string' },
+          createdAt: { type: 'number' }
+        },
+        required: ['id', 'kind', 'name', 'createdAt']
+      }
+    },
+    codeActiveConnectionId: {
+      type: 'string',
+      default: 'local'
     }
   }
 })
