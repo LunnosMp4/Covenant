@@ -873,6 +873,7 @@ body[data-window='paste'] [contenteditable='true'],
 
 .code-tool-label {
   flex-shrink: 0;
+  align-self: baseline;
   font-weight: 500;
   color: rgb(var(--n-50) / 0.7);
 }
@@ -880,6 +881,7 @@ body[data-window='paste'] [contenteditable='true'],
 .code-tool-target {
   min-width: 0;
   flex: 1;
+  align-self: baseline;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
