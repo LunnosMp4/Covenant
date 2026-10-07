@@ -91,12 +91,15 @@ import {
   MAX_WORKFLOW_LOG_LINES,
   SUPPORTED_IMAGE_TYPES
 } from './app/constants'
-import type { AppMode, AttachedImage, SelectedSystemPrompt } from './app/types'
+import type { AppMode, AttachedImage, SelectedSystemPrompt, Surface } from './app/types'
 import OnboardingModal from './app/components/OnboardingModal'
 import ContextStatsDonut from './app/components/ContextStatsDonut'
 import { useAttachments } from './app/hooks/useAttachments'
 import { useVoiceInput } from './app/hooks/useVoiceInput'
 import { useChatSearch } from './app/hooks/useChatSearch'
+import CodePanel from './code/CodePanel'
+import CodePermissionModal from './code/CodePermissionModal'
+import { useCodeSession } from './code/useCodeSession'
 
 export default function App(): JSX.Element {
   const [visible, setVisible] = useState(false)
@@ -109,7 +112,24 @@ export default function App(): JSX.Element {
   const [conversations, setConversations] = useState<ChatConversation[]>([])
   const [activeConversation, setActiveConversation] = useState<ChatConversation | null>(null)
   const [selectedSystemPrompt, setSelectedSystemPrompt] = useState<SelectedSystemPrompt | null>(null)
-  const [isChatOpen, setIsChatOpen] = useState(false)
+  // The single panel shown above the command bar: the chat conversation or the
+  // OpenCode surface. `null` means bar-only. `lastSurfaceRef` lets Alt+Space
+  // reopen whichever surface was last shown.
+  const [activeSurface, setActiveSurface] = useState<Surface | null>(null)
+  const lastSurfaceRef = useRef<Surface | null>(null)
+  const isChatOpen = activeSurface === 'chat'
+  const isCodeOpen = activeSurface === 'code'
+  const setIsChatOpen = useCallback<React.Dispatch<React.SetStateAction<boolean>>>((value) => {
+    setActiveSurface((current) => {
+      const next =
+        typeof value === 'function' ? value(current === 'chat') : value
+      if (next) {
+        lastSurfaceRef.current = 'chat'
+        return 'chat'
+      }
+      return current === 'chat' ? null : current
+    })
+  }, [])
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
   const [isWide, setIsWide] = useState(false)
@@ -140,7 +160,7 @@ export default function App(): JSX.Element {
   >({})
   const [workflowLogsOpenById, setWorkflowLogsOpenById] = useState<Record<string, boolean>>({})
   const [activePopup, setActivePopup] = useState<ActivePopup | null>(null)
-  const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true, tasks: true })
+  const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true, tasks: true, code: true })
   const [chatModel, setChatModel] = useState<string>(DEFAULT_CHAT_MODEL)
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT)
   const [autoCollapseReasoning, setAutoCollapseReasoning] = useState(true)
@@ -212,6 +232,7 @@ export default function App(): JSX.Element {
     setIsHistoryOpen,
     setActivePopup
   })
+  const code = useCodeSession()
 
   function getFullPrompt(): string {
     const div = inputRef.current
@@ -372,6 +393,9 @@ export default function App(): JSX.Element {
             setHasInitializedTerminal(true)
             setMode('terminal')
             setActivePopup(null)
+          } else {
+            // Reopen whichever surface was last shown (bar-only if none).
+            setActiveSurface(lastSurfaceRef.current)
           }
 
           if (phase === 'prepare') {
@@ -499,6 +523,59 @@ export default function App(): JSX.Element {
       unsubscribe()
     }
   }, [])
+
+  useEffect(() => {
+    if (!window.api?.window.onOpenCode) return
+
+    const unsubscribe = window.api.window.onOpenCode(() => {
+      setMode('ai')
+      setActivePopup(null)
+      lastSurfaceRef.current = 'code'
+      setActiveSurface('code')
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [])
+
+  // Global shortcut: toggle the Code build/plan mode while the surface is open.
+  useEffect(() => {
+    if (!window.api?.window.onToggleCodeMode) return
+    const unsubscribe = window.api.window.onToggleCodeMode(() => {
+      if (activeSurface !== 'code') return
+      code.toggleMode()
+    })
+    return () => {
+      unsubscribe()
+    }
+  }, [activeSurface, code.toggleMode])
+
+  // Lazy-load the OpenCode runtime / sessions the first time the surface opens.
+  useEffect(() => {
+    if (activeSurface === 'code') {
+      void code.enable()
+    }
+  }, [activeSurface, code.enable])
+
+  // Tell the main process that Code completions are "seen" while the Code
+  // surface is actually visible, so the tray badge clears only after viewing.
+  useEffect(() => {
+    if (isCodeOpen && isAppVisible) {
+      void window.api?.code?.ackActivity?.()
+    }
+  }, [isCodeOpen, isAppVisible])
+
+  useEffect(() => {
+    const api = window.api?.code
+    if (!api?.onActivityStatus) return undefined
+    const unsubscribe = api.onActivityStatus(() => {
+      if (isCodeOpen && isAppVisible) {
+        void api.ackActivity?.()
+      }
+    })
+    return () => unsubscribe()
+  }, [isCodeOpen, isAppVisible])
 
   useEffect(() => {
     if (!window.api?.window.onChatPrompt) return
@@ -1534,6 +1611,16 @@ export default function App(): JSX.Element {
     attachedImages
   ])
 
+  const handleCodeSubmit = useCallback(() => {
+    const text = getFullPrompt().trim()
+    if (!text) return
+    clearInput()
+    // Sending a prompt pins the window so the run isn't dismissed on blur.
+    window.api?.window.setPinned?.(true)
+    setIsPinned(true)
+    void code.submit(text)
+  }, [code])
+
   // Consume a prompt handed off from the Paste Manager once the window is
   // visible and the input is mounted, then submit it as a new conversation.
   useEffect(() => {
@@ -1768,6 +1855,7 @@ export default function App(): JSX.Element {
   const launcherVisible =
     mode === 'ai' &&
     !isChatOpen &&
+    !isCodeOpen &&
     !activePopup &&
     !launcherDismissed &&
     query.trim().length > 0 &&
@@ -1898,7 +1986,11 @@ export default function App(): JSX.Element {
       } else if (e.key === 'Enter') {
         if (isComposingRef.current) return
         e.preventDefault()
-        void handleSubmit()
+        if (isCodeOpen) {
+          handleCodeSubmit()
+        } else {
+          void handleSubmit()
+        }
       } else if (e.key === 'Backspace' || e.key === 'Delete') {
         const selection = window.getSelection()
         if (!selection || selection.rangeCount === 0) return
@@ -1925,6 +2017,8 @@ export default function App(): JSX.Element {
       showImagePanel,
       handleClose,
       handleSubmit,
+      handleCodeSubmit,
+      isCodeOpen,
       launcherVisible,
       launcherResults,
       launcherSelectedIndex,
@@ -1942,13 +2036,13 @@ export default function App(): JSX.Element {
         return
       }
 
-      if (isChatOpen) {
+      if (activeSurface !== null) {
         return
       }
 
       handleClose()
     },
-    [activePopup, handleClose, isChatOpen]
+    [activePopup, handleClose, activeSurface]
   )
 
 
@@ -2077,6 +2171,7 @@ export default function App(): JSX.Element {
   }
 
   const wideWidth = Math.max(750, viewportWidth - 80)
+  const barBusy = isCodeOpen ? code.stream.busy : isLoading
 
   return (
     <div
@@ -2151,7 +2246,7 @@ export default function App(): JSX.Element {
           setIsWide(false)
           setIsAltHeld(false)
           setIsLoading(false)
-          setIsChatOpen(false)
+          setActiveSurface(null)
           setIsHistoryOpen(false)
           setMode('ai')
           setActivePopup(null)
@@ -2169,13 +2264,15 @@ export default function App(): JSX.Element {
             style={themeStyles}
           >
             <AnimatePresence>
-              {mode === 'ai' && isChatOpen && (
+              {mode === 'ai' && activeSurface !== null && (
                 <MeasuredPanel
-                  key="chat-window"
+                  key="surface-panel"
                   contentClassName="p-4"
                   className={`relative mb-2 rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} chat-surface texture-surface pointer-events-auto`}
                   width={isWide ? wideWidth : 750}
                 >
+                  {isChatOpen ? (
+                  <>
                   <div className="relative flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <button
@@ -2660,6 +2757,19 @@ export default function App(): JSX.Element {
                       })
                     )}
                   </motion.div>
+                  </>
+                  ) : (
+                    <CodePanel
+                      session={code}
+                      isExpanded={isExpanded}
+                      isWide={isWide}
+                      isAltHeld={isAltHeld}
+                      isPinned={isPinned}
+                      viewportHeight={viewportHeight}
+                      onToggleExpand={handleToggleExpand}
+                      onTogglePin={handleTogglePin}
+                    />
+                  )}
                 </MeasuredPanel>
               )}
             </AnimatePresence>
@@ -2887,7 +2997,7 @@ export default function App(): JSX.Element {
                   onKeyDown={handleKeyDown}
                   onCompositionStart={() => { isComposingRef.current = true }}
                   onCompositionEnd={() => { isComposingRef.current = false }}
-                  data-placeholder="What can I help you with today?"
+                  data-placeholder={isCodeOpen ? 'Ask Covenant Code to change something…' : 'What can I help you with today?'}
                   className="flex-1 bg-transparent text-lg text-neutral-100 placeholder:text-neutral-500 border-none focus:outline-none focus:ring-0 px-4 py-3 whitespace-pre overflow-hidden empty:before:content-[attr(data-placeholder)] empty:before:text-neutral-500"
                   style={{ caretColor: 'var(--chat-accent)' }}
                   spellCheck={false}
@@ -2913,14 +3023,23 @@ export default function App(): JSX.Element {
 
               <div className="w-1" />
 
-              {(isLoading || query.trim()) && (
+              {(barBusy || query.trim()) && (
                 <button
-                  onClick={() => void (isLoading ? handleCancel() : handleSubmit())}
-                  disabled={!isLoading && !query.trim()}
+                  onClick={() => {
+                    if (barBusy) {
+                      if (isCodeOpen) void code.stop()
+                      else handleCancel()
+                    } else if (isCodeOpen) {
+                      handleCodeSubmit()
+                    } else {
+                      void handleSubmit()
+                    }
+                  }}
+                  disabled={!barBusy && !query.trim()}
                   className="flex items-center justify-center w-8 h-8 mr-1 rounded-lg bg-neutral-700/60 hover:bg-neutral-600/80 disabled:opacity-30 disabled:cursor-not-allowed text-neutral-300 transition-all duration-150 border border-white/[0.08]"
-                  aria-label={isLoading ? 'Stop generating' : 'Submit prompt'}
+                  aria-label={barBusy ? 'Stop generating' : 'Submit prompt'}
                 >
-                  {isLoading ? <StopIcon /> : <SendIcon />}
+                  {barBusy ? <StopIcon /> : <SendIcon />}
                 </button>
               )}
 
@@ -2987,6 +3106,7 @@ export default function App(): JSX.Element {
                     <TasksIcon />
                   </button>
                 )}
+
               </div>
             </motion.div>
           </motion.div>
@@ -3072,6 +3192,16 @@ export default function App(): JSX.Element {
             onComplete={handleCompleteOnboarding}
           />
         )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {code.permissions.map((request) => (
+          <CodePermissionModal
+            key={request.id}
+            request={request}
+            onReply={(reply) => void code.replyPermission(request, reply)}
+          />
+        ))}
       </AnimatePresence>
     </div>
   )

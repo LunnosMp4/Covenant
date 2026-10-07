@@ -7,6 +7,8 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
+    "prepare:opencode-cli": "node scripts/prepare-opencode-cli.mjs",
+    "predist": "node scripts/prepare-opencode-cli.mjs",
     "dist": "electron-builder",
     "start": "electron .",
     "typecheck": "tsc --noEmit",
@@ -21,6 +23,15 @@
       "out/**/*",
       "node_modules/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/opencode-cli",
+        "to": "opencode-cli",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "directories": {
       "buildResources": "build"
@@ -53,6 +64,7 @@
     "@types/prismjs": "^1.26.6",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
+    "@types/ssh2": "^1.15.6",
     "@vitejs/plugin-react": "^4.3.1",
     "@vitest/coverage-v8": "^4.1.11",
     "autoprefixer": "^10.4.19",
@@ -69,6 +81,7 @@
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",
     "@excalidraw/excalidraw": "^0.18.1",
+    "@opencode/client": "2.0.24",
     "dotenv": "^17.4.2",
     "electron-log": "^5.4.4",
     "electron-store": "^11.0.2",
@@ -86,6 +99,7 @@
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.0",
     "remark-math": "^6.0.0",
+    "ssh2": "^1.17.0",
     "undici": "^6.21.3",
     "xterm": "^5.3.0",
     "xterm-addon-fit": "^0.8.0"

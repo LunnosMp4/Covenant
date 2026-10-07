@@ -4,9 +4,15 @@ import { formatCurrency, formatTokenCount, type ContextStats } from '../../utils
 interface ContextStatsDonutProps {
   stats: ContextStats | null
   chatModel: string
+  /** Overrides the label shown in the tooltip (e.g. an OpenCode model). */
+  modelLabel?: string
 }
 
-export default function ContextStatsDonut({ stats, chatModel }: ContextStatsDonutProps): JSX.Element | null {
+export default function ContextStatsDonut({
+  stats,
+  chatModel,
+  modelLabel
+}: ContextStatsDonutProps): JSX.Element | null {
   if (!stats || stats.maxTokens <= 0) return null
 
   const radius = 11
@@ -39,7 +45,9 @@ export default function ContextStatsDonut({ stats, chatModel }: ContextStatsDonu
             </div>
           </div>
           <div className="space-y-0.5 text-[11px] text-neutral-400">
-            <p className="font-medium text-neutral-300">{CHAT_MODEL_OPTIONS.find(m => m.id === chatModel)?.label ?? chatModel}</p>
+            <p className="font-medium text-neutral-300">
+              {modelLabel ?? CHAT_MODEL_OPTIONS.find(m => m.id === chatModel)?.label ?? chatModel}
+            </p>
             <p>Cost: {formatCurrency(stats.totalCost)}</p>
             <p>{stats.messageCount} messages &middot; {'>'}{formatTokenCount(stats.totalInputTokens)}tk &middot; {formatTokenCount(stats.totalOutputTokens)}tk</p>
           </div>

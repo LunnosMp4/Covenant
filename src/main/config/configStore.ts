@@ -6,6 +6,7 @@ import {
   DEFAULT_AUTO_COLLAPSE_REASONING,
   DEFAULT_BUTTON_VISIBILITY,
   DEFAULT_CHAT_MODEL,
+  DEFAULT_CODE_SETTINGS,
   DEFAULT_ENABLE_WEB_SEARCH,
   DEFAULT_LAUNCHER_SHOW_SYSTEM_APPS,
   DEFAULT_REASONING_EFFORT,
@@ -13,6 +14,7 @@ import {
   DEFAULT_TEXTURE_INTENSITY,
   normalizeAdminApiKey,
   normalizeChatModelId,
+  normalizeCodeSettings,
   normalizeShortcuts,
   normalizeTextureIntensity,
   normalizeUsageProjectId
@@ -39,6 +41,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   shortcuts: { ...DEFAULT_SHORTCUTS },
   textureIntensity: DEFAULT_TEXTURE_INTENSITY,
   pasteManager: { ...DEFAULT_PASTE_SETTINGS },
+  code: { ...DEFAULT_CODE_SETTINGS, permission: { ...DEFAULT_CODE_SETTINGS.permission } },
   hasOnboarded: false,
   autoUpdate: true
 }
@@ -74,7 +77,8 @@ export function normalizeButtonVisibility(raw: unknown): AppConfig['buttonVisibi
   return {
     appLauncher: typeof obj.appLauncher === 'boolean' ? obj.appLauncher : DEFAULT_BUTTON_VISIBILITY.appLauncher,
     workflow: typeof obj.workflow === 'boolean' ? obj.workflow : DEFAULT_BUTTON_VISIBILITY.workflow,
-    tasks: typeof obj.tasks === 'boolean' ? obj.tasks : DEFAULT_BUTTON_VISIBILITY.tasks
+    tasks: typeof obj.tasks === 'boolean' ? obj.tasks : DEFAULT_BUTTON_VISIBILITY.tasks,
+    code: typeof obj.code === 'boolean' ? obj.code : DEFAULT_BUTTON_VISIBILITY.code
   }
 }
 
@@ -122,6 +126,7 @@ export function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined
     shortcuts: normalizeShortcuts(rawConfig?.shortcuts),
     textureIntensity: normalizeTextureIntensity(rawConfig?.textureIntensity),
     pasteManager: normalizePasteManagerSettings(rawConfig?.pasteManager),
+    code: normalizeCodeSettings(rawConfig?.code),
     hasOnboarded:
       typeof rawConfig?.hasOnboarded === 'boolean' ? rawConfig.hasOnboarded : false,
     autoUpdate:

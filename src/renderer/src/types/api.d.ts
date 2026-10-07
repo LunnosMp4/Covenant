@@ -16,6 +16,35 @@ import type { TerminalExitPayload, TerminalStartResult } from '../../../shared/t
 import type { UpdateStatus } from '../../../shared/system/update'
 import type { PasteItemDetail, PasteItemMeta, PasteManagerSettings } from '../../../shared/paste/paste'
 import type { UsageMetricsResult, UsageProjectsResult } from '../../../shared/system/usage'
+import type {
+  CodeActivitySummary,
+  CodeAgent,
+  CodeEngineEvent,
+  CodeFileDiff,
+  CodeFormRequest,
+  CodeFormValue,
+  CodeModel,
+  CodePermissionRequest,
+  CodeProject,
+  CodeSession,
+  CodeSettings,
+  CodeStatus,
+  CodeTranscriptItem
+} from '../../../shared/code/code'
+import type {
+  CodeConnection,
+  CodeConnectionStatus,
+  RemoteBrowseResult
+} from '../../../shared/code/connection'
+
+type CodeResult<T> = ({ success: true } & T) | { success: false; error: string }
+
+type CodeStatusWithConnection = CodeStatus & {
+  hasApiKey: boolean
+  connectionId?: string
+  connectionKind?: 'local' | 'ssh'
+  connectionName?: string
+}
 
 interface CovenantAPI {
   platform: string
@@ -28,6 +57,8 @@ interface CovenantAPI {
     openSettings: (tab?: string) => void
     closeSettings: () => void
     minimizeSettings: () => void
+    onOpenCode: (callback: () => void) => () => void
+    onToggleCodeMode: (callback: () => void) => () => void
     onNavigateSettingsTab: (callback: (tab: string) => void) => () => void
     onSettingsShown: (callback: (isRestore: boolean) => void) => () => void
     onToggleVisibility: (
@@ -173,6 +204,106 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     onChanged: (callback: () => void) => () => void
     onShown: (callback: () => void) => () => void
     onSettingsUpdated: (callback: (settings: PasteManagerSettings) => void) => () => void
+  }
+  code: {
+    subscribe: () => void
+    onEvent: (callback: (event: CodeEngineEvent) => void) => () => void
+    onActivityStatus: (callback: (summary: CodeActivitySummary) => void) => () => void
+    ackActivity: () => Promise<CodeResult<Record<string, never>>>
+    getStatus: () => Promise<CodeResult<{ status: CodeStatusWithConnection }>>
+    setApiKey: (key: string) => Promise<CodeResult<{ status: CodeStatusWithConnection }>>
+    clearApiKey: () => Promise<CodeResult<{ status: CodeStatusWithConnection }>>
+    testConnection: () => Promise<CodeResult<{ connected: boolean }>>
+    listModels: () => Promise<CodeResult<{ models: CodeModel[] }>>
+    listAgents: () => Promise<CodeResult<{ agents: CodeAgent[] }>>
+    switchAgent: (payload: {
+      sessionId: string
+      agent: string
+    }) => Promise<CodeResult<Record<string, never>>>
+    listProjects: () => Promise<CodeResult<{ projects: CodeProject[] }>>
+    addProject: (
+      directory: string,
+      name?: string,
+      connectionId?: string
+    ) => Promise<CodeResult<{ projects: CodeProject[] }>>
+    removeProject: (id: string) => Promise<CodeResult<{ projects: CodeProject[] }>>
+    pickDirectory: () => Promise<CodeResult<{ directory?: string }>>
+    pickFile: () => Promise<CodeResult<{ path?: string }>>
+    listConnections: () => Promise<
+      CodeResult<{ connections: CodeConnection[]; activeConnectionId: string }>
+    >
+    addConnection: (payload: {
+      name?: string
+      host: string
+      port?: number
+      username: string
+      authMethod: 'password' | 'key' | 'agent'
+      privateKeyPath?: string
+    }) => Promise<CodeResult<{ connections: CodeConnection[]; activeConnectionId: string }>>
+    updateConnection: (
+      id: string,
+      patch: Partial<{
+        name: string
+        host: string
+        port: number
+        username: string
+        authMethod: 'password' | 'key' | 'agent'
+        privateKeyPath: string
+        hostKeyFingerprint: string
+      }>
+    ) => Promise<CodeResult<{ connections: CodeConnection[] }>>
+    removeConnection: (id: string) => Promise<
+      CodeResult<{ connections: CodeConnection[]; activeConnectionId: string }>
+    >
+    selectConnection: (id: string) => Promise<CodeResult<{ activeConnectionId: string }>>
+    testMachine: (id: string) => Promise<CodeResult<{ status: CodeConnectionStatus }>>
+    setConnectionCredential: (payload: {
+      id: string
+      password?: string
+      passphrase?: string
+    }) => Promise<CodeResult<Record<string, never>>>
+    browseRemote: (
+      connectionId: string,
+      path?: string
+    ) => Promise<({ success: true } & RemoteBrowseResult) | { success: false; error: string }>
+    listSessions: (directory?: string) => Promise<CodeResult<{ sessions: CodeSession[] }>>
+    createSession: (payload: {
+      directory: string
+      model?: { providerID: string; id: string; variant?: string }
+      agent?: string
+      title?: string
+    }) => Promise<CodeResult<{ session: CodeSession }>>
+    deleteSession: (sessionId: string) => Promise<CodeResult<Record<string, never>>>
+    getTranscript: (sessionId: string) => Promise<CodeResult<{ transcript: CodeTranscriptItem[] }>>
+    prompt: (payload: { sessionId: string; text: string }) => Promise<CodeResult<Record<string, never>>>
+    interrupt: (sessionId: string) => Promise<CodeResult<Record<string, never>>>
+    switchModel: (payload: {
+      sessionId: string
+      model: { providerID: string; id: string; variant?: string }
+    }) => Promise<CodeResult<Record<string, never>>>
+    listPermissions: (sessionId: string) => Promise<CodeResult<{ requests: CodePermissionRequest[] }>>
+    replyPermission: (payload: {
+      sessionId: string
+      requestId: string
+      reply: 'once' | 'always' | 'reject'
+    }) => Promise<CodeResult<Record<string, never>>>
+    listForms: (sessionId: string) => Promise<CodeResult<{ forms: CodeFormRequest[] }>>
+    replyForm: (payload: {
+      sessionId: string
+      formId: string
+      answer: Record<string, CodeFormValue>
+    }) => Promise<CodeResult<Record<string, never>>>
+    cancelForm: (payload: {
+      sessionId: string
+      formId: string
+      message?: string
+    }) => Promise<CodeResult<Record<string, never>>>
+    getDiff: (sessionId: string) => Promise<CodeResult<{ diff: CodeFileDiff[] }>>
+    getSettings: () => Promise<CodeResult<{ settings: CodeSettings }>>
+    setSettings: (patch: Partial<CodeSettings>) => Promise<CodeResult<{ settings: CodeSettings }>>
+    openLogs: () => Promise<CodeResult<Record<string, never>>>
+    restartRuntime: () => Promise<CodeResult<{ status: CodeStatusWithConnection }>>
+    getLogs: () => Promise<CodeResult<{ logs: string[] }>>
   }
 }
 

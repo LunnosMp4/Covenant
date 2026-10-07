@@ -5,10 +5,12 @@ import { is } from '@electron-toolkit/utils'
 import type { WebContents } from 'electron'
 import type { AppConfig } from '../../shared/config'
 import { DEFAULT_SHORTCUTS } from '../../shared/config'
+import type { CodeActivitySummary } from '../../shared/code/code'
 import { readConfig } from '../config/configStore'
 import { openLogsFolder } from '../logger'
 import { getPasteManager, isPasteBlurSuppressed } from '../paste/runtime'
 import { checkForUpdatesManually } from '../updater'
+import { buildTrayIcon, setTrayIconPath } from './trayIcon'
 
 const isMac = process.platform === 'darwin'
 const isWindows = process.platform === 'win32'
@@ -34,6 +36,8 @@ let mainWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
 let pasteWindow: BrowserWindow | null = null
 let tray: Tray | null = null
+let trayShortcutDisplay = 'Disabled'
+let codeActivity: CodeActivitySummary | null = null
 let isVisible = false
 let isPinned = false
 let isPasteVisible = false
@@ -658,15 +662,87 @@ function openTasksMode(): void {
   mainWindow.webContents.send('open-tasks')
 }
 
+export function openCodeSurface(): void {
+  if (!mainWindow) return
+
+  if (!isVisible) {
+    showWindow()
+  } else {
+    mainWindow.webContents.send('toggle-visibility', true)
+  }
+
+  // Render this in the main window, above the command bar, as the OpenCode
+  // surface (no separate window).
+  mainWindow.webContents.send('open-code')
+}
+
+function toggleCodeMode(): void {
+  if (!mainWindow) return
+  mainWindow.webContents.send('toggle-code-mode')
+}
+
 function getShortcutDisplay(shortcut: string): string {
   return shortcut || 'Disabled'
 }
 
-function updateTrayTooltip(shortcut: string): void {
-  if (tray && !tray.isDestroyed()) {
-    const display = getShortcutDisplay(shortcut)
-    tray.setToolTip(`Covenant - ${display}`)
+function codeStatusLabel(summary: CodeActivitySummary): string | null {
+  switch (summary.state) {
+    case 'awaiting':
+      return `Code: needs your input${summary.awaitingCount > 1 ? ` (${summary.awaitingCount})` : ''}`
+    case 'error':
+      return `Code: session error${summary.errorCount > 1 ? ` (${summary.errorCount})` : ''}`
+    case 'running':
+      return `Code: running${summary.runningCount > 1 ? ` (${summary.runningCount})` : ''}`
+    case 'finished':
+      return `Code: finished${summary.finishedCount > 1 ? ` (${summary.finishedCount})` : ''}`
+    default:
+      return null
   }
+}
+
+function refreshTrayTooltip(): void {
+  if (!tray || tray.isDestroyed()) return
+  const label = codeActivity ? codeStatusLabel(codeActivity) : null
+  tray.setToolTip(label ? `Covenant — ${label}` : `Covenant - ${trayShortcutDisplay}`)
+}
+
+function buildTrayContextMenu(): Menu {
+  const label = codeActivity ? codeStatusLabel(codeActivity) : null
+  const template: Electron.MenuItemConstructorOptions[] = []
+  if (label) {
+    template.push({ label, enabled: false })
+    template.push({ label: 'Open Code', click: () => openCodeSurface() })
+    template.push({ type: 'separator' })
+  }
+  template.push(
+    { label: 'Open Covenant', click: () => showWindow() },
+    { label: 'Settings', click: () => createSettingsWindow() },
+    { type: 'separator' },
+    { label: 'Check for Updates…', click: () => checkForUpdatesManually() },
+    { label: 'Open logs folder', click: () => openLogsFolder() },
+    { type: 'separator' },
+    { label: 'Quit Covenant', click: () => app.quit() }
+  )
+  return Menu.buildFromTemplate(template)
+}
+
+function refreshTray(): void {
+  if (!tray || tray.isDestroyed()) return
+  const icon = buildTrayIcon(codeActivity?.state ?? 'idle')
+  if (icon && !icon.isEmpty()) tray.setImage(icon)
+  refreshTrayTooltip()
+  tray.setContextMenu(buildTrayContextMenu())
+}
+
+/** Reflect the current Covenant Code activity in the tray (icon, tooltip, menu). */
+export function applyCodeActivityStatus(summary: CodeActivitySummary): void {
+  codeActivity = summary
+  refreshTray()
+}
+
+function updateTrayTooltip(shortcut: string): void {
+  trayShortcutDisplay = getShortcutDisplay(shortcut)
+  refreshTrayTooltip()
 }
 
 export function registerShortcuts(config: AppConfig): void {
@@ -718,11 +794,40 @@ export function registerShortcuts(config: AppConfig): void {
     }
   }
 
+  if (shortcuts.openCode) {
+    try {
+      const ok = globalShortcut.register(shortcuts.openCode, openCodeSurface)
+      if (!ok) {
+        console.warn(`Failed to register global shortcut: ${shortcuts.openCode} (may conflict with another app)`)
+      }
+    } catch (error) {
+      console.warn(`Error registering global shortcut '${shortcuts.openCode}':`, error)
+    }
+  }
+
+  if (shortcuts.toggleCodeMode) {
+    try {
+      const ok = globalShortcut.register(shortcuts.toggleCodeMode, toggleCodeMode)
+      if (!ok) {
+        console.warn(`Failed to register global shortcut: ${shortcuts.toggleCodeMode} (may conflict with another app)`)
+      }
+    } catch (error) {
+      console.warn(`Error registering global shortcut '${shortcuts.toggleCodeMode}':`, error)
+    }
+  }
+
   updateTrayTooltip(shortcuts.openApp)
 }
 
 export function createTray(): void {
   try {
+    // Idempotent: never accumulate Tray instances (Windows keeps "ghost" icons
+    // for any tray that isn't cleanly destroyed).
+    if (tray && !tray.isDestroyed()) {
+      tray.destroy()
+      tray = null
+    }
+
     // Try to find and load tray icon
     let trayIconPath: string | null = null
 
@@ -745,50 +850,16 @@ export function createTray(): void {
       return
     }
 
-    tray = new Tray(trayIconPath)
+    setTrayIconPath(trayIconPath)
 
-    // Set tooltip — will be updated by registerShortcuts() once config is loaded
+    // Tooltip — registerShortcuts() refreshes it with the live shortcut.
     const config = readConfig()
-    tray.setToolTip(`Covenant - ${getShortcutDisplay(config.shortcuts?.openApp ?? DEFAULT_SHORTCUTS.openApp)}`)
+    trayShortcutDisplay = getShortcutDisplay(config.shortcuts?.openApp ?? DEFAULT_SHORTCUTS.openApp)
 
-    // Create context menu
-    const contextMenu = Menu.buildFromTemplate([
-      {
-        label: 'Open Covenant',
-        click: () => {
-          showWindow()
-        }
-      },
-      {
-        label: 'Settings',
-        click: () => {
-          createSettingsWindow()
-        }
-      },
-      { type: 'separator' },
-      {
-        label: 'Check for Updates…',
-        click: () => {
-          checkForUpdatesManually()
-        }
-      },
-      {
-        label: 'Open logs folder',
-        click: () => {
-          openLogsFolder()
-        }
-      },
-      { type: 'separator' },
-      {
-        label: 'Quit Covenant',
-        click: () => {
-          app.quit()
-        }
-      }
-    ])
+    const initialIcon = buildTrayIcon('idle')
+    tray = initialIcon && !initialIcon.isEmpty() ? new Tray(initialIcon) : new Tray(trayIconPath)
 
-    // Set context menu for right-click
-    tray.setContextMenu(contextMenu)
+    refreshTray()
 
     // Left-click toggles visibility
     tray.on('click', () => {

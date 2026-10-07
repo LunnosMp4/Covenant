@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 interface ModalOverlayProps {
   children: ReactNode
@@ -16,13 +17,16 @@ export default function ModalOverlay({
 }: ModalOverlayProps): JSX.Element {
   const resolvedContentClassName = contentClassName ?? 'max-w-xl'
 
-  return (
+  // Render into document.body so `position: fixed` is relative to the window,
+  // not to a transformed (framer-motion) ancestor — otherwise tall modals
+  // spill past the command bar's container.
+  return createPortal(
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.16 }}
-      className={`fixed inset-0 z-50 flex items-center justify-center p-4 ${
+      className={`fixed inset-0 z-[100] flex items-center justify-center p-4 ${
         withBackdrop ? 'bg-black/60 backdrop-blur-sm' : ''
       }`}
       onMouseDown={(event) => {
@@ -41,6 +45,7 @@ export default function ModalOverlay({
       >
         {children}
       </motion.div>
-    </motion.div>
+    </motion.div>,
+    document.body
   )
 }

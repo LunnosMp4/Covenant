@@ -17,6 +17,26 @@ import type {
   WorkflowLogPayload,
   WorkflowStatusUpdatePayload
 } from '../shared/domain/workflow'
+import type {
+  CodeActivitySummary,
+  CodeAgent,
+  CodeEngineEvent,
+  CodeFileDiff,
+  CodeFormRequest,
+  CodeFormValue,
+  CodeModel,
+  CodePermissionRequest,
+  CodeProject,
+  CodeSession,
+  CodeSettings,
+  CodeStatus,
+  CodeTranscriptItem
+} from '../shared/code/code'
+import type {
+  CodeConnection,
+  CodeConnectionStatus,
+  RemoteBrowseResult
+} from '../shared/code/connection'
 
 const api = {
   platform: process.platform,
@@ -30,6 +50,24 @@ const api = {
     openSettings: (tab?: string) => ipcRenderer.send('open-settings', tab),
     closeSettings: () => ipcRenderer.send('close-settings'),
     minimizeSettings: () => ipcRenderer.send('minimize-settings'),
+    onOpenCode: (callback: () => void) => {
+      const listener = () => {
+        callback()
+      }
+      ipcRenderer.on('open-code', listener)
+      return () => {
+        ipcRenderer.removeListener('open-code', listener)
+      }
+    },
+    onToggleCodeMode: (callback: () => void) => {
+      const listener = () => {
+        callback()
+      }
+      ipcRenderer.on('toggle-code-mode', listener)
+      return () => {
+        ipcRenderer.removeListener('toggle-code-mode', listener)
+      }
+    },
     onNavigateSettingsTab: (callback: (tab: string) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, tab: string) => {
         callback(tab)
@@ -274,6 +312,213 @@ const api = {
       ipcRenderer.invoke('delete-conversation', id) as Promise<ChatConversation[]>,
     generateConversationTitle: (prompt: string) =>
       ipcRenderer.invoke('generate-conversation-title', prompt) as Promise<string>
+  },
+  code: {
+    subscribe: () => ipcRenderer.send('code:subscribe'),
+    onEvent: (callback: (event: CodeEngineEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: CodeEngineEvent) => {
+        callback(payload)
+      }
+      ipcRenderer.on('code:event', listener)
+      return () => {
+        ipcRenderer.removeListener('code:event', listener)
+      }
+    },
+    onActivityStatus: (callback: (summary: CodeActivitySummary) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: CodeActivitySummary) => {
+        callback(payload)
+      }
+      ipcRenderer.on('code-activity-status', listener)
+      return () => {
+        ipcRenderer.removeListener('code-activity-status', listener)
+      }
+    },
+    ackActivity: () =>
+      ipcRenderer.invoke('code:activity:ack') as Promise<
+        { success: true } | { success: false; error: string }
+      >,
+    getStatus: () =>
+      ipcRenderer.invoke('code:status') as Promise<
+        { success: true; status: CodeStatus & { hasApiKey: boolean } } | { success: false; error: string }
+      >,
+    setApiKey: (key: string) =>
+      ipcRenderer.invoke('code:auth:set', { key }) as Promise<
+        { success: true; status: CodeStatus & { hasApiKey: boolean } } | { success: false; error: string }
+      >,
+    clearApiKey: () =>
+      ipcRenderer.invoke('code:auth:clear') as Promise<
+        { success: true; status: CodeStatus & { hasApiKey: boolean } } | { success: false; error: string }
+      >,
+    testConnection: () =>
+      ipcRenderer.invoke('code:auth:test') as Promise<
+        { success: true; connected: boolean } | { success: false; error: string }
+      >,
+    listModels: () =>
+      ipcRenderer.invoke('code:models') as Promise<
+        { success: true; models: CodeModel[] } | { success: false; error: string }
+      >,
+    listAgents: () =>
+      ipcRenderer.invoke('code:agents:list') as Promise<
+        { success: true; agents: CodeAgent[] } | { success: false; error: string }
+      >,
+    switchAgent: (payload: { sessionId: string; agent: string }) =>
+      ipcRenderer.invoke('code:agents:switch', payload) as Promise<
+        { success: true } | { success: false; error: string }
+      >,
+    listProjects: () =>
+      ipcRenderer.invoke('code:projects:list') as Promise<
+        { success: true; projects: CodeProject[] } | { success: false; error: string }
+      >,
+    addProject: (directory: string, name?: string, connectionId?: string) =>
+      ipcRenderer.invoke('code:projects:add', { directory, name, connectionId }) as Promise<
+        { success: true; projects: CodeProject[] } | { success: false; error: string }
+      >,
+    removeProject: (id: string) =>
+      ipcRenderer.invoke('code:projects:remove', id) as Promise<
+        { success: true; projects: CodeProject[] } | { success: false; error: string }
+      >,
+    pickDirectory: () =>
+      ipcRenderer.invoke('code:pick-directory') as Promise<
+        { success: true; directory?: string } | { success: false; error: string }
+      >,
+    pickFile: () =>
+      ipcRenderer.invoke('code:pick-file') as Promise<
+        { success: true; path?: string } | { success: false; error: string }
+      >,
+    listConnections: () =>
+      ipcRenderer.invoke('code:connections:list') as Promise<
+        | { success: true; connections: CodeConnection[]; activeConnectionId: string }
+        | { success: false; error: string }
+      >,
+    addConnection: (payload: {
+      name?: string
+      host: string
+      port?: number
+      username: string
+      authMethod: 'password' | 'key' | 'agent'
+      privateKeyPath?: string
+    }) =>
+      ipcRenderer.invoke('code:connections:add', payload) as Promise<
+        | { success: true; connections: CodeConnection[]; activeConnectionId: string }
+        | { success: false; error: string }
+      >,
+    updateConnection: (
+      id: string,
+      patch: Partial<{
+        name: string
+        host: string
+        port: number
+        username: string
+        authMethod: 'password' | 'key' | 'agent'
+        privateKeyPath: string
+        hostKeyFingerprint: string
+      }>
+    ) =>
+      ipcRenderer.invoke('code:connections:update', { id, patch }) as Promise<
+        { success: true; connections: CodeConnection[] } | { success: false; error: string }
+      >,
+    removeConnection: (id: string) =>
+      ipcRenderer.invoke('code:connections:remove', id) as Promise<
+        | { success: true; connections: CodeConnection[]; activeConnectionId: string }
+        | { success: false; error: string }
+      >,
+    selectConnection: (id: string) =>
+      ipcRenderer.invoke('code:connections:select', id) as Promise<
+        { success: true; activeConnectionId: string } | { success: false; error: string }
+      >,
+    testMachine: (id: string) =>
+      ipcRenderer.invoke('code:connections:test', id) as Promise<
+        { success: true; status: CodeConnectionStatus } | { success: false; error: string }
+      >,
+    setConnectionCredential: (payload: {
+      id: string
+      password?: string
+      passphrase?: string
+    }) =>
+      ipcRenderer.invoke('code:connections:set-credential', payload) as Promise<
+        { success: true } | { success: false; error: string }
+      >,
+    browseRemote: (connectionId: string, path?: string) =>
+      ipcRenderer.invoke('code:remote:browse', { connectionId, path }) as Promise<
+        ({ success: true } & RemoteBrowseResult) | { success: false; error: string }
+      >,
+    listSessions: (directory?: string) =>
+      ipcRenderer.invoke('code:sessions:list', { directory }) as Promise<
+        { success: true; sessions: CodeSession[] } | { success: false; error: string }
+      >,
+    createSession: (payload: {
+      directory: string
+      model?: { providerID: string; id: string; variant?: string }
+      agent?: string
+      title?: string
+    }) =>
+      ipcRenderer.invoke('code:sessions:create', payload) as Promise<
+        { success: true; session: CodeSession } | { success: false; error: string }
+      >,
+    deleteSession: (sessionId: string) =>
+      ipcRenderer.invoke('code:sessions:delete', sessionId) as Promise<
+        { success: true } | { success: false; error: string }
+      >,
+    getTranscript: (sessionId: string) =>
+      ipcRenderer.invoke('code:sessions:transcript', sessionId) as Promise<
+        { success: true; transcript: CodeTranscriptItem[] } | { success: false; error: string }
+      >,
+    prompt: (payload: { sessionId: string; text: string }) =>
+      ipcRenderer.invoke('code:prompt', payload) as Promise<
+        { success: true } | { success: false; error: string }
+      >,
+    interrupt: (sessionId: string) =>
+      ipcRenderer.invoke('code:interrupt', sessionId) as Promise<
+        { success: true } | { success: false; error: string }
+      >,
+    switchModel: (payload: { sessionId: string; model: { providerID: string; id: string; variant?: string } }) =>
+      ipcRenderer.invoke('code:switch-model', payload) as Promise<
+        { success: true } | { success: false; error: string }
+      >,
+    listPermissions: (sessionId: string) =>
+      ipcRenderer.invoke('code:permissions:list', sessionId) as Promise<
+        { success: true; requests: CodePermissionRequest[] } | { success: false; error: string }
+      >,
+    replyPermission: (payload: { sessionId: string; requestId: string; reply: 'once' | 'always' | 'reject' }) =>
+      ipcRenderer.invoke('code:permissions:reply', payload) as Promise<
+        { success: true } | { success: false; error: string }
+      >,
+    listForms: (sessionId: string) =>
+      ipcRenderer.invoke('code:forms:list', sessionId) as Promise<
+        { success: true; forms: CodeFormRequest[] } | { success: false; error: string }
+      >,
+    replyForm: (payload: { sessionId: string; formId: string; answer: Record<string, CodeFormValue> }) =>
+      ipcRenderer.invoke('code:forms:reply', payload) as Promise<
+        { success: true } | { success: false; error: string }
+      >,
+    cancelForm: (payload: { sessionId: string; formId: string; message?: string }) =>
+      ipcRenderer.invoke('code:forms:cancel', payload) as Promise<
+        { success: true } | { success: false; error: string }
+      >,
+    getDiff: (sessionId: string) =>
+      ipcRenderer.invoke('code:diff', sessionId) as Promise<
+        { success: true; diff: CodeFileDiff[] } | { success: false; error: string }
+      >,
+    getSettings: () =>
+      ipcRenderer.invoke('code:settings:get') as Promise<
+        { success: true; settings: CodeSettings } | { success: false; error: string }
+      >,
+    setSettings: (patch: Partial<CodeSettings>) =>
+      ipcRenderer.invoke('code:settings:set', patch) as Promise<
+        { success: true; settings: CodeSettings } | { success: false; error: string }
+      >,
+    openLogs: () =>
+      ipcRenderer.invoke('code:logs:open') as Promise<
+        { success: true } | { success: false; error: string }
+      >,
+    restartRuntime: () =>
+      ipcRenderer.invoke('code:runtime:restart') as Promise<
+        { success: true; status: CodeStatus & { hasApiKey: boolean } } | { success: false; error: string }
+      >,
+    getLogs: () =>
+      ipcRenderer.invoke('code:logs') as Promise<
+        { success: true; logs: string[] } | { success: false; error: string }
+      >
   },
   terminal: {
     startTerminal: (size?: { cols?: number; rows?: number }) =>

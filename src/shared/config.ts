@@ -1,10 +1,13 @@
 import type { McpServer } from './mcp/mcp'
 import { DEFAULT_PASTE_SETTINGS, normalizePasteManagerSettings, type PasteManagerSettings } from './paste/paste'
+import { DEFAULT_CODE_SETTINGS, type CodeSettings } from './code/code'
+import { normalizeCodeSettings } from './code/codeNormalizers'
 
 export interface ButtonVisibility {
   appLauncher: boolean
   workflow: boolean
   tasks: boolean
+  code: boolean
 }
 
 export type ReasoningEffort = 'low' | 'medium' | 'high'
@@ -55,7 +58,8 @@ export function normalizeTextureIntensity(value: unknown): number {
 export const DEFAULT_BUTTON_VISIBILITY: ButtonVisibility = {
   appLauncher: true,
   workflow: true,
-  tasks: true
+  tasks: true,
+  code: true
 }
 
 export function getModelCapabilities(modelId: string): ChatModelOption | undefined {
@@ -88,13 +92,17 @@ export interface ShortcutConfig {
   openAppTerminal: string
   openTasks: string
   openPaste: string
+  openCode: string
+  toggleCodeMode: string
 }
 
 export const DEFAULT_SHORTCUTS: ShortcutConfig = {
   openApp: 'Alt+Space',
   openAppTerminal: 'Alt+T',
   openTasks: 'Alt+L',
-  openPaste: 'Alt+V'
+  openPaste: 'Alt+V',
+  openCode: 'Alt+C',
+  toggleCodeMode: 'Alt+M'
 }
 
 export function normalizeAdminApiKey(value: unknown): string {
@@ -114,7 +122,10 @@ export function normalizeShortcuts(raw: unknown): ShortcutConfig {
     openAppTerminal: typeof obj.openAppTerminal === 'string' ? obj.openAppTerminal : DEFAULT_SHORTCUTS.openAppTerminal,
     openTasks: typeof obj.openTasks === 'string' ? obj.openTasks : DEFAULT_SHORTCUTS.openTasks,
     // Migrate the previous default (`Ctrl+Alt+V`) to the new one.
-    openPaste: openPaste === 'Ctrl+Alt+V' ? DEFAULT_SHORTCUTS.openPaste : openPaste
+    openPaste: openPaste === 'Ctrl+Alt+V' ? DEFAULT_SHORTCUTS.openPaste : openPaste,
+    openCode: typeof obj.openCode === 'string' ? obj.openCode : DEFAULT_SHORTCUTS.openCode,
+    toggleCodeMode:
+      typeof obj.toggleCodeMode === 'string' ? obj.toggleCodeMode : DEFAULT_SHORTCUTS.toggleCodeMode
   }
 }
 
@@ -137,9 +148,12 @@ export interface AppConfig {
   shortcuts: ShortcutConfig
   textureIntensity: number
   pasteManager: PasteManagerSettings
+  code: CodeSettings
   hasOnboarded?: boolean
   autoUpdate?: boolean
 }
 
 export { DEFAULT_PASTE_SETTINGS, normalizePasteManagerSettings }
 export type { PasteManagerSettings }
+export { DEFAULT_CODE_SETTINGS, normalizeCodeSettings }
+export type { CodeSettings }

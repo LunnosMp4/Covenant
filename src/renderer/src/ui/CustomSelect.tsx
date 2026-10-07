@@ -11,6 +11,8 @@ interface CustomSelectProps {
   onChange: (value: string) => void
   disabled?: boolean
   className?: string
+  /** Renders a compact control sized to match 32px header icon buttons. */
+  compact?: boolean
 }
 
 function ChevronIcon({ open }: { open: boolean }): JSX.Element {
@@ -35,11 +37,16 @@ export default function CustomSelect({
   value,
   onChange,
   disabled = false,
-  className = ''
+  className = '',
+  compact = false
 }: CustomSelectProps): JSX.Element {
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const selected = options.find((opt) => opt.value === value)
+
+  const buttonClassName = compact
+    ? 'flex h-8 w-full items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 px-2.5 text-xs text-neutral-200 transition-colors hover:border-white/20 hover:bg-white/10 focus:outline-none disabled:cursor-not-allowed'
+    : 'flex w-full items-center justify-between gap-2 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100 transition-colors focus:border-neutral-600 focus:outline-none disabled:cursor-not-allowed'
 
   useEffect(() => {
     if (!open) return
@@ -77,7 +84,7 @@ export default function CustomSelect({
           if (!disabled) setOpen((prev) => !prev)
         }}
         disabled={disabled}
-        className="flex w-full items-center justify-between gap-2 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100 transition-colors focus:border-neutral-600 focus:outline-none disabled:cursor-not-allowed"
+        className={buttonClassName}
       >
         <span className="truncate">{selected?.label ?? value}</span>
         {!disabled && <ChevronIcon open={open} />}

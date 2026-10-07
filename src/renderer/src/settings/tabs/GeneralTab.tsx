@@ -401,6 +401,46 @@ export default function GeneralTab({
               onReset={() => onShortcutChange('openPaste', DEFAULT_SHORTCUTS.openPaste)}
             />
           </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-neutral-300">
+              Open Covenant Code
+            </label>
+            <p className="mb-2 text-xs text-neutral-500">
+              Opens the OpenCode coding surface above the command bar.
+            </p>
+            <ShortcutRecorder
+              value={shortcuts.openCode}
+              onChange={(val) => onShortcutChange('openCode', val)}
+              conflictWarning={
+                shortcuts.openCode && shortcuts.openApp && shortcuts.openCode === shortcuts.openApp
+                  ? 'This shortcut is also assigned to Open App'
+                  : null
+              }
+              defaultShortcut={DEFAULT_SHORTCUTS.openCode}
+              onReset={() => onShortcutChange('openCode', DEFAULT_SHORTCUTS.openCode)}
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-neutral-300">
+              Toggle Code Mode
+            </label>
+            <p className="mb-2 text-xs text-neutral-500">
+              Switches Covenant Code between Build and Plan mode while the coding surface is open.
+            </p>
+            <ShortcutRecorder
+              value={shortcuts.toggleCodeMode}
+              onChange={(val) => onShortcutChange('toggleCodeMode', val)}
+              conflictWarning={
+                shortcuts.toggleCodeMode && shortcuts.openApp && shortcuts.toggleCodeMode === shortcuts.openApp
+                  ? 'This shortcut is also assigned to Open App'
+                  : null
+              }
+              defaultShortcut={DEFAULT_SHORTCUTS.toggleCodeMode}
+              onReset={() => onShortcutChange('toggleCodeMode', DEFAULT_SHORTCUTS.toggleCodeMode)}
+            />
+          </div>
         </div>
       </SectionCard>
     </div>

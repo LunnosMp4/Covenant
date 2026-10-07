@@ -30,9 +30,9 @@ import type { Workflow } from '../types/renderer'
 import { getAppBadgeText } from '../utils/helpers'
 import { formatTargetsSummary, normalizeLaunchTargets } from '../utils/launcher/launcherTargets'
 
-export type SettingsTab = 'general' | 'appearance' | 'terminal' | 'appLauncher' | 'workflow' | 'preprompts' | 'mcp' | 'paste' | 'usage'
+export type SettingsTab = 'general' | 'appearance' | 'terminal' | 'appLauncher' | 'workflow' | 'preprompts' | 'mcp' | 'paste' | 'usage' | 'code'
 
-export const VALID_SETTINGS_TABS: readonly SettingsTab[] = ['general', 'appearance', 'terminal', 'appLauncher', 'workflow', 'preprompts', 'mcp', 'paste', 'usage']
+export const VALID_SETTINGS_TABS: readonly SettingsTab[] = ['general', 'appearance', 'terminal', 'appLauncher', 'workflow', 'preprompts', 'mcp', 'paste', 'usage', 'code']
 
 export interface SettingsNavGroup {
   label: string
@@ -62,6 +62,10 @@ export const SETTINGS_NAV_GROUPS: readonly SettingsNavGroup[] = [
       { id: 'appLauncher', label: 'App Launcher' },
       { id: 'paste', label: 'Clipboard' }
     ]
+  },
+  {
+    label: 'Code',
+    items: [{ id: 'code', label: 'OpenCode' }]
   },
   {
     label: 'Account',

@@ -126,7 +126,8 @@ export function registerConfigIpc(): void {
     const nextButtonVisibility: AppConfig['buttonVisibility'] = {
       appLauncher: typeof buttonVisibility?.appLauncher === 'boolean' ? buttonVisibility.appLauncher : current.appLauncher,
       workflow: typeof buttonVisibility?.workflow === 'boolean' ? buttonVisibility.workflow : current.workflow,
-      tasks: typeof buttonVisibility?.tasks === 'boolean' ? buttonVisibility.tasks : current.tasks
+      tasks: typeof buttonVisibility?.tasks === 'boolean' ? buttonVisibility.tasks : current.tasks,
+      code: typeof buttonVisibility?.code === 'boolean' ? buttonVisibility.code : current.code
     }
     updateConfig({ buttonVisibility: nextButtonVisibility })
     broadcast('button-visibility-updated', nextButtonVisibility)
