@@ -21,6 +21,8 @@ import type {
   CodeAgent,
   CodeEngineEvent,
   CodeFileDiff,
+  CodeFormRequest,
+  CodeFormValue,
   CodeModel,
   CodePermissionRequest,
   CodeProject,
@@ -390,6 +392,18 @@ const api = {
       >,
     replyPermission: (payload: { sessionId: string; requestId: string; reply: 'once' | 'always' | 'reject' }) =>
       ipcRenderer.invoke('code:permissions:reply', payload) as Promise<
+        { success: true } | { success: false; error: string }
+      >,
+    listForms: (sessionId: string) =>
+      ipcRenderer.invoke('code:forms:list', sessionId) as Promise<
+        { success: true; forms: CodeFormRequest[] } | { success: false; error: string }
+      >,
+    replyForm: (payload: { sessionId: string; formId: string; answer: Record<string, CodeFormValue> }) =>
+      ipcRenderer.invoke('code:forms:reply', payload) as Promise<
+        { success: true } | { success: false; error: string }
+      >,
+    cancelForm: (payload: { sessionId: string; formId: string; message?: string }) =>
+      ipcRenderer.invoke('code:forms:cancel', payload) as Promise<
         { success: true } | { success: false; error: string }
       >,
     getDiff: (sessionId: string) =>

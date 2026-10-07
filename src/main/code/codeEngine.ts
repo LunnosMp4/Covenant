@@ -3,6 +3,8 @@ import type {
   CodeAgent,
   CodeEngineEvent,
   CodeFileDiff,
+  CodeFormRequest,
+  CodeFormValue,
   CodeModel,
   CodePermissionRequest,
   CodeSession,
@@ -29,6 +31,18 @@ export interface CodeEnginePermissionReply {
   sessionId: string
   requestId: string
   reply: 'once' | 'always' | 'reject'
+}
+
+export interface CodeEngineFormReply {
+  sessionId: string
+  formId: string
+  answer: Record<string, CodeFormValue>
+}
+
+export interface CodeEngineFormCancel {
+  sessionId: string
+  formId: string
+  message?: string
 }
 
 export interface CodeIntegrationSummary {
@@ -70,6 +84,10 @@ export interface CodeEngine {
 
   listPermissions(sessionId: string): Promise<CodePermissionRequest[]>
   replyPermission(input: CodeEnginePermissionReply): Promise<void>
+
+  listForms(sessionId: string): Promise<CodeFormRequest[]>
+  replyForm(input: CodeEngineFormReply): Promise<void>
+  cancelForm(input: CodeEngineFormCancel): Promise<void>
 
   getDiff(sessionId: string): Promise<CodeFileDiff[]>
 }

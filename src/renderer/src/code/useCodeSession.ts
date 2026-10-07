@@ -4,6 +4,8 @@ import type {
   CodeAgent,
   CodeEngineEvent,
   CodeFileDiff,
+  CodeFormRequest,
+  CodeFormValue,
   CodeModel,
   CodePermissionRequest,
   CodeProject,
@@ -36,6 +38,7 @@ export function useCodeSession(): {
   usage: CodeUsage | null
   liveCost: number | null
   permissions: CodePermissionRequest[]
+  forms: CodeFormRequest[]
   diffs: CodeFileDiff[]
   totals: { additions: number; deletions: number }
   error: string | null
@@ -53,6 +56,8 @@ export function useCodeSession(): {
   submit: (text: string) => Promise<void>
   stop: () => Promise<void>
   replyPermission: (request: CodePermissionRequest, reply: 'once' | 'always' | 'reject') => Promise<void>
+  replyForm: (form: CodeFormRequest, answer: Record<string, CodeFormValue>) => Promise<void>
+  cancelForm: (form: CodeFormRequest, message?: string) => Promise<void>
   dismissError: () => void
 } {
   const api = window.api
@@ -71,6 +76,7 @@ export function useCodeSession(): {
   const [usage, setUsage] = useState<CodeUsage | null>(null)
   const [liveCost, setLiveCost] = useState<number | null>(null)
   const [permissions, setPermissions] = useState<CodePermissionRequest[]>([])
+  const [forms, setForms] = useState<CodeFormRequest[]>([])
   const [diffs, setDiffs] = useState<CodeFileDiff[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loadingSessions, setLoadingSessions] = useState(false)
@@ -243,6 +249,19 @@ export function useCodeSession(): {
         setPermissions((current) => current.filter((item) => item.id !== event.requestId))
         return
       }
+      if (event.kind === 'form') {
+        const form = event.form
+        const active = activeSessionRef.current
+        if (active && form.sessionId && form.sessionId !== active.id) return
+        setForms((current) =>
+          current.some((item) => item.id === form.id) ? current : [...current, form]
+        )
+        return
+      }
+      if (event.kind === 'form-settled') {
+        setForms((current) => current.filter((item) => item.id !== event.formId))
+        return
+      }
       if (event.kind === 'diff') {
         if (!activeSessionRef.current || event.sessionId === activeSessionRef.current.id) {
           setDiffs(event.diff)
@@ -386,6 +405,7 @@ export function useCodeSession(): {
       setLiveCost(null)
       setDiffs([])
       setPermissions([])
+      setForms([])
     } else {
       setError(result.error)
     }
@@ -399,20 +419,23 @@ export function useCodeSession(): {
       setUsage(null)
       setLiveCost(null)
       setPermissions([])
+      setForms([])
       setError(null)
       if (session.agent) setSelectedAgent(session.agent)
       if (session.model) {
         setSelectedModel(`${session.model.providerID}/${session.model.id}`)
         setSelectedVariant(session.model.variant ?? '')
       }
-      const [transcriptResult, diffResult, permissionResult] = await Promise.all([
+      const [transcriptResult, diffResult, permissionResult, formResult] = await Promise.all([
         api.code.getTranscript(session.id),
         api.code.getDiff(session.id),
-        api.code.listPermissions(session.id)
+        api.code.listPermissions(session.id),
+        api.code.listForms(session.id)
       ])
       setTranscript(transcriptResult.success ? transcriptResult.transcript : [])
       setDiffs(diffResult.success ? diffResult.diff : [])
       setPermissions(permissionResult.success ? permissionResult.requests : [])
+      setForms(formResult.success ? formResult.forms : [])
     },
     [api]
   )
@@ -513,6 +536,7 @@ export function useCodeSession(): {
         setUsage(null)
         setLiveCost(null)
         setDiffs([])
+        setForms([])
       }
 
       setTranscript((current) => [
@@ -546,6 +570,36 @@ export function useCodeSession(): {
       })
       if (result.success) {
         setPermissions((current) => current.filter((item) => item.id !== request.id))
+      } else {
+        setError(result.error)
+      }
+    },
+    [api]
+  )
+
+  const replyForm = useCallback(
+    async (form: CodeFormRequest, answer: Record<string, CodeFormValue>) => {
+      if (!api?.code) return
+      const result = await api.code.replyForm({ sessionId: form.sessionId, formId: form.id, answer })
+      if (result.success) {
+        setForms((current) => current.filter((item) => item.id !== form.id))
+      } else {
+        setError(result.error)
+      }
+    },
+    [api]
+  )
+
+  const cancelForm = useCallback(
+    async (form: CodeFormRequest, message?: string) => {
+      if (!api?.code) return
+      const result = await api.code.cancelForm({
+        sessionId: form.sessionId,
+        formId: form.id,
+        message
+      })
+      if (result.success) {
+        setForms((current) => current.filter((item) => item.id !== form.id))
       } else {
         setError(result.error)
       }
@@ -587,6 +641,7 @@ export function useCodeSession(): {
     usage,
     liveCost,
     permissions,
+    forms,
     diffs,
     totals,
     error,
@@ -604,6 +659,8 @@ export function useCodeSession(): {
     submit,
     stop,
     replyPermission,
+    replyForm,
+    cancelForm,
     dismissError
   }
 }

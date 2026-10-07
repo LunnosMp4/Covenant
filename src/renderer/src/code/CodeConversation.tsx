@@ -1,7 +1,14 @@
 import { useState, type RefObject } from 'react'
-import type { CodeFileDiff, CodeTranscriptItem, CodeTranscriptTool } from '../../../shared/code/code'
+import type {
+  CodeFileDiff,
+  CodeFormRequest,
+  CodeFormValue,
+  CodeTranscriptItem,
+  CodeTranscriptTool
+} from '../../../shared/code/code'
 import { AssistantMarkdown, CopyButton } from '../chat/AssistantMarkdown'
 import { SpinnerIcon } from '../ui/icons'
+import CodeQuestionCard from './CodeQuestionCard'
 import ToolActivityList from './ToolActivity'
 import type { Note, StreamingState, ToolCard } from './types'
 
@@ -9,8 +16,11 @@ interface CodeConversationProps {
   transcript: CodeTranscriptItem[]
   stream: StreamingState
   diffs: CodeFileDiff[]
+  forms: CodeFormRequest[]
   scrollRef: RefObject<HTMLDivElement>
   onScroll: () => void
+  onReplyForm: (form: CodeFormRequest, answer: Record<string, CodeFormValue>) => void
+  onCancelForm: (form: CodeFormRequest, message?: string) => void
 }
 
 function Chevron({ open }: { open: boolean }): JSX.Element {
@@ -154,11 +164,15 @@ export default function CodeConversation({
   transcript,
   stream,
   diffs,
+  forms,
   scrollRef,
-  onScroll
+  onScroll,
+  onReplyForm,
+  onCancelForm
 }: CodeConversationProps): JSX.Element {
   const isEmpty =
     transcript.length === 0 &&
+    forms.length === 0 &&
     !stream.text &&
     !stream.reasoning &&
     stream.tools.length === 0 &&
@@ -174,6 +188,14 @@ export default function CodeConversation({
             <TranscriptBlock key={item.id} item={item} diffs={diffs} />
           ))}
           <StreamBlock stream={stream} diffs={diffs} />
+          {forms.map((form) => (
+            <CodeQuestionCard
+              key={form.id}
+              form={form}
+              onSubmit={(answer) => onReplyForm(form, answer)}
+              onCancel={(message) => onCancelForm(form, message)}
+            />
+          ))}
           {stream.busy && !stream.text && !stream.reasoning && stream.tools.length === 0 && (
             <div className="flex items-center gap-2 py-2 text-xs text-neutral-500">
               <SpinnerIcon /> Working…

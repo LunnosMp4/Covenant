@@ -3,7 +3,7 @@ import { log } from '../logger'
 import { readConfig, updateConfig } from '../config/configStore'
 import { getLogFilePath } from '../logger'
 import { normalizeCodeSettings } from '../../shared/code/codeNormalizers'
-import type { CodeSettings } from '../../shared/code/code'
+import type { CodeFormValue, CodeSettings } from '../../shared/code/code'
 import { addCodeProject, getCodeProjects, removeCodeProject } from '../features/codeProjects'
 import { getCodeService } from '../code/codeService'
 import type { CodeEngineEvent } from '../code/codeEngine'
@@ -296,6 +296,52 @@ export function registerCodeIpc(): void {
         throw new Error('Invalid permission reply')
       }
       await requireService().getEngine().replyPermission({ sessionId, requestId, reply })
+      return { success: true as const }
+    } catch (error) {
+      return errorResult(error)
+    }
+  })
+
+  ipcMain.handle('code:forms:list', async (_event, sessionId: unknown) => {
+    try {
+      if (typeof sessionId !== 'string' || !sessionId) throw new Error('A session id is required')
+      const forms = await requireService().getEngine().listForms(sessionId)
+      return { success: true as const, forms }
+    } catch (error) {
+      return errorResult(error)
+    }
+  })
+
+  ipcMain.handle('code:forms:reply', async (_event, payload: unknown) => {
+    try {
+      const raw = (payload ?? {}) as Record<string, unknown>
+      const sessionId = typeof raw.sessionId === 'string' ? raw.sessionId : ''
+      const formId = typeof raw.formId === 'string' ? raw.formId : ''
+      if (!sessionId || !formId) throw new Error('A session id and form id are required')
+      const answer = raw.answer && typeof raw.answer === 'object' ? (raw.answer as Record<string, unknown>) : {}
+      const normalized: Record<string, CodeFormValue> = {}
+      for (const [key, value] of Object.entries(answer)) {
+        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+          normalized[key] = value
+        } else if (Array.isArray(value) && value.every((item) => typeof item === 'string')) {
+          normalized[key] = value as string[]
+        }
+      }
+      await requireService().getEngine().replyForm({ sessionId, formId, answer: normalized })
+      return { success: true as const }
+    } catch (error) {
+      return errorResult(error)
+    }
+  })
+
+  ipcMain.handle('code:forms:cancel', async (_event, payload: unknown) => {
+    try {
+      const raw = (payload ?? {}) as Record<string, unknown>
+      const sessionId = typeof raw.sessionId === 'string' ? raw.sessionId : ''
+      const formId = typeof raw.formId === 'string' ? raw.formId : ''
+      if (!sessionId || !formId) throw new Error('A session id and form id are required')
+      const message = typeof raw.message === 'string' ? raw.message : undefined
+      await requireService().getEngine().cancelForm({ sessionId, formId, message })
       return { success: true as const }
     } catch (error) {
       return errorResult(error)

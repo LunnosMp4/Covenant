@@ -54,16 +54,7 @@ export default function CodePanel({
 
   const bodyHeight = isExpanded ? Math.max(CHAT_SCROLL_HEIGHT, viewportHeight - 210) : CHAT_SCROLL_HEIGHT
 
-  const ready = session.status?.ready === true
   const hasKey = session.status?.hasApiKey === true
-  const missingRuntime = session.status?.installed === false
-  const statusDot = ready && hasKey ? 'bg-emerald-400' : missingRuntime || !hasKey ? 'bg-amber-400' : 'bg-neutral-500'
-  const statusTitle = ready
-    ? `OpenCode ${session.status?.version ?? ''}`
-    : missingRuntime
-      ? 'OpenCode runtime not found'
-      : 'Connecting…'
-  const statusHint = hasKey ? statusTitle : `${statusTitle} · no Go API key`
 
   const modelOptions = session.models.map((model) => ({
     value: `${model.providerID}/${model.id}`,
@@ -238,13 +229,6 @@ export default function CodePanel({
             </div>
           )}
 
-          <span
-            className="flex h-8 w-8 shrink-0 items-center justify-center"
-            title={statusHint}
-            aria-label={statusHint}
-          >
-            <span className={`h-2 w-2 rounded-full ${statusDot}`} />
-          </span>
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
@@ -375,8 +359,11 @@ export default function CodePanel({
                   transcript={session.transcript}
                   stream={session.stream}
                   diffs={session.diffs}
+                  forms={session.forms}
                   scrollRef={scrollRef}
                   onScroll={handleScroll}
+                  onReplyForm={(form, answer) => void session.replyForm(form, answer)}
+                  onCancelForm={(form, message) => void session.cancelForm(form, message)}
                 />
               ) : (
                 emptyState
@@ -402,8 +389,11 @@ export default function CodePanel({
             transcript={session.transcript}
             stream={session.stream}
             diffs={session.diffs}
+            forms={session.forms}
             scrollRef={scrollRef}
             onScroll={handleScroll}
+            onReplyForm={(form, answer) => void session.replyForm(form, answer)}
+            onCancelForm={(form, message) => void session.cancelForm(form, message)}
           />
         ) : (
           emptyState

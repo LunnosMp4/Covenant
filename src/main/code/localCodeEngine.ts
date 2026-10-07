@@ -3,6 +3,11 @@ import type {
   CodeActivityEvent,
   CodeAgent,
   CodeFileDiff,
+  CodeFormField,
+  CodeFormOption,
+  CodeFormRequest,
+  CodeFormValue,
+  CodeFormWhen,
   CodeModel,
   CodeModelRef,
   CodePermissionRequest,
@@ -17,6 +22,8 @@ import { CODE_PROVIDER_ID } from '../../shared/code/code'
 import type {
   CodeEngine,
   CodeEngineEvent,
+  CodeEngineFormCancel,
+  CodeEngineFormReply,
   CodeEngineListener,
   CodeEnginePermissionReply,
   CodeIntegrationSummary,
@@ -108,6 +115,106 @@ function toPermission(raw: unknown, fallbackSessionId: string): CodePermissionRe
     resources,
     save,
     title: typeof obj.title === 'string' ? obj.title : undefined,
+    createdAt: Date.now()
+  }
+}
+
+const FORM_FIELD_TYPES = ['string', 'number', 'integer', 'boolean', 'multiselect', 'external']
+
+function isFormFieldType(value: string): value is CodeFormField['type'] {
+  return FORM_FIELD_TYPES.includes(value)
+}
+
+function isFormValue(value: unknown): value is CodeFormValue {
+  return (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    (Array.isArray(value) && value.every((item) => typeof item === 'string'))
+  )
+}
+
+function toFormOption(raw: unknown): CodeFormOption | null {
+  if (!raw || typeof raw !== 'object') return null
+  const obj = raw as Record<string, unknown>
+  const value = typeof obj.value === 'string' ? obj.value : ''
+  if (!value) return null
+  return {
+    value,
+    label: typeof obj.label === 'string' && obj.label ? obj.label : value,
+    description: typeof obj.description === 'string' ? obj.description : undefined
+  }
+}
+
+function toFormWhen(raw: unknown): CodeFormWhen | null {
+  if (!raw || typeof raw !== 'object') return null
+  const obj = raw as Record<string, unknown>
+  const key = typeof obj.key === 'string' ? obj.key : ''
+  const op = obj.op === 'eq' || obj.op === 'neq' ? obj.op : null
+  const value = obj.value
+  if (!key || !op) return null
+  if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') return null
+  return { key, op, value }
+}
+
+function toFormField(raw: unknown): CodeFormField | null {
+  if (!raw || typeof raw !== 'object') return null
+  const obj = raw as Record<string, unknown>
+  const key = typeof obj.key === 'string' ? obj.key : ''
+  const type = typeof obj.type === 'string' ? obj.type : ''
+  if (!key || !isFormFieldType(type)) return null
+
+  const field: CodeFormField = { key, type }
+  if (typeof obj.title === 'string') field.title = obj.title
+  if (typeof obj.description === 'string') field.description = obj.description
+  if (typeof obj.required === 'boolean') field.required = obj.required
+  if (typeof obj.hidden === 'boolean') field.hidden = obj.hidden
+  if (typeof obj.custom === 'boolean') field.custom = obj.custom
+  if (Array.isArray(obj.when)) {
+    const when = obj.when.map(toFormWhen).filter((item): item is CodeFormWhen => item !== null)
+    if (when.length > 0) field.when = when
+  }
+  if (obj.format === 'email' || obj.format === 'uri' || obj.format === 'date' || obj.format === 'date-time') {
+    field.format = obj.format
+  }
+  if (typeof obj.minLength === 'number') field.minLength = obj.minLength
+  if (typeof obj.maxLength === 'number') field.maxLength = obj.maxLength
+  if (typeof obj.pattern === 'string') field.pattern = obj.pattern
+  if (typeof obj.placeholder === 'string') field.placeholder = obj.placeholder
+  if ('default' in obj && isFormValue(obj.default)) field.default = obj.default
+  if (typeof obj.minimum === 'number') field.minimum = obj.minimum
+  if (typeof obj.maximum === 'number') field.maximum = obj.maximum
+  if (typeof obj.minItems === 'number') field.minItems = obj.minItems
+  if (typeof obj.maxItems === 'number') field.maxItems = obj.maxItems
+  if (typeof obj.url === 'string') field.url = obj.url
+  if (Array.isArray(obj.options)) {
+    const options = obj.options
+      .map(toFormOption)
+      .filter((item): item is CodeFormOption => item !== null)
+    if (options.length > 0) field.options = options
+  }
+  return field
+}
+
+function toForm(raw: unknown, fallbackSessionId: string): CodeFormRequest | null {
+  if (!raw || typeof raw !== 'object') return null
+  const obj = raw as Record<string, unknown>
+  const id = typeof obj.id === 'string' ? obj.id : typeof obj.formID === 'string' ? obj.formID : ''
+  if (!id) return null
+  const sessionId =
+    typeof obj.sessionID === 'string'
+      ? obj.sessionID
+      : typeof obj.sessionId === 'string'
+        ? obj.sessionId
+        : fallbackSessionId
+  const fields = Array.isArray(obj.fields)
+    ? obj.fields.map(toFormField).filter((field): field is CodeFormField => field !== null)
+    : []
+  return {
+    id,
+    sessionId,
+    title: typeof obj.title === 'string' && obj.title ? obj.title : 'Question from OpenCode',
+    fields,
     createdAt: Date.now()
   }
 }
@@ -458,6 +565,23 @@ export class LocalCodeEngine implements CodeEngine {
         if (requestId) this.emit({ kind: 'permission-replied', sessionId, requestId })
         break
       }
+      case 'form.created':
+      case 'session.form.created':
+      case 'session.next.form.created': {
+        const form = toForm(payload.form ?? payload, sessionId)
+        if (form) this.emit({ kind: 'form', form })
+        break
+      }
+      case 'form.replied':
+      case 'form.cancelled':
+      case 'session.form.replied':
+      case 'session.form.cancelled':
+      case 'session.next.form.replied':
+      case 'session.next.form.cancelled': {
+        const formId = String(payload.formID ?? payload.id ?? '')
+        if (formId) this.emit({ kind: 'form-settled', sessionId, formId })
+        break
+      }
       case 'session.diff': {
         const diff = asArray(payload.diff).map(toFileDiff).filter((item): item is CodeFileDiff => item !== null)
         if (sessionId) this.emit({ kind: 'diff', sessionId, diff })
@@ -648,6 +772,48 @@ export class LocalCodeEngine implements CodeEngine {
       decision: input.reply
     })
     this.emit({ kind: 'permission-replied', sessionId: input.sessionId, requestId: input.requestId })
+  }
+
+  async listForms(sessionId: string): Promise<CodeFormRequest[]> {
+    const client = this.requireClient()
+    try {
+      let list: Record<string, unknown>[] = []
+      if (client.session?.form?.list) {
+        const result = await client.session.form.list({ sessionID: sessionId })
+        list = asArray<Record<string, unknown>>(pickData(result))
+      }
+      if (list.length === 0 && client.form?.list) {
+        const result = await client.form.list()
+        list = asArray<Record<string, unknown>>(pickData(result))
+      }
+      return list
+        .map((entry) => toForm(entry, sessionId))
+        .filter((form): form is CodeFormRequest => form !== null)
+        .filter((form) => !sessionId || form.sessionId === sessionId)
+    } catch (error) {
+      log.warn('Failed to list OpenCode forms', error)
+      return []
+    }
+  }
+
+  async replyForm(input: CodeEngineFormReply): Promise<void> {
+    const client = this.requireClient()
+    await client.session.form.reply({
+      sessionID: input.sessionId,
+      formID: input.formId,
+      answer: input.answer
+    })
+    this.emit({ kind: 'form-settled', sessionId: input.sessionId, formId: input.formId })
+  }
+
+  async cancelForm(input: CodeEngineFormCancel): Promise<void> {
+    const client = this.requireClient()
+    await client.session.form.cancel({
+      sessionID: input.sessionId,
+      formID: input.formId,
+      message: input.message
+    })
+    this.emit({ kind: 'form-settled', sessionId: input.sessionId, formId: input.formId })
   }
 
   async getDiff(sessionId: string): Promise<CodeFileDiff[]> {

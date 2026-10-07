@@ -20,6 +20,8 @@ import type {
   CodeAgent,
   CodeEngineEvent,
   CodeFileDiff,
+  CodeFormRequest,
+  CodeFormValue,
   CodeModel,
   CodePermissionRequest,
   CodeProject,
@@ -226,6 +228,17 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
       sessionId: string
       requestId: string
       reply: 'once' | 'always' | 'reject'
+    }) => Promise<CodeResult<Record<string, never>>>
+    listForms: (sessionId: string) => Promise<CodeResult<{ forms: CodeFormRequest[] }>>
+    replyForm: (payload: {
+      sessionId: string
+      formId: string
+      answer: Record<string, CodeFormValue>
+    }) => Promise<CodeResult<Record<string, never>>>
+    cancelForm: (payload: {
+      sessionId: string
+      formId: string
+      message?: string
     }) => Promise<CodeResult<Record<string, never>>>
     getDiff: (sessionId: string) => Promise<CodeResult<{ diff: CodeFileDiff[] }>>
     getSettings: () => Promise<CodeResult<{ settings: CodeSettings }>>

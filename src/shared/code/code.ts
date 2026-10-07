@@ -81,6 +81,68 @@ export interface CodeStatus {
 }
 
 // ---------------------------------------------------------------------------
+// Interactive questions (OpenCode "forms")
+// ---------------------------------------------------------------------------
+
+export type CodeFormFieldType =
+  | 'string'
+  | 'number'
+  | 'integer'
+  | 'boolean'
+  | 'multiselect'
+  | 'external'
+
+export type CodeFormValue = string | number | boolean | string[]
+
+export interface CodeFormOption {
+  value: string
+  label: string
+  description?: string
+}
+
+export interface CodeFormWhen {
+  key: string
+  op: 'eq' | 'neq'
+  value: string | number | boolean
+}
+
+export interface CodeFormField {
+  key: string
+  type: CodeFormFieldType
+  title?: string
+  description?: string
+  required?: boolean
+  hidden?: boolean
+  when?: CodeFormWhen[]
+  /** string */
+  format?: 'email' | 'uri' | 'date' | 'date-time'
+  minLength?: number
+  maxLength?: number
+  pattern?: string
+  placeholder?: string
+  default?: CodeFormValue
+  /** number | integer */
+  minimum?: number
+  maximum?: number
+  /** multiselect */
+  minItems?: number
+  maxItems?: number
+  /** string | multiselect */
+  options?: CodeFormOption[]
+  custom?: boolean
+  /** external */
+  url?: string
+}
+
+export interface CodeFormRequest {
+  id: string
+  sessionId: string
+  title: string
+  fields: CodeFormField[]
+  createdAt: number
+}
+
+// ---------------------------------------------------------------------------
 // Live agent activity stream
 // ---------------------------------------------------------------------------
 
@@ -220,5 +282,7 @@ export type CodeEngineEvent =
   | { kind: 'activity'; event: CodeActivityEvent }
   | { kind: 'permission'; request: CodePermissionRequest }
   | { kind: 'permission-replied'; sessionId: string; requestId: string }
+  | { kind: 'form'; form: CodeFormRequest }
+  | { kind: 'form-settled'; sessionId: string; formId: string }
   | { kind: 'diff'; sessionId: string; diff: CodeFileDiff[] }
   | { kind: 'session'; session: CodeSession }
