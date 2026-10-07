@@ -8,6 +8,7 @@ interface CodeNavMenuProps {
   activeProject: CodeProject | null
   onSelectProject: (project: CodeProject) => void
   onAddProject: () => void
+  onDeleteProject: (project: CodeProject) => void
   sessions: CodeSession[]
   activeSession: CodeSession | null
   loadingSessions: boolean
@@ -24,6 +25,7 @@ export default function CodeNavMenu({
   activeProject,
   onSelectProject,
   onAddProject,
+  onDeleteProject,
   sessions,
   activeSession,
   loadingSessions,
@@ -109,6 +111,17 @@ export default function CodeNavMenu({
                     }}
                   >
                     {project.name}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onDeleteProject(project)
+                    }}
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-500 opacity-0 transition hover:bg-red-500/20 hover:text-red-300 group-hover:opacity-100"
+                    aria-label={`Remove ${project.name}`}
+                  >
+                    <TrashIcon />
                   </button>
                 </div>
               )

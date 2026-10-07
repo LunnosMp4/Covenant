@@ -558,6 +558,25 @@ export default function App(): JSX.Element {
     }
   }, [activeSurface, code.enable])
 
+  // Tell the main process that Code completions are "seen" while the Code
+  // surface is actually visible, so the tray badge clears only after viewing.
+  useEffect(() => {
+    if (isCodeOpen && isAppVisible) {
+      void window.api?.code?.ackActivity?.()
+    }
+  }, [isCodeOpen, isAppVisible])
+
+  useEffect(() => {
+    const api = window.api?.code
+    if (!api?.onActivityStatus) return undefined
+    const unsubscribe = api.onActivityStatus(() => {
+      if (isCodeOpen && isAppVisible) {
+        void api.ackActivity?.()
+      }
+    })
+    return () => unsubscribe()
+  }, [isCodeOpen, isAppVisible])
+
   useEffect(() => {
     if (!window.api?.window.onChatPrompt) return
 

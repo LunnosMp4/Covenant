@@ -3,6 +3,7 @@ import { join } from 'path'
 import dotenv from 'dotenv'
 import { readConfig, updateConfig } from './config/configStore'
 import { CodeService, getCodeService, setCodeService } from './code/codeService'
+import { createCodeActivityTracker, disposeCodeActivityTracker } from './code/codeActivity'
 import { warmInstalledAppsCache } from './installedApps'
 import { registerIpc } from './ipc'
 import { setupLogger } from './logger'
@@ -81,6 +82,12 @@ app.whenReady().then(() => {
 
   const config = readConfig()
 
+  // Required for Windows desktop notifications to display (must match the
+  // packaged app's AppUserModelID).
+  if (isWindows) {
+    app.setAppUserModelId('com.covenant.app')
+  }
+
   configureMcpClient({ name: 'Covenant', version: app.getVersion() })
   configureMcpProxy(resolveOpenAIProxyUrl(config.proxyUrl))
   void applySessionProxy(resolveOpenAIProxyUrl(config.proxyUrl))
@@ -140,6 +147,7 @@ app.whenReady().then(() => {
   const codeService = new CodeService()
   setCodeService(codeService)
   codeService.init()
+  createCodeActivityTracker()
   if (config.code.autoStart) {
     void codeService.isConnectedOrConnect()
   }
@@ -162,12 +170,18 @@ app.on('window-all-closed', () => {
   }
 })
 
+app.on('before-quit', () => {
+  // Destroy the tray on a graceful quit so Windows doesn't leave a ghost icon.
+  destroyTray()
+})
+
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
 
   void getPasteManager()?.dispose()
   setPasteManager(null)
 
+  disposeCodeActivityTracker()
   void getCodeService()?.dispose()
   setCodeService(null)
 

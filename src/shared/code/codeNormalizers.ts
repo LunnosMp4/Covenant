@@ -49,7 +49,15 @@ export function normalizeCodeSettings(raw: unknown): CodeSettings {
     defaultModel: typeof obj.defaultModel === 'string' ? obj.defaultModel.trim() : '',
     defaultVariant: typeof obj.defaultVariant === 'string' ? obj.defaultVariant.trim() : '',
     permission: normalizeCodePermissions(obj.permission),
-    serverPort: Number.isFinite(port) && port >= 0 && port <= 65535 ? port : 0
+    serverPort: Number.isFinite(port) && port >= 0 && port <= 65535 ? port : 0,
+    notifyOnAwaiting:
+      typeof obj.notifyOnAwaiting === 'boolean'
+        ? obj.notifyOnAwaiting
+        : DEFAULT_CODE_SETTINGS.notifyOnAwaiting,
+    notifyOnFinish:
+      typeof obj.notifyOnFinish === 'boolean'
+        ? obj.notifyOnFinish
+        : DEFAULT_CODE_SETTINGS.notifyOnFinish
   }
 }
 

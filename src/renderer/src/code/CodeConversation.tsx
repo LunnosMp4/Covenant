@@ -1,4 +1,4 @@
-import { useState, type RefObject } from 'react'
+import { useState, type CSSProperties, type RefObject } from 'react'
 import type {
   CodeFileDiff,
   CodeFormRequest,
@@ -17,10 +17,20 @@ interface CodeConversationProps {
   stream: StreamingState
   diffs: CodeFileDiff[]
   forms: CodeFormRequest[]
+  planMode?: boolean
   scrollRef: RefObject<HTMLDivElement>
   onScroll: () => void
   onReplyForm: (form: CodeFormRequest, answer: Record<string, CodeFormValue>) => void
   onCancelForm: (form: CodeFormRequest, message?: string) => void
+}
+
+const PLAN_BUBBLE_STYLE: CSSProperties = {
+  borderStyle: 'dashed',
+  borderColor: 'rgba(251, 191, 36, 0.45)'
+}
+
+function isPlanAgent(agent?: string): boolean {
+  return Boolean(agent && agent.toLowerCase().includes('plan'))
 }
 
 function Chevron({ open }: { open: boolean }): JSX.Element {
@@ -99,7 +109,14 @@ function toToolCard(tool: CodeTranscriptTool): ToolCard {
   }
 }
 
-function TranscriptBlock({ item, diffs }: { item: CodeTranscriptItem; diffs: CodeFileDiff[] }): JSX.Element {
+function TranscriptBlock({
+  item,
+  diffs
+}: {
+  item: CodeTranscriptItem
+  diffs: CodeFileDiff[]
+}): JSX.Element {
+  const planMode = isPlanAgent(item.agent)
   if (item.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -113,7 +130,10 @@ function TranscriptBlock({ item, diffs }: { item: CodeTranscriptItem; diffs: Cod
   if (item.role !== 'assistant') {
     return (
       <div className="flex justify-start">
-        <div className="chat-message chat-message--assistant max-w-[78%] rounded-2xl border px-3 py-2 text-[12px] leading-relaxed select-text">
+        <div
+          className="chat-message chat-message--assistant max-w-[78%] rounded-2xl border px-3 py-2 text-[12px] leading-relaxed select-text"
+          style={planMode ? PLAN_BUBBLE_STYLE : undefined}
+        >
           {item.text}
         </div>
       </div>
@@ -122,7 +142,10 @@ function TranscriptBlock({ item, diffs }: { item: CodeTranscriptItem; diffs: Cod
 
   return (
     <div className="flex justify-start">
-      <div className="chat-message chat-message--assistant max-w-[78%] rounded-2xl border px-3 py-2 text-[13px] leading-relaxed select-text">
+      <div
+        className="chat-message chat-message--assistant max-w-[78%] rounded-2xl border px-3 py-2 text-[13px] leading-relaxed select-text"
+        style={planMode ? PLAN_BUBBLE_STYLE : undefined}
+      >
         {item.reasoning && <ReasoningBlock text={item.reasoning} defaultOpen={false} />}
         {item.tools && item.tools.length > 0 && (
           <ToolActivityList tools={item.tools.map(toToolCard)} diffs={diffs} />
@@ -140,14 +163,27 @@ function TranscriptBlock({ item, diffs }: { item: CodeTranscriptItem; diffs: Cod
   )
 }
 
-function StreamBlock({ stream, diffs }: { stream: StreamingState; diffs: CodeFileDiff[] }): JSX.Element {
+function StreamBlock({
+  stream,
+  diffs,
+  planMode
+}: {
+  stream: StreamingState
+  diffs: CodeFileDiff[]
+  planMode: boolean
+}): JSX.Element {
   const hasContent =
     Boolean(stream.text) || Boolean(stream.reasoning) || stream.tools.length > 0 || stream.notes.length > 0
   if (!hasContent && !stream.error) return <></>
 
+  const bubblePlan = stream.agent ? isPlanAgent(stream.agent) : planMode
+
   return (
     <div className="flex justify-start">
-      <div className="chat-message chat-message--assistant max-w-[78%] rounded-2xl border px-3 py-2 text-[13px] leading-relaxed select-text">
+      <div
+        className="chat-message chat-message--assistant max-w-[78%] rounded-2xl border px-3 py-2 text-[13px] leading-relaxed select-text"
+        style={bubblePlan ? PLAN_BUBBLE_STYLE : undefined}
+      >
         {stream.reasoning && <ReasoningBlock text={stream.reasoning} streaming defaultOpen />}
         {stream.tools.length > 0 && <ToolActivityList tools={stream.tools} diffs={diffs} />}
         {stream.notes.map((note) => (
@@ -165,6 +201,7 @@ export default function CodeConversation({
   stream,
   diffs,
   forms,
+  planMode = false,
   scrollRef,
   onScroll,
   onReplyForm,
@@ -187,7 +224,7 @@ export default function CodeConversation({
           {transcript.map((item) => (
             <TranscriptBlock key={item.id} item={item} diffs={diffs} />
           ))}
-          <StreamBlock stream={stream} diffs={diffs} />
+          <StreamBlock stream={stream} diffs={diffs} planMode={planMode} />
           {forms.map((form) => (
             <CodeQuestionCard
               key={form.id}

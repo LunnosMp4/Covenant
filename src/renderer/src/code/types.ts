@@ -30,6 +30,8 @@ export interface StreamingState {
   tools: ToolCard[]
   notes: Note[]
   busy: boolean
+  /** Agent that produced this turn (e.g. `plan` / `build`), for mode styling. */
+  agent?: string
   error?: string
 }
 

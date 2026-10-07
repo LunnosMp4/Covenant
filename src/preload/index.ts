@@ -18,6 +18,7 @@ import type {
   WorkflowStatusUpdatePayload
 } from '../shared/domain/workflow'
 import type {
+  CodeActivitySummary,
   CodeAgent,
   CodeEngineEvent,
   CodeFileDiff,
@@ -323,6 +324,19 @@ const api = {
         ipcRenderer.removeListener('code:event', listener)
       }
     },
+    onActivityStatus: (callback: (summary: CodeActivitySummary) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: CodeActivitySummary) => {
+        callback(payload)
+      }
+      ipcRenderer.on('code-activity-status', listener)
+      return () => {
+        ipcRenderer.removeListener('code-activity-status', listener)
+      }
+    },
+    ackActivity: () =>
+      ipcRenderer.invoke('code:activity:ack') as Promise<
+        { success: true } | { success: false; error: string }
+      >,
     getStatus: () =>
       ipcRenderer.invoke('code:status') as Promise<
         { success: true; status: CodeStatus & { hasApiKey: boolean } } | { success: false; error: string }

@@ -358,6 +358,18 @@ export default function CodeTab({
             checked={settings.autoStart}
             onChange={(checked) => onSettingsChange({ autoStart: checked })}
           />
+          <MinimalistToggle
+            label="Notify when Code needs input"
+            description="Show a desktop notification when a session is waiting for an answer or a permission decision."
+            checked={settings.notifyOnAwaiting}
+            onChange={(checked) => onSettingsChange({ notifyOnAwaiting: checked })}
+          />
+          <MinimalistToggle
+            label="Notify when Code finishes"
+            description="Show a desktop notification when a session completes (or errors) in the background."
+            checked={settings.notifyOnFinish}
+            onChange={(checked) => onSettingsChange({ notifyOnFinish: checked })}
+          />
           <label className="block text-xs text-neutral-400">
             Server port (0 = automatic)
             <input

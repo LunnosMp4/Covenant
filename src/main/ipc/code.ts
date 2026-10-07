@@ -13,6 +13,7 @@ import {
   updateCodeConnection
 } from '../features/codeConnections'
 import { getCodeService } from '../code/codeService'
+import { getCodeActivityTracker } from '../code/codeActivity'
 import type { CodeEngineEvent } from '../code/codeEngine'
 import { clearSshCredential, saveSshCredential } from '../code/ssh/sshCredentials'
 import { browseRemote, disposeBrowseSession, statRemote } from '../code/ssh/remoteBrowse'
@@ -554,6 +555,11 @@ export function registerCodeIpc(): void {
     } catch (error) {
       return errorResult(error)
     }
+  })
+
+  ipcMain.handle('code:activity:ack', () => {
+    getCodeActivityTracker()?.markSeen()
+    return { success: true as const }
   })
 
   log.info('Code IPC registered')

@@ -7,6 +7,7 @@ interface CodeProjectsSidebarProps {
   activeProject: CodeProject | null
   onSelectProject: (project: CodeProject) => void
   onAddProject: () => void
+  onDeleteProject: (project: CodeProject) => void
   sessions: CodeSession[]
   activeSession: CodeSession | null
   loadingSessions: boolean
@@ -33,6 +34,7 @@ export default function CodeProjectsSidebar({
   activeProject,
   onSelectProject,
   onAddProject,
+  onDeleteProject,
   sessions,
   activeSession,
   loadingSessions,
@@ -62,20 +64,32 @@ export default function CodeProjectsSidebar({
         {projects.map((project) => {
           const isActive = activeProject?.id === project.id
           return (
-            <button
+            <div
               key={project.id}
-              type="button"
-              onClick={() => onSelectProject(project)}
-              title={project.directory}
-              className={`${ROW} w-full text-left ${
+              className={`${ROW} ${
                 isActive ? 'bg-white/10 text-neutral-100' : 'text-neutral-300 hover:bg-white/5'
               }`}
             >
               <span className={`shrink-0 ${isActive ? 'text-neutral-300' : 'text-neutral-500'}`}>
                 <FolderIcon />
               </span>
-              <span className="min-w-0 flex-1 truncate">{project.name}</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => onSelectProject(project)}
+                title={project.directory}
+                className="min-w-0 flex-1 truncate text-left"
+              >
+                {project.name}
+              </button>
+              <button
+                type="button"
+                onClick={() => onDeleteProject(project)}
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-500 opacity-0 transition hover:bg-red-500/20 hover:text-red-300 group-hover:opacity-100"
+                aria-label={`Remove ${project.name}`}
+              >
+                <TrashIcon />
+              </button>
+            </div>
           )
         })}
       </div>

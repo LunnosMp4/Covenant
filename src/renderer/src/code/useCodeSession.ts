@@ -16,6 +16,7 @@ import type {
 } from '../../../shared/code/code'
 import { parseModelSelector } from '../../../shared/code/codeNormalizers'
 import type { CodeConnection } from '../../../shared/code/connection'
+import { isLocalConnectionId } from '../../../shared/code/connection'
 import { EMPTY_STREAM, noteId, type CodeStatusWithKey, type StreamingState, type ToolCard } from './types'
 
 /**
@@ -347,7 +348,10 @@ export function useCodeSession(): {
       }
 
       if (activity.type === 'agent-selected') {
-        if (activity.agent) setSelectedAgent(activity.agent)
+        if (activity.agent) {
+          setSelectedAgent(activity.agent)
+          setStream((current) => ({ ...current, agent: activity.agent }))
+        }
         return
       }
 
@@ -402,10 +406,9 @@ export function useCodeSession(): {
     if (!api?.code) return
     const connectionId = activeConnectionIdRef.current
     // Remote folders are chosen through the SFTP browser.
-    if (connectionId !== 'local') return
+    if (!isLocalConnectionId(connectionId)) return
     const picked = await api.code.pickDirectory()
     if (!picked.success || !picked.directory) return
-    await enable()
     const result = await api.code.addProject(picked.directory, undefined, connectionId)
     if (result.success) {
       const scoped = result.projects.filter((project) => project.connectionId === connectionId)
@@ -418,14 +421,13 @@ export function useCodeSession(): {
     } else {
       setError(result.error)
     }
-  }, [api, enable])
+  }, [api])
 
   const addRemoteProject = useCallback(
     async (directory: string) => {
       if (!api?.code) return
       const connectionId = activeConnectionIdRef.current
-      if (connectionId === 'local') return
-      await enable()
+      if (isLocalConnectionId(connectionId)) return
       const result = await api.code.addProject(directory, undefined, connectionId)
       if (result.success) {
         const scoped = result.projects.filter((project) => project.connectionId === connectionId)
@@ -439,7 +441,7 @@ export function useCodeSession(): {
         setError(result.error)
       }
     },
-    [api, enable]
+    [api]
   )
 
   const refreshConnections = useCallback(async () => {
@@ -487,12 +489,20 @@ export function useCodeSession(): {
   const removeProject = useCallback(
     async (project: CodeProject) => {
       if (!api?.code) return
+      const connectionId = activeConnectionIdRef.current
       const result = await api.code.removeProject(project.id)
       if (result.success) {
-        setProjects(result.projects)
-        setActiveProject((current) =>
-          current?.id === project.id ? result.projects[0] ?? null : current
-        )
+        // Only ever surface projects from the machine that is still active, and
+        // never auto-switch to a project that lives on a different machine.
+        const scoped = result.projects.filter((item) => item.connectionId === connectionId)
+        setProjects(scoped)
+        if (activeProjectRef.current?.id === project.id) {
+          const next = scoped[0] ?? null
+          activeProjectRef.current = next
+          setActiveProject(next)
+        }
+      } else {
+        setError(result.error)
       }
     },
     [api]
@@ -670,7 +680,7 @@ export function useCodeSession(): {
         ...current,
         { id: noteId(), role: 'user', text, createdAt: Date.now() }
       ])
-      setStream({ ...EMPTY_STREAM, busy: true })
+      setStream({ ...EMPTY_STREAM, busy: true, agent: selectedAgentRef.current || undefined })
       const result = await api.code.prompt({ sessionId: session.id, text })
       if (!result.success) {
         setError(result.error)
@@ -752,7 +762,7 @@ export function useCodeSession(): {
   )
 
   const activeConnection = useMemo(
-    () => connections.find((connection) => connection.id === activeConnectionId) ?? connections[0] ?? null,
+    () => connections.find((connection) => connection.id === activeConnectionId) ?? null,
     [connections, activeConnectionId]
   )
 
@@ -821,6 +831,7 @@ function finishedToTranscriptItem(stream: StreamingState): CodeTranscriptItem {
       title: tool.title,
       error: tool.error
     })),
+    agent: stream.agent,
     createdAt: Date.now()
   }
 }

@@ -83,6 +83,31 @@ export interface CodeStatus {
 }
 
 // ---------------------------------------------------------------------------
+// Background activity summary (for the tray indicator + notifications)
+// ---------------------------------------------------------------------------
+
+export type CodeActivityState = 'idle' | 'running' | 'awaiting' | 'finished' | 'error'
+
+export interface CodeActivitySession {
+  sessionId: string
+  title?: string
+  status: CodeSessionStatus
+  /** Waiting on a form answer or a permission decision. */
+  awaiting: boolean
+  /** Finished/errored since the Code surface was last viewed. */
+  unseen: boolean
+}
+
+export interface CodeActivitySummary {
+  state: CodeActivityState
+  runningCount: number
+  awaitingCount: number
+  finishedCount: number
+  errorCount: number
+  sessions: CodeActivitySession[]
+}
+
+// ---------------------------------------------------------------------------
 // Interactive questions (OpenCode "forms")
 // ---------------------------------------------------------------------------
 
@@ -229,6 +254,10 @@ export interface CodeSettings {
   permission: CodePermissionSettings
   /** Explicit loopback port; 0 = pick a free port automatically. */
   serverPort: number
+  /** Show a desktop notification when a session is waiting for input. */
+  notifyOnAwaiting: boolean
+  /** Show a desktop notification when a session finishes. */
+  notifyOnFinish: boolean
 }
 
 export const DEFAULT_CODE_PERMISSIONS: CodePermissionSettings = {
@@ -243,7 +272,9 @@ export const DEFAULT_CODE_SETTINGS: CodeSettings = {
   defaultModel: '',
   defaultVariant: '',
   permission: { ...DEFAULT_CODE_PERMISSIONS },
-  serverPort: 0
+  serverPort: 0,
+  notifyOnAwaiting: true,
+  notifyOnFinish: true
 }
 
 export const CODE_PERMISSION_EFFECTS: CodePermissionEffect[] = ['allow', 'ask', 'deny']

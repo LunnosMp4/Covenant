@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { motion } from 'framer-motion'
 import type { CodeFileDiff } from '../../../shared/code/code'
+import { isLocalConnectionId } from '../../../shared/code/connection'
 import { CHAT_SCROLL_HEIGHT } from '../app/constants'
 import ContextStatsDonut from '../app/components/ContextStatsDonut'
 import type { ContextStats } from '../utils/chat/chatUsage'
@@ -12,7 +13,7 @@ import CodeProjectsSidebar from './CodeProjectsSidebar'
 import CodeInfoSidebar from './CodeInfoSidebar'
 import CodeChangesSidebar from './CodeChangesSidebar'
 import CodeConnectionMenu from './CodeConnectionMenu'
-import CodeConnectionModal from './CodeConnectionModal'
+import CodeConnectionForm from './CodeConnectionForm'
 import CodeModelMenu from './CodeModelMenu'
 import CodeModeToggle from './CodeModeToggle'
 import CodeRuntimeStatus from './CodeRuntimeStatus'
@@ -59,7 +60,7 @@ export default function CodePanel({
   const scrollRef = useRef<HTMLDivElement>(null)
   const [autoScroll, setAutoScroll] = useState(true)
 
-  const isRemote = session.activeConnection?.kind === 'ssh'
+  const isRemote = !isLocalConnectionId(session.activeConnectionId)
 
   const requestAddProject = (): void => {
     if (isRemote) {
@@ -224,6 +225,7 @@ export default function CodePanel({
               activeProject={session.activeProject}
               onSelectProject={session.selectProject}
               onAddProject={requestAddProject}
+              onDeleteProject={(project) => void session.removeProject(project)}
               sessions={session.sessions}
               activeSession={session.activeSession}
               loadingSessions={session.loadingSessions}
@@ -331,11 +333,34 @@ export default function CodePanel({
         initial={false}
         animate={{ height: bodyHeight }}
         transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
-        className={`mt-3 overflow-hidden rounded-xl transition-colors ${
-          isPlanMode ? 'border border-dashed border-amber-400/30' : ''
-        }`}
+        className="mt-3 overflow-hidden rounded-xl transition-colors"
       >
-        {isWide ? (
+        {connectionModalOpen ? (
+          <div className="h-full min-h-0">
+            <CodeConnectionForm
+              onClose={() => setConnectionModalOpen(false)}
+              onSaved={(connectionId) => {
+                setConnectionModalOpen(false)
+                void (async () => {
+                  await session.refreshConnections()
+                  await session.switchConnection(connectionId)
+                })()
+              }}
+            />
+          </div>
+        ) : browserOpen && session.activeConnection ? (
+          <div className="h-full min-h-0">
+            <RemoteFolderBrowser
+              connectionId={session.activeConnection.id}
+              connectionName={session.activeConnection.name}
+              onClose={() => setBrowserOpen(false)}
+              onSelect={(path) => {
+                setBrowserOpen(false)
+                void session.addRemoteProject(path)
+              }}
+            />
+          </div>
+        ) : isWide ? (
           <div className="flex h-full gap-3">
             <div className="h-full w-52 shrink-0 overflow-hidden border-r border-white/5 pr-2">
               <CodeProjectsSidebar
@@ -343,6 +368,7 @@ export default function CodePanel({
                 activeProject={session.activeProject}
                 onSelectProject={session.selectProject}
                 onAddProject={requestAddProject}
+                onDeleteProject={(project) => void session.removeProject(project)}
                 sessions={session.sessions}
                 activeSession={session.activeSession}
                 loadingSessions={session.loadingSessions}
@@ -358,6 +384,7 @@ export default function CodePanel({
                   stream={session.stream}
                   diffs={session.diffs}
                   forms={session.forms}
+                  planMode={isPlanMode}
                   scrollRef={scrollRef}
                   onScroll={handleScroll}
                   onReplyForm={(form, answer) => void session.replyForm(form, answer)}
@@ -388,6 +415,7 @@ export default function CodePanel({
             stream={session.stream}
             diffs={session.diffs}
             forms={session.forms}
+            planMode={isPlanMode}
             scrollRef={scrollRef}
             onScroll={handleScroll}
             onReplyForm={(form, answer) => void session.replyForm(form, answer)}
@@ -398,30 +426,6 @@ export default function CodePanel({
         )}
       </motion.div>
 
-      {connectionModalOpen && (
-        <CodeConnectionModal
-          onClose={() => setConnectionModalOpen(false)}
-          onSaved={(connectionId) => {
-            setConnectionModalOpen(false)
-            void (async () => {
-              await session.refreshConnections()
-              await session.switchConnection(connectionId)
-            })()
-          }}
-        />
-      )}
-
-      {browserOpen && session.activeConnection && (
-        <RemoteFolderBrowser
-          connectionId={session.activeConnection.id}
-          connectionName={session.activeConnection.name}
-          onClose={() => setBrowserOpen(false)}
-          onSelect={(path) => {
-            setBrowserOpen(false)
-            void session.addRemoteProject(path)
-          }}
-        />
-      )}
     </>
   )
 }

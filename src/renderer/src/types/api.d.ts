@@ -17,6 +17,7 @@ import type { UpdateStatus } from '../../../shared/system/update'
 import type { PasteItemDetail, PasteItemMeta, PasteManagerSettings } from '../../../shared/paste/paste'
 import type { UsageMetricsResult, UsageProjectsResult } from '../../../shared/system/usage'
 import type {
+  CodeActivitySummary,
   CodeAgent,
   CodeEngineEvent,
   CodeFileDiff,
@@ -207,6 +208,8 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
   code: {
     subscribe: () => void
     onEvent: (callback: (event: CodeEngineEvent) => void) => () => void
+    onActivityStatus: (callback: (summary: CodeActivitySummary) => void) => () => void
+    ackActivity: () => Promise<CodeResult<Record<string, never>>>
     getStatus: () => Promise<CodeResult<{ status: CodeStatusWithConnection }>>
     setApiKey: (key: string) => Promise<CodeResult<{ status: CodeStatusWithConnection }>>
     clearApiKey: () => Promise<CodeResult<{ status: CodeStatusWithConnection }>>
