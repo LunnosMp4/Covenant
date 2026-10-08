@@ -313,7 +313,7 @@ export default function GeneralTab({
 
       <SectionCard
         title="Keyboard Shortcuts"
-        description="Configure global shortcuts to open Covenant. These are OS-level shortcuts that work from anywhere. In-app navigation (Tab, Ctrl+Tab) is unaffected by these settings."
+        description="Configure global shortcuts to open Covenant. These are OS-level shortcuts that work from anywhere. Each shortcut shows or switches to its view, and pressing it again while that view is active closes the window. In-app navigation (Tab, Ctrl+Tab) is unaffected by these settings."
       >
         <div className="space-y-5">
           <div>
@@ -321,7 +321,7 @@ export default function GeneralTab({
               Open App
             </label>
             <p className="mb-2 text-xs text-neutral-500">
-              Toggles the Covenant command bar open/close.
+              Shows the bare command bar ready for a new conversation. From another view it switches back to the bar; pressing it again closes the window.
             </p>
             <ShortcutRecorder
               value={shortcuts.openApp}
@@ -338,10 +338,30 @@ export default function GeneralTab({
 
           <div>
             <label className="mb-2 block text-sm font-medium text-neutral-300">
+              Open Last Conversation
+            </label>
+            <p className="mb-2 text-xs text-neutral-500">
+              Opens the bar with the conversation panel already showing your most recent conversation (or the one you were last in). Press again to close.
+            </p>
+            <ShortcutRecorder
+              value={shortcuts.openLastConversation}
+              onChange={(val) => onShortcutChange('openLastConversation', val)}
+              conflictWarning={
+                shortcuts.openLastConversation && shortcuts.openApp && shortcuts.openLastConversation === shortcuts.openApp
+                  ? 'This shortcut is also assigned to Open App'
+                  : null
+              }
+              defaultShortcut={DEFAULT_SHORTCUTS.openLastConversation}
+              onReset={() => onShortcutChange('openLastConversation', DEFAULT_SHORTCUTS.openLastConversation)}
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-neutral-300">
               Open App in Terminal Mode
             </label>
             <p className="mb-2 text-xs text-neutral-500">
-              Opens Covenant directly with the terminal panel visible and focused, skipping the AI bar.
+              Shows Covenant with the terminal panel visible and focused. Press again to close, or use another shortcut to switch.
             </p>
             <ShortcutRecorder
               value={shortcuts.openAppTerminal}
@@ -361,7 +381,7 @@ export default function GeneralTab({
               Open Tasks
             </label>
             <p className="mb-2 text-xs text-neutral-500">
-              Opens Covenant directly on the Tasks quick-capture list.
+              Shows the Tasks quick-capture list. Press again to close, or use another shortcut to switch.
             </p>
             <ShortcutRecorder
               value={shortcuts.openTasks}
@@ -407,7 +427,7 @@ export default function GeneralTab({
               Open Covenant Code
             </label>
             <p className="mb-2 text-xs text-neutral-500">
-              Opens the OpenCode coding surface above the command bar.
+              Shows the OpenCode coding surface above the command bar. Press again to close, or use another shortcut to switch.
             </p>
             <ShortcutRecorder
               value={shortcuts.openCode}

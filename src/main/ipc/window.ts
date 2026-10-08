@@ -6,9 +6,11 @@ import {
   hideWindow,
   markRendererReady,
   minimizeSettingsWindow,
+  reportView,
   setMainWindowIgnoreMouseEvents,
   setPinned
 } from '../windows'
+import type { WindowView } from '../../shared/view'
 
 export function registerWindowIpc(): void {
   // Renderer confirms it has mounted its entry surfaces in the hidden state, so
@@ -24,6 +26,12 @@ export function registerWindowIpc(): void {
 
   ipcMain.on('hide-window', () => {
     hideWindow()
+  })
+
+  // Renderer reports the surface it is currently showing so global shortcuts
+  // can tell a repeat press (close) from a switch to another view.
+  ipcMain.on('report-view', (_event, view: WindowView) => {
+    reportView(view)
   })
 
   ipcMain.on('set-pinned', (_event, pinned: boolean) => {

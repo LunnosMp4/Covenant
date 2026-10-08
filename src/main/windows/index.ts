@@ -5,6 +5,7 @@ import { is } from '@electron-toolkit/utils'
 import type { WebContents } from 'electron'
 import type { AppConfig } from '../../shared/config'
 import { DEFAULT_SHORTCUTS } from '../../shared/config'
+import type { WindowTargetView, WindowView } from '../../shared/view'
 import type { CodeActivitySummary } from '../../shared/code/code'
 import { readConfig } from '../config/configStore'
 import { openLogsFolder } from '../logger'
@@ -41,6 +42,10 @@ let codeActivity: CodeActivitySummary | null = null
 let isVisible = false
 let isPinned = false
 let isPasteVisible = false
+// Mirror of the surface the renderer is currently showing. Only meaningful
+// while the window is visible; it drives the "same shortcut again closes"
+// behaviour of requestView().
+let currentView: WindowView | null = null
 
 let rendererReadyResolver: (() => void) | null = null
 let pasteReadyResolver: (() => void) | null = null
@@ -545,7 +550,7 @@ export function completeHide(): void {
   scheduleSleepModeCleanup(mainWindow)
 }
 
-export function showWindow(terminalMode = false): void {
+export function showWindow(view: WindowTargetView = 'bar'): void {
   if (!mainWindow || mainWindow.isDestroyed()) return
 
   if (hideTimer) {
@@ -561,16 +566,48 @@ export function showWindow(terminalMode = false): void {
   setMainWindowIgnoreMouseEvents(false)
 
   isVisible = true
+  currentView = view
 
   // Mount the entry surfaces in their hidden state while still off-screen.
-  mainWindow.webContents.send('toggle-visibility', true, terminalMode, 'prepare')
+  mainWindow.webContents.send('toggle-visibility', true, view, 'prepare')
 
   void waitForRendererReady().then(() => {
     if (!mainWindow || mainWindow.isDestroyed() || !isVisible) return
     mainWindow.show()
     mainWindow.focus()
-    mainWindow.webContents.send('toggle-visibility', true, terminalMode, 'animate')
+    mainWindow.webContents.send('toggle-visibility', true, view, 'animate')
   })
+}
+
+/**
+ * Keyboard-navigation entry point. A global shortcut targets a single view:
+ *  - window hidden            → open on the target view,
+ *  - already on that view     → close the window,
+ *  - on a different view      → switch to the target view without closing.
+ * This is what makes every shortcut behave as its own toggle.
+ */
+export function requestView(view: WindowTargetView): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+
+  if (!isVisible) {
+    showWindow(view)
+    return
+  }
+
+  if (currentView === view) {
+    hideWindow()
+    return
+  }
+
+  currentView = view
+  mainWindow.webContents.send('set-view', view)
+}
+
+/** Renderer reports the surface it is currently showing (or `popup` for a
+ * transient popup with no dedicated shortcut). Ignored while hidden so a
+ * lingering report from the exit animation can't dirty the next show. */
+export function reportView(view: WindowView): void {
+  if (isVisible) currentView = view
 }
 
 export function hideWindow(): void {
@@ -578,6 +615,9 @@ export function hideWindow(): void {
   mainWindow.webContents.send('toggle-visibility', false)
   isVisible = false
   isPinned = false
+  // Drop the mirrored view so a later show always starts from its target
+  // instead of resurrecting whatever was open when the window was hidden.
+  currentView = null
 
   // The renderer calls back via 'renderer-exit-complete' when its exit
   // animation finishes; this timer is only a safety net.
@@ -632,48 +672,18 @@ export function minimizeSettingsWindow(): void {
   }
 }
 
-function toggleWindow(): void {
-  if (isVisible) {
-    hideWindow()
-  } else {
-    showWindow()
-  }
-}
-
 function openTerminalMode(): void {
-  if (!mainWindow) return
-
-  if (!isVisible) {
-    showWindow(true)
-  } else {
-    mainWindow.webContents.send('toggle-visibility', true, true)
-  }
+  requestView('terminal')
 }
 
 function openTasksMode(): void {
-  if (!mainWindow) return
-
-  if (!isVisible) {
-    showWindow()
-  } else {
-    mainWindow.webContents.send('toggle-visibility', true)
-  }
-
-  mainWindow.webContents.send('open-tasks')
+  requestView('tasks')
 }
 
 export function openCodeSurface(): void {
-  if (!mainWindow) return
-
-  if (!isVisible) {
-    showWindow()
-  } else {
-    mainWindow.webContents.send('toggle-visibility', true)
-  }
-
-  // Render this in the main window, above the command bar, as the OpenCode
+  // Rendered in the main window, above the command bar, as the OpenCode
   // surface (no separate window).
-  mainWindow.webContents.send('open-code')
+  requestView('code')
 }
 
 function toggleCodeMode(): void {
@@ -752,12 +762,25 @@ export function registerShortcuts(config: AppConfig): void {
 
   if (shortcuts.openApp) {
     try {
-      const ok = globalShortcut.register(shortcuts.openApp, toggleWindow)
+      const ok = globalShortcut.register(shortcuts.openApp, () => requestView('bar'))
       if (!ok) {
         console.warn(`Failed to register global shortcut: ${shortcuts.openApp} (may conflict with another app)`)
       }
     } catch (error) {
       console.warn(`Error registering global shortcut '${shortcuts.openApp}':`, error)
+    }
+  }
+
+  if (shortcuts.openLastConversation) {
+    try {
+      const ok = globalShortcut.register(shortcuts.openLastConversation, () => requestView('chat'))
+      if (!ok) {
+        console.warn(
+          `Failed to register global shortcut: ${shortcuts.openLastConversation} (may conflict with another app)`
+        )
+      }
+    } catch (error) {
+      console.warn(`Error registering global shortcut '${shortcuts.openLastConversation}':`, error)
     }
   }
 
@@ -861,9 +884,13 @@ export function createTray(): void {
 
     refreshTray()
 
-    // Left-click toggles visibility
+    // Left-click toggles visibility.
     tray.on('click', () => {
-      toggleWindow()
+      if (isVisible) {
+        hideWindow()
+      } else {
+        showWindow('bar')
+      }
     })
   } catch (error) {
     console.error('Failed to create tray:', error)

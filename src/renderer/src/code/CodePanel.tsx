@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { motion } from 'framer-motion'
-import type { CodeFileDiff } from '../../../shared/code/code'
 import { isLocalConnectionId } from '../../../shared/code/connection'
 import { CHAT_SCROLL_HEIGHT } from '../app/constants'
 import ContextStatsDonut from '../app/components/ContextStatsDonut'
@@ -37,11 +36,6 @@ interface CodePanelProps {
 const ICON_BUTTON =
   'flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-neutral-400 transition-colors hover:border-white/20 hover:bg-white/10 hover:text-neutral-200'
 const ICON_BUTTON_ACTIVE = 'border-white/20 bg-white/10 text-neutral-100'
-
-function statusLabel(status: CodeFileDiff['status']): string | null {
-  if (!status) return null
-  return status
-}
 
 export default function CodePanel({
   session,
@@ -121,6 +115,12 @@ export default function CodePanel({
   useEffect(() => {
     setAutoScroll(true)
   }, [session.activeSession?.id])
+
+  // The changes panel is only reachable from the wide layout; drop the open
+  // state when leaving it so the info sidebar returns by default.
+  useEffect(() => {
+    if (!isWide) setChangesOpen(false)
+  }, [isWide])
 
   const handleScroll = (): void => {
     const el = scrollRef.current
@@ -255,61 +255,27 @@ export default function CodePanel({
 
           <ContextStatsDonut stats={codeStats} chatModel={sessionModelId} modelLabel={modelLabel ?? undefined} />
 
-          <div ref={changesRef} className="relative">
-            <button
-              type="button"
-              onClick={() => setChangesOpen((value) => !value)}
-              className={`${ICON_BUTTON} ${changesOpen ? ICON_BUTTON_ACTIVE : ''} relative`}
-              aria-label="Show file changes"
-              aria-pressed={changesOpen}
-            >
-              <DiffIcon />
-              {session.diffs.length > 0 && (
-                <span
-                  className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-1 text-[9px] font-semibold leading-none text-[var(--chat-on-accent)]"
-                  style={{ background: 'var(--chat-accent)' }}
-                >
-                  {session.diffs.length}
-                </span>
-              )}
-            </button>
-
-            {changesOpen && !isWide && (
-              <div className="absolute right-0 top-10 z-30 w-80 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/95 shadow-xl shadow-black/50">
-                <div className="flex items-center justify-between px-3 py-2">
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">
-                    Changes
+          {isWide && (
+            <div ref={changesRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setChangesOpen((value) => !value)}
+                className={`${ICON_BUTTON} ${changesOpen ? ICON_BUTTON_ACTIVE : ''} relative`}
+                aria-label="Show file changes"
+                aria-pressed={changesOpen}
+              >
+                <DiffIcon />
+                {session.diffs.length > 0 && (
+                  <span
+                    className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-1 text-[9px] font-semibold leading-none text-[var(--chat-on-accent)]"
+                    style={{ background: 'var(--chat-accent)' }}
+                  >
+                    {session.diffs.length}
                   </span>
-                  {session.diffs.length > 0 && (
-                    <span className="text-[11px] tabular-nums text-neutral-400">
-                      <span className="text-emerald-400">+{session.totals.additions}</span>{' '}
-                      <span className="text-red-400">-{session.totals.deletions}</span>
-                    </span>
-                  )}
-                </div>
-                <div className="max-h-60 overflow-y-auto px-2 pb-2 chat-scrollbar">
-                  {session.diffs.length === 0 && (
-                    <p className="px-1 py-1 text-xs text-neutral-500">No file changes yet.</p>
-                  )}
-                  {session.diffs.map((diff) => (
-                    <div
-                      key={diff.file}
-                      className="mb-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2 text-xs"
-                    >
-                      <div className="truncate text-neutral-300" title={diff.file}>
-                        {diff.file}
-                      </div>
-                      <div className="mt-0.5 flex items-center gap-2 text-[11px] text-neutral-500">
-                        <span className="text-emerald-400">+{diff.additions}</span>
-                        <span className="text-red-400">-{diff.deletions}</span>
-                        {statusLabel(diff.status) && <span>{statusLabel(diff.status)}</span>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+                )}
+              </button>
+            </div>
+          )}
 
           <ExpandButton expanded={isExpanded} wide={isWide} altHeld={isAltHeld} onClick={onToggleExpand} />
         </div>

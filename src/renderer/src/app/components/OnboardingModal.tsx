@@ -34,10 +34,20 @@ export default function OnboardingModal({
         </p>
         <ul className="mt-4 space-y-2 text-sm text-neutral-400">
           <li>
-            <span className="text-neutral-200">Tab</span> — switch between AI chat and terminal
+            <span className="text-neutral-200">Alt+Space</span> — open the bar for a new
+            conversation
           </li>
           <li>
-            <span className="text-neutral-200">Ctrl+Tab</span> — open conversation history
+            <span className="text-neutral-200">Ctrl+Alt+Space</span> — open your last conversation
+          </li>
+          <li>
+            <span className="text-neutral-200">Alt+T</span> — open the terminal
+          </li>
+          <li>
+            <span className="text-neutral-200">Alt+C</span> — open Covenant Code
+          </li>
+          <li>
+            <span className="text-neutral-200">Ctrl+Tab</span> — toggle the conversation panel
           </li>
           <li>
             <span className="text-neutral-200">Escape</span> — close the bar

@@ -89,6 +89,7 @@ export function modelSupportsWebSearch(modelId: string): boolean {
 
 export interface ShortcutConfig {
   openApp: string
+  openLastConversation: string
   openAppTerminal: string
   openTasks: string
   openPaste: string
@@ -98,6 +99,7 @@ export interface ShortcutConfig {
 
 export const DEFAULT_SHORTCUTS: ShortcutConfig = {
   openApp: 'Alt+Space',
+  openLastConversation: 'Ctrl+Alt+Space',
   openAppTerminal: 'Alt+T',
   openTasks: 'Alt+L',
   openPaste: 'Alt+V',
@@ -119,6 +121,10 @@ export function normalizeShortcuts(raw: unknown): ShortcutConfig {
   const openPaste = typeof obj.openPaste === 'string' ? obj.openPaste : DEFAULT_SHORTCUTS.openPaste
   return {
     openApp: typeof obj.openApp === 'string' ? obj.openApp : DEFAULT_SHORTCUTS.openApp,
+    openLastConversation:
+      typeof obj.openLastConversation === 'string'
+        ? obj.openLastConversation
+        : DEFAULT_SHORTCUTS.openLastConversation,
     openAppTerminal: typeof obj.openAppTerminal === 'string' ? obj.openAppTerminal : DEFAULT_SHORTCUTS.openAppTerminal,
     openTasks: typeof obj.openTasks === 'string' ? obj.openTasks : DEFAULT_SHORTCUTS.openTasks,
     // Migrate the previous default (`Ctrl+Alt+V`) to the new one.

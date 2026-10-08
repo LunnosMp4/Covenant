@@ -64,6 +64,7 @@ describe('normalizeShortcuts', () => {
   it('fills gaps with defaults and keeps valid values', () => {
     const normalized = normalizeShortcuts({ openApp: 'Ctrl+Space' })
     expect(normalized.openApp).toBe('Ctrl+Space')
+    expect(normalized.openLastConversation).toBe(DEFAULT_SHORTCUTS.openLastConversation)
     expect(normalized.openAppTerminal).toBe(DEFAULT_SHORTCUTS.openAppTerminal)
     expect(normalized.openTasks).toBe(DEFAULT_SHORTCUTS.openTasks)
   })

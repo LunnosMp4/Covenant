@@ -1,4 +1,5 @@
 import type { AppConfig, ButtonVisibility, ReasoningEffort, ShortcutConfig } from '../../../shared/config'
+import type { WindowView } from '../../../shared/view'
 import type { McpServer } from '../../../shared/mcp/mcp'
 import type { InstalledApp } from '../../../shared/launcher/launcher'
 import type {
@@ -57,14 +58,14 @@ interface CovenantAPI {
     openSettings: (tab?: string) => void
     closeSettings: () => void
     minimizeSettings: () => void
-    onOpenCode: (callback: () => void) => () => void
+    reportView: (view: WindowView) => void
+    onSetView: (callback: (view: WindowView) => void) => () => void
     onToggleCodeMode: (callback: () => void) => () => void
     onNavigateSettingsTab: (callback: (tab: string) => void) => () => void
     onSettingsShown: (callback: (isRestore: boolean) => void) => () => void
     onToggleVisibility: (
-      callback: (visible: boolean, terminalMode?: boolean, phase?: 'prepare' | 'animate') => void
+      callback: (visible: boolean, view?: WindowView, phase?: 'prepare' | 'animate') => void
     ) => () => void
-    onOpenTasks: (callback: () => void) => () => void
     onChatPrompt: (callback: (text: string) => void) => () => void
   }
   config: {

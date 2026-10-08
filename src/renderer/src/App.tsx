@@ -92,6 +92,7 @@ import {
   SUPPORTED_IMAGE_TYPES
 } from './app/constants'
 import type { AppMode, AttachedImage, SelectedSystemPrompt, Surface } from './app/types'
+import type { WindowView } from '../../shared/view'
 import OnboardingModal from './app/components/OnboardingModal'
 import ContextStatsDonut from './app/components/ContextStatsDonut'
 import { useAttachments } from './app/hooks/useAttachments'
@@ -113,10 +114,9 @@ export default function App(): JSX.Element {
   const [activeConversation, setActiveConversation] = useState<ChatConversation | null>(null)
   const [selectedSystemPrompt, setSelectedSystemPrompt] = useState<SelectedSystemPrompt | null>(null)
   // The single panel shown above the command bar: the chat conversation or the
-  // OpenCode surface. `null` means bar-only. `lastSurfaceRef` lets Alt+Space
-  // reopen whichever surface was last shown.
+  // OpenCode surface. `null` means bar-only. Global shortcuts target a view and
+  // the renderer reports the current one so a repeat press closes the window.
   const [activeSurface, setActiveSurface] = useState<Surface | null>(null)
-  const lastSurfaceRef = useRef<Surface | null>(null)
   const isChatOpen = activeSurface === 'chat'
   const isCodeOpen = activeSurface === 'code'
   const setIsChatOpen = useCallback<React.Dispatch<React.SetStateAction<boolean>>>((value) => {
@@ -124,7 +124,6 @@ export default function App(): JSX.Element {
       const next =
         typeof value === 'function' ? value(current === 'chat') : value
       if (next) {
-        lastSurfaceRef.current = 'chat'
         return 'chat'
       }
       return current === 'chat' ? null : current
@@ -185,6 +184,7 @@ export default function App(): JSX.Element {
   const historyButtonRef = useRef<HTMLButtonElement>(null)
   const successResetTimersRef = useRef<Record<string, number>>({})
   const activeConversationRef = useRef<ChatConversation | null>(null)
+  const conversationsRef = useRef<ChatConversation[]>([])
   const streamBufferRef = useRef<{ content: string; reasoning: string } | null>(null)
   const activeStreamIdRef = useRef<string | null>(null)
   const activeStreamMessageIdRef = useRef<string | null>(null)
@@ -196,6 +196,52 @@ export default function App(): JSX.Element {
   // When false, the visible surfaces stay at their entry (hidden) state until the
   // native window has actually been shown by the main process.
   const [enterReady, setEnterReady] = useState(false)
+
+  // Apply a requested view coming from the main process (global shortcut or a
+  // window show). `terminal` and `tasks` map onto the existing mode/popup state;
+  // `chat`/`code` onto the surface; `bar` is the bare, new-conversation bar.
+  const applyView = useCallback((view: WindowView): void => {
+    if (view === 'terminal') {
+      setHasInitializedTerminal(true)
+      setMode('terminal')
+      setActivePopup(null)
+      return
+    }
+
+    setMode('ai')
+    setActivePopup(null)
+
+    if (view === 'chat') {
+      // Resume the last conversation: the one already active, or the most
+      // recent from history (the list is sorted newest-first).
+      const last = activeConversationRef.current ?? conversationsRef.current[0] ?? null
+      if (last) setActiveConversation(last)
+      setActiveSurface('chat')
+    } else if (view === 'code') {
+      setActiveSurface('code')
+    } else if (view === 'tasks') {
+      setActiveSurface(null)
+      setActivePopup('tasks')
+    } else {
+      // 'bar' (and the transient 'popup' sentinel) collapse to the bare bar.
+      setActiveSurface(null)
+    }
+  }, [])
+
+  // The single surface currently shown, reported to main so global shortcuts can
+  // distinguish "same view → close" from "different view → switch".
+  const currentView = useMemo<WindowView>(() => {
+    if (mode === 'terminal') return 'terminal'
+    if (activePopup === 'tasks') return 'tasks'
+    if (activePopup) return 'popup'
+    if (activeSurface === 'chat') return 'chat'
+    if (activeSurface === 'code') return 'code'
+    return 'bar'
+  }, [mode, activePopup, activeSurface])
+
+  useEffect(() => {
+    window.api?.window.reportView?.(currentView)
+  }, [currentView])
 
   const {
     attachedImages,
@@ -384,19 +430,14 @@ export default function App(): JSX.Element {
       // IMPORTANT: capture the returned cleanup function to prevent an IPC
       // listener leak — each call to onToggleVisibility registers a new
       // ipcRenderer listener that must be removed when this effect tears down.
-      const unsubscribe = window.api.window.onToggleVisibility((v, terminalMode, phase) => {
+      const unsubscribe = window.api.window.onToggleVisibility((v, view, phase) => {
         if (v) {
           setIsAppVisible(true)
           setVisible(true)
 
-          if (terminalMode) {
-            setHasInitializedTerminal(true)
-            setMode('terminal')
-            setActivePopup(null)
-          } else {
-            // Reopen whichever surface was last shown (bar-only if none).
-            setActiveSurface(lastSurfaceRef.current)
-          }
+          // Mount directly on the requested view (bar by default). Never
+          // resurrect a previously shown surface.
+          applyView(view ?? 'bar')
 
           if (phase === 'prepare') {
             // Hold every surface at its entry (hidden) state while the window is
@@ -425,7 +466,19 @@ export default function App(): JSX.Element {
       setEnterReady(true)
       return undefined
     }
-  }, [])
+  }, [applyView])
+
+  // Global shortcut asked to switch to another view while the window is already
+  // open (repeat press on the same view is handled in main as a close).
+  useEffect(() => {
+    if (!window.api?.window.onSetView) return undefined
+    const unsubscribe = window.api.window.onSetView((view) => {
+      applyView(view)
+    })
+    return () => {
+      unsubscribe()
+    }
+  }, [applyView])
 
   // The native window keeps its full expanded size; the renderer measures the
   // viewport once so it can size the expanded content without resizing the
@@ -510,34 +563,6 @@ export default function App(): JSX.Element {
       window.api?.window.notifyReadyToShow?.()
     }
   }, [visible, enterReady])
-
-  useEffect(() => {
-    if (!window.api?.window.onOpenTasks) return
-
-    const unsubscribe = window.api.window.onOpenTasks(() => {
-      setMode('ai')
-      setActivePopup('tasks')
-    })
-
-    return () => {
-      unsubscribe()
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!window.api?.window.onOpenCode) return
-
-    const unsubscribe = window.api.window.onOpenCode(() => {
-      setMode('ai')
-      setActivePopup(null)
-      lastSurfaceRef.current = 'code'
-      setActiveSurface('code')
-    })
-
-    return () => {
-      unsubscribe()
-    }
-  }, [])
 
   // Global shortcut: toggle the Code build/plan mode while the surface is open.
   useEffect(() => {
@@ -887,6 +912,10 @@ export default function App(): JSX.Element {
   useEffect(() => {
     activeConversationRef.current = activeConversation
   }, [activeConversation])
+
+  useEffect(() => {
+    conversationsRef.current = conversations
+  }, [conversations])
 
   useEffect(() => {
     activeStreamIdRef.current = activeStreamId

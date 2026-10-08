@@ -37,6 +37,7 @@ import type {
   CodeConnectionStatus,
   RemoteBrowseResult
 } from '../shared/code/connection'
+import type { WindowView } from '../shared/view'
 
 const api = {
   platform: process.platform,
@@ -50,13 +51,14 @@ const api = {
     openSettings: (tab?: string) => ipcRenderer.send('open-settings', tab),
     closeSettings: () => ipcRenderer.send('close-settings'),
     minimizeSettings: () => ipcRenderer.send('minimize-settings'),
-    onOpenCode: (callback: () => void) => {
-      const listener = () => {
-        callback()
+    reportView: (view: WindowView) => ipcRenderer.send('report-view', view),
+    onSetView: (callback: (view: WindowView) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, view: WindowView) => {
+        callback(view)
       }
-      ipcRenderer.on('open-code', listener)
+      ipcRenderer.on('set-view', listener)
       return () => {
-        ipcRenderer.removeListener('open-code', listener)
+        ipcRenderer.removeListener('set-view', listener)
       }
     },
     onToggleCodeMode: (callback: () => void) => {
@@ -87,30 +89,21 @@ const api = {
       }
     },
     onToggleVisibility: (
-      callback: (visible: boolean, terminalMode?: boolean, phase?: 'prepare' | 'animate') => void
+      callback: (visible: boolean, view?: WindowView, phase?: 'prepare' | 'animate') => void
     ) => {
       const listener = (
         _event: Electron.IpcRendererEvent,
         visible: boolean,
-        terminalMode?: boolean,
+        view?: WindowView,
         phase?: 'prepare' | 'animate'
       ) => {
-        callback(visible, terminalMode, phase)
+        callback(visible, view, phase)
       }
 
       ipcRenderer.on('toggle-visibility', listener)
 
       return () => {
         ipcRenderer.removeListener('toggle-visibility', listener)
-      }
-    },
-    onOpenTasks: (callback: () => void) => {
-      const listener = () => {
-        callback()
-      }
-      ipcRenderer.on('open-tasks', listener)
-      return () => {
-        ipcRenderer.removeListener('open-tasks', listener)
       }
     },
     onChatPrompt: (callback: (text: string) => void) => {

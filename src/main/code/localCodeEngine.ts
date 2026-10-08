@@ -697,9 +697,34 @@ export class LocalCodeEngine implements CodeEngine {
   async getTranscript(sessionId: string): Promise<CodeTranscriptItem[]> {
     const client = this.requireClient()
     try {
-      const result = await client.message.list({ sessionID: sessionId })
-      const list = asArray<Record<string, unknown>>(pickData(result))
+      // `message.list` is cursor-paginated (default page = 50) and returns the
+      // newest messages first. Follow the cursor so a long session's earlier
+      // context is not silently dropped, capped to avoid unbounded requests.
+      const PAGE_LIMIT = 200
+      const MAX_PAGES = 25
+      const list: Record<string, unknown>[] = []
+      let cursor: string | undefined
+      for (let page = 0; page < MAX_PAGES; page += 1) {
+        const result = await client.message.list({
+          sessionID: sessionId,
+          limit: PAGE_LIMIT,
+          ...(cursor ? { cursor } : {})
+        })
+        const batch = asArray<Record<string, unknown>>(pickData(result))
+        if (batch.length === 0) break
+        list.push(...batch)
+        const next =
+          result && typeof result === 'object'
+            ? (result as { cursor?: { next?: string | null } }).cursor?.next ?? undefined
+            : undefined
+        if (!next || next === cursor) break
+        cursor = next
+      }
+
       const items = list
+        // Synthetic messages are harness-injected system reminders (e.g. the
+        // plan-mode preamble); they must never render as assistant output.
+        .filter((entry) => String(entry.type ?? '') !== 'synthetic')
         .map(toTranscript)
         .filter((item): item is CodeTranscriptItem => item !== null)
       // The OpenCode message list is newest-first; the UI expects chronological
@@ -1034,6 +1059,7 @@ function toTranscript(raw: unknown): CodeTranscriptItem | null {
               ? 'compaction'
               : 'other'
   const time = (obj.time ?? {}) as Record<string, unknown>
+  const usage = obj.tokens ? toUsage(obj.tokens) : undefined
   return {
     id,
     role,
@@ -1044,6 +1070,9 @@ function toTranscript(raw: unknown): CodeTranscriptItem | null {
     model: toModelRef(obj.model),
     createdAt: typeof time.created === 'number' ? time.created : undefined,
     cost: typeof obj.cost === 'number' ? obj.cost : undefined,
+    usage: usage
+      ? { ...usage, cost: typeof obj.cost === 'number' ? obj.cost : usage.cost }
+      : undefined,
     error: obj.error ? errorMessage(obj.error) : undefined
   }
 }
@@ -1084,6 +1113,9 @@ function mergeAssistant(base: CodeTranscriptItem, next: CodeTranscriptItem): Cod
     agent: base.agent ?? next.agent,
     model: base.model ?? next.model,
     cost: sumCost(base.cost, next.cost),
+    // Keep the most recent turn's token usage so the context meter reflects the
+    // final context size, not the first step.
+    usage: next.usage ?? base.usage,
     error: base.error ?? next.error
   }
 }
@@ -1092,16 +1124,25 @@ function coalesceTranscript(items: CodeTranscriptItem[]): CodeTranscriptItem[] {
   const result: CodeTranscriptItem[] = []
   let assistant: CodeTranscriptItem | null = null
 
+  const flush = (): void => {
+    if (assistant && !isEmptyTranscriptItem(assistant)) result.push(assistant)
+    assistant = null
+  }
+
   for (const item of items) {
     if (item.role === 'user') {
-      if (assistant && !isEmptyTranscriptItem(assistant)) result.push(assistant)
-      assistant = null
+      flush()
       result.push(item)
       continue
     }
+    // Start a fresh bubble when the agent changes (Build ↔ Plan) so each turn
+    // keeps its own styling instead of being folded into the previous one.
+    if (assistant && item.agent && assistant.agent && item.agent !== assistant.agent) {
+      flush()
+    }
     assistant = assistant ? mergeAssistant(assistant, item) : { ...item, role: 'assistant', id: item.id }
   }
-  if (assistant && !isEmptyTranscriptItem(assistant)) result.push(assistant)
+  flush()
   return result
 }
 

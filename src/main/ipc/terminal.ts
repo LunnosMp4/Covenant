@@ -183,7 +183,7 @@ export function registerTerminalIpc(): void {
     const wrapped = isMultiLine ? `\x1b[200~${code}\x1b[201~` : code
 
     terminalManager.write(sessionId, wrapped)
-    event.sender.send('toggle-visibility', true, true)
+    event.sender.send('toggle-visibility', true, 'terminal')
 
     return { success: true, sessionId, created }
   })

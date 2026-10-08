@@ -307,6 +307,8 @@ export interface CodeTranscriptItem {
   model?: CodeModelRef
   createdAt?: number
   cost?: number
+  /** Token usage recorded for this turn (used to restore the context meter). */
+  usage?: CodeUsage
   error?: string
 }
 

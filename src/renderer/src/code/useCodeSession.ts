@@ -557,7 +557,12 @@ export function useCodeSession(): {
         api.code.listPermissions(session.id),
         api.code.listForms(session.id)
       ])
-      setTranscript(transcriptResult.success ? transcriptResult.transcript : [])
+      const transcript = transcriptResult.success ? transcriptResult.transcript : []
+      setTranscript(transcript)
+      // Restore the context meter from the last turn's recorded token usage so
+      // reopening a session doesn't show an empty context after a restart.
+      const restoredUsage = [...transcript].reverse().find((item) => item.usage)?.usage ?? null
+      if (restoredUsage) setUsage(restoredUsage)
       setDiffs(diffResult.success ? diffResult.diff : [])
       setPermissions(permissionResult.success ? permissionResult.requests : [])
       setForms(formResult.success ? formResult.forms : [])
