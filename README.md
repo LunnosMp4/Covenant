@@ -3,6 +3,13 @@
 [![CI](https://github.com/LunnosMp4/Covenant/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/LunnosMp4/Covenant/actions/workflows/ci.yml)
 
 Floating command bar for Windows and macOS — chat with OpenAI models, run terminal commands, execute saved workflows, capture tasks, launch apps, and browse your clipboard from a single keyboard-driven interface.
+<table>
+  <tr>
+    <td><img width="1930" height="1039" alt="Capture4" src="https://github.com/user-attachments/assets/5f7fcc8d-4ecc-420f-8186-aa4725e57717" /></td>
+    <td width="10"></td>
+    <td><img width="1600" height="900" alt="Mockup" src="https://github.com/user-attachments/assets/219f9915-b3e1-4e04-be80-a04cb85835ea" /></td>
+  </tr>
+</table>
 
 ## Key Features
 
