@@ -6,6 +6,9 @@ interface CodePermissionModalProps {
   onReply: (reply: 'once' | 'always' | 'reject') => void
 }
 
+const BUTTON =
+  'inline-flex h-9 items-center justify-center rounded-xl border px-4 text-sm font-medium transition duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 active:scale-[0.98]'
+
 export default function CodePermissionModal({
   request,
   onReply
@@ -13,13 +16,13 @@ export default function CodePermissionModal({
   return (
     // No onClose: a permission request must be answered explicitly. Clicking the
     // backdrop does nothing so a stray click can't silently deny and stop the run.
-    <ModalOverlay contentClassName="max-w-md">
-      <div className="rounded-2xl border border-white/10 bg-neutral-900/95 p-4 shadow-[0_22px_60px_rgba(0,0,0,0.55)]">
+    <ModalOverlay contentClassName="max-w-md" contained>
+      <div className="w-full rounded-2xl border border-white/10 bg-neutral-900/85 p-4 shadow-[0_24px_60px_-12px_rgba(0,0,0,0.65)] backdrop-blur-xl">
         <h3 className="text-sm font-semibold text-neutral-100">Permission requested</h3>
-        <p className="mt-1 text-xs text-neutral-400">
+        <p className="mt-1 text-[13px] leading-relaxed text-neutral-400">
           OpenCode wants to <span className="text-neutral-200">{request.action}</span>:
         </p>
-        <ul className="mt-3 max-h-32 space-y-1 overflow-auto rounded-lg border border-white/5 bg-neutral-950/60 p-2 text-xs text-neutral-300 chat-scrollbar">
+        <ul className="mt-3 max-h-32 space-y-1 overflow-auto rounded-xl border border-white/5 bg-neutral-950/60 p-2 text-xs text-neutral-300 chat-scrollbar">
           {request.resources.length === 0 && <li>—</li>}
           {request.resources.map((resource) => (
             <li key={resource} className="truncate" title={resource}>
@@ -31,21 +34,21 @@ export default function CodePermissionModal({
           <button
             type="button"
             onClick={() => onReply('reject')}
-            className="rounded-lg border border-red-400/40 bg-red-500/15 px-3 py-1.5 text-xs font-medium text-red-200 transition-colors hover:bg-red-500/25"
+            className={`${BUTTON} border-red-400/30 bg-red-500/20 text-red-100 hover:bg-red-500/30`}
           >
             Deny
           </button>
           <button
             type="button"
             onClick={() => onReply('always')}
-            className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-neutral-200 transition-colors hover:bg-white/10"
+            className={`${BUTTON} border-white/10 bg-white/5 text-neutral-200 hover:border-white/20 hover:bg-white/10`}
           >
             Always allow
           </button>
           <button
             type="button"
             onClick={() => onReply('once')}
-            className="rounded-lg px-3 py-1.5 text-xs font-medium shadow-lg shadow-black/20 transition-opacity hover:opacity-90"
+            className={`${BUTTON} border-white/15 font-semibold shadow-lg shadow-black/25 hover:brightness-110`}
             style={{ background: 'var(--chat-accent)', color: 'var(--chat-on-accent)' }}
           >
             Allow once

@@ -306,6 +306,26 @@ export default function App(): JSX.Element {
     setQuery('')
   }
 
+  function setInputText(text: string): void {
+    const div = inputRef.current
+    if (div) {
+      div.textContent = text
+    }
+    pasteBlocksRef.current.clear()
+    setAttachedImages([])
+    setShowImagePanel(false)
+    setQuery(text)
+  }
+
+  // When a Code message is restored, OpenCode hands the prompt back: prefill the
+  // command bar so the user can review, edit, and resubmit it.
+  useEffect(() => {
+    if (code.restoreDraft == null) return
+    setInputText(code.restoreDraft)
+    code.clearRestoreDraft()
+    window.requestAnimationFrame(() => inputRef.current?.focus())
+  }, [code.restoreDraft, code.clearRestoreDraft])
+
   useEffect(() => {
     let isMounted = true
 
@@ -2178,6 +2198,15 @@ export default function App(): JSX.Element {
     document.documentElement.setAttribute('data-theme', getThemeMode(themeGradient))
   }, [themeGradient])
 
+  // Expose the theme CSS variables on the root so portaled modals (which render
+  // into document.body) still inherit the accent colors.
+  useEffect(() => {
+    const root = document.documentElement
+    for (const [key, value] of Object.entries(themeStyles as Record<string, string>)) {
+      root.style.setProperty(key, value)
+    }
+  }, [themeStyles])
+
   useEffect(() => {
     document.documentElement.style.setProperty(
       '--texture-opacity',
@@ -2297,7 +2326,7 @@ export default function App(): JSX.Element {
                 <MeasuredPanel
                   key="surface-panel"
                   contentClassName="p-4"
-                  className={`relative mb-2 rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} chat-surface texture-surface pointer-events-auto`}
+                  className={`relative mb-2 rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} chat-surface command-surface texture-surface pointer-events-auto`}
                   width={isWide ? wideWidth : 750}
                 >
                   {isChatOpen ? (
@@ -3200,7 +3229,8 @@ export default function App(): JSX.Element {
           <ConfirmDeleteModal
             title="Delete conversation"
             message={`Are you sure you want to delete "${deletingConversation.title}"? This cannot be undone.`}
-            withBackdrop={false}
+            contained
+            confirmLabel="Delete"
             onConfirm={() => {
               void handleDeleteConversation()
             }}

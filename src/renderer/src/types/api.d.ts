@@ -276,8 +276,13 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     }) => Promise<CodeResult<{ session: CodeSession }>>
     deleteSession: (sessionId: string) => Promise<CodeResult<Record<string, never>>>
     getTranscript: (sessionId: string) => Promise<CodeResult<{ transcript: CodeTranscriptItem[] }>>
-    prompt: (payload: { sessionId: string; text: string }) => Promise<CodeResult<Record<string, never>>>
+    prompt: (payload: { sessionId: string; text: string }) => Promise<CodeResult<{ userMessageId?: string }>>
     interrupt: (sessionId: string) => Promise<CodeResult<Record<string, never>>>
+    stageRevert: (payload: {
+      sessionId: string
+      messageId: string
+    }) => Promise<CodeResult<{ messageId: string }>>
+    clearRevert: (sessionId: string) => Promise<CodeResult<Record<string, never>>>
     switchModel: (payload: {
       sessionId: string
       model: { providerID: string; id: string; variant?: string }

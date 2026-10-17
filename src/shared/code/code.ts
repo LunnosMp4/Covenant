@@ -34,6 +34,16 @@ export interface CodeModel {
 
 export type CodeSessionStatus = 'idle' | 'busy' | 'retry' | 'error'
 
+/**
+ * A staged OpenCode rollback. While set on a session, messages at/after
+ * `messageID` are hidden (client-side filter, mirroring OpenCode's own UI) and
+ * the files touched after that point have been restored.
+ */
+export interface CodeRevert {
+  messageID: string
+  partID?: string
+}
+
 export interface CodeSession {
   id: string
   title: string
@@ -45,6 +55,7 @@ export interface CodeSession {
   agent?: string
   cost?: number
   status: CodeSessionStatus
+  revert?: CodeRevert
 }
 
 export interface CodeAgent {
@@ -345,4 +356,5 @@ export type CodeEngineEvent =
   | { kind: 'form-settled'; sessionId: string; formId: string }
   | { kind: 'diff'; sessionId: string; diff: CodeFileDiff[] }
   | { kind: 'session'; session: CodeSession }
+  | { kind: 'revert'; sessionId: string; revert?: CodeRevert }
   | { kind: 'progress'; progress: CodeRuntimeProgress }

@@ -386,8 +386,8 @@ export function registerCodeIpc(): void {
       if (!sessionId || !text.trim()) throw new Error('A session id and prompt are required')
       const service = requireService()
       await service.isConnectedOrConnect()
-      await service.getEngine().prompt({ sessionId, text: text.trim() })
-      return { success: true as const }
+      const { userMessageId } = await service.getEngine().prompt({ sessionId, text: text.trim() })
+      return { success: true as const, userMessageId }
     } catch (error) {
       return errorResult(error)
     }
@@ -397,6 +397,29 @@ export function registerCodeIpc(): void {
     try {
       if (typeof sessionId !== 'string' || !sessionId) throw new Error('A session id is required')
       await requireService().getEngine().interrupt(sessionId)
+      return { success: true as const }
+    } catch (error) {
+      return errorResult(error)
+    }
+  })
+
+  ipcMain.handle('code:revert:stage', async (_event, payload: unknown) => {
+    try {
+      const raw = (payload ?? {}) as Record<string, unknown>
+      const sessionId = typeof raw.sessionId === 'string' ? raw.sessionId : ''
+      const messageId = typeof raw.messageId === 'string' ? raw.messageId : ''
+      if (!sessionId || !messageId) throw new Error('A session id and message id are required')
+      const result = await requireService().getEngine().stageRevert(sessionId, messageId)
+      return { success: true as const, ...result }
+    } catch (error) {
+      return errorResult(error)
+    }
+  })
+
+  ipcMain.handle('code:revert:clear', async (_event, sessionId: unknown) => {
+    try {
+      if (typeof sessionId !== 'string' || !sessionId) throw new Error('A session id is required')
+      await requireService().getEngine().clearRevert(sessionId)
       return { success: true as const }
     } catch (error) {
       return errorResult(error)

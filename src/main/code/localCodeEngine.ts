@@ -11,6 +11,7 @@ import type {
   CodeModel,
   CodeModelRef,
   CodePermissionRequest,
+  CodeRevert,
   CodeSession,
   CodeSessionStatus,
   CodeStatus,
@@ -592,6 +593,15 @@ export class LocalCodeEngine implements CodeEngine {
         if (sessionId) this.emit({ kind: 'diff', sessionId, diff })
         break
       }
+      case 'session.revert.staged': {
+        const revert = toRevert(payload.revert)
+        if (sessionId) this.emit({ kind: 'revert', sessionId, revert })
+        break
+      }
+      case 'session.revert.cleared':
+      case 'session.revert.committed':
+        if (sessionId) this.emit({ kind: 'revert', sessionId })
+        break
       case 'message.part.delta': {
         // Fallback streaming channel used by some builds.
         const field = typeof payload.field === 'string' ? payload.field : 'text'
@@ -748,10 +758,12 @@ export class LocalCodeEngine implements CodeEngine {
     }
   }
 
-  async prompt(input: { sessionId: string; text: string }): Promise<void> {
+  async prompt(input: { sessionId: string; text: string }): Promise<{ userMessageId?: string }> {
     const client = this.requireClient()
-    await client.session.prompt({ sessionID: input.sessionId, text: input.text })
+    const result = await client.session.prompt({ sessionID: input.sessionId, text: input.text })
     this.sessionStatus.set(input.sessionId, 'busy')
+    const data = pickData(result) as { id?: unknown } | null
+    return { userMessageId: data && typeof data.id === 'string' ? data.id : undefined }
   }
 
   async interrupt(sessionId: string): Promise<void> {
@@ -770,6 +782,20 @@ export class LocalCodeEngine implements CodeEngine {
   async switchAgent(sessionId: string, agent: string): Promise<void> {
     const client = this.requireClient()
     await client.session.switchAgent({ sessionID: sessionId, agent })
+  }
+
+  async stageRevert(sessionId: string, messageId: string): Promise<{ messageId: string }> {
+    const client = this.requireClient()
+    const result = await client.session.revert.stage({ sessionID: sessionId, messageID: messageId })
+    const revert = toRevert(pickData(result))
+    if (sessionId) this.emit({ kind: 'revert', sessionId, revert: revert ?? { messageID: messageId } })
+    return { messageId: revert?.messageID ?? messageId }
+  }
+
+  async clearRevert(sessionId: string): Promise<void> {
+    const client = this.requireClient()
+    await client.session.revert.clear({ sessionID: sessionId })
+    if (sessionId) this.emit({ kind: 'revert', sessionId })
   }
 
   async listPermissions(sessionId: string): Promise<CodePermissionRequest[]> {
@@ -977,6 +1003,17 @@ function toAgent(raw: unknown): CodeAgent | null {
   }
 }
 
+function toRevert(raw: unknown): CodeRevert | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const obj = raw as Record<string, unknown>
+  const messageID = typeof obj.messageID === 'string' ? obj.messageID : ''
+  if (!messageID) return undefined
+  return {
+    messageID,
+    partID: typeof obj.partID === 'string' ? obj.partID : undefined
+  }
+}
+
 function toSession(raw: unknown, statuses: Map<string, CodeSessionStatus>): CodeSession | null {
   if (!raw || typeof raw !== 'object') return null
   const obj = raw as Record<string, unknown>
@@ -1002,7 +1039,8 @@ function toSession(raw: unknown, statuses: Map<string, CodeSessionStatus>): Code
     model: toModelRef(obj.model),
     agent: typeof obj.agent === 'string' ? obj.agent : undefined,
     cost: typeof obj.cost === 'number' ? obj.cost : undefined,
-    status: statuses.get(id) ?? 'idle'
+    status: statuses.get(id) ?? 'idle',
+    revert: toRevert(obj.revert)
   }
 }
 

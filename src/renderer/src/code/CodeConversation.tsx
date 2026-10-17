@@ -9,6 +9,7 @@ import type {
 import { AssistantMarkdown, CopyButton } from '../chat/AssistantMarkdown'
 import { SpinnerIcon } from '../ui/icons'
 import CodeQuestionCard from './CodeQuestionCard'
+import { RestoreIcon } from './icons'
 import ToolActivityList from './ToolActivity'
 import type { Note, StreamingState, ToolCard } from './types'
 
@@ -22,6 +23,10 @@ interface CodeConversationProps {
   onScroll: () => void
   onReplyForm: (form: CodeFormRequest, answer: Record<string, CodeFormValue>) => void
   onCancelForm: (form: CodeFormRequest, message?: string) => void
+  onRestore: (item: CodeTranscriptItem) => void
+  onRedo: () => void
+  revertMessageId?: string
+  canRestore: boolean
 }
 
 const PLAN_BUBBLE_STYLE: CSSProperties = {
@@ -111,15 +116,30 @@ function toToolCard(tool: CodeTranscriptTool): ToolCard {
 
 function TranscriptBlock({
   item,
-  diffs
+  diffs,
+  onRestore,
+  canRestore
 }: {
   item: CodeTranscriptItem
   diffs: CodeFileDiff[]
+  onRestore: (item: CodeTranscriptItem) => void
+  canRestore: boolean
 }): JSX.Element {
   const planMode = isPlanAgent(item.agent)
   if (item.role === 'user') {
     return (
-      <div className="flex justify-end">
+      <div className="group flex items-center justify-end gap-1.5">
+        {canRestore && (
+          <button
+            type="button"
+            onClick={() => onRestore(item)}
+            title="Restore to this message"
+            aria-label="Restore to this message"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-neutral-500 opacity-0 transition-opacity hover:bg-white/10 hover:text-neutral-200 group-hover:opacity-100"
+          >
+            <RestoreIcon />
+          </button>
+        )}
         <div className="chat-message chat-message--user max-w-[78%] whitespace-pre-wrap rounded-2xl border px-3 py-2 text-[13px] leading-relaxed select-text">
           {item.text}
         </div>
@@ -205,7 +225,11 @@ export default function CodeConversation({
   scrollRef,
   onScroll,
   onReplyForm,
-  onCancelForm
+  onCancelForm,
+  onRestore,
+  onRedo,
+  revertMessageId,
+  canRestore
 }: CodeConversationProps): JSX.Element {
   const isEmpty =
     transcript.length === 0 &&
@@ -217,12 +241,18 @@ export default function CodeConversation({
 
   return (
     <div ref={scrollRef} onScroll={onScroll} className="h-full overflow-y-auto px-4 py-3 chat-scrollbar">
-      {isEmpty && !stream.busy && !stream.error ? (
+      {isEmpty && !stream.busy && !stream.error && !revertMessageId ? (
         <p className="text-xs text-neutral-500">No messages yet.</p>
       ) : (
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
           {transcript.map((item) => (
-            <TranscriptBlock key={item.id} item={item} diffs={diffs} />
+            <TranscriptBlock
+              key={item.id}
+              item={item}
+              diffs={diffs}
+              onRestore={onRestore}
+              canRestore={canRestore}
+            />
           ))}
           <StreamBlock stream={stream} diffs={diffs} planMode={planMode} />
           {forms.map((form) => (
@@ -238,6 +268,20 @@ export default function CodeConversation({
               <SpinnerIcon /> Working…
             </div>
           )}
+        </div>
+      )}
+      {revertMessageId && (
+        <div className="mx-auto mt-3 flex w-full max-w-3xl justify-center">
+          <div className="flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-[11px] text-amber-200">
+            <span>Reverted to this point</span>
+            <button
+              type="button"
+              onClick={onRedo}
+              className="rounded-full border border-amber-300/40 px-2 py-0.5 font-medium text-amber-100 transition-colors hover:bg-amber-400/20"
+            >
+              Redo
+            </button>
+          </div>
         </div>
       )}
     </div>

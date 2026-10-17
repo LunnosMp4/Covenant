@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { motion } from 'framer-motion'
 import { isLocalConnectionId } from '../../../shared/code/connection'
+import type { CodeTranscriptItem } from '../../../shared/code/code'
 import { CHAT_SCROLL_HEIGHT } from '../app/constants'
 import ContextStatsDonut from '../app/components/ContextStatsDonut'
 import type { ContextStats } from '../utils/chat/chatUsage'
+import ConfirmDeleteModal from '../ui/ConfirmDeleteModal'
 import ExpandButton from '../ui/ExpandButton'
 import { CodeIcon, PinIcon } from '../ui/icons'
 import CodeConversation from './CodeConversation'
@@ -17,7 +19,7 @@ import CodeModelMenu from './CodeModelMenu'
 import CodeModeToggle from './CodeModeToggle'
 import CodeRuntimeStatus from './CodeRuntimeStatus'
 import RemoteFolderBrowser from './RemoteFolderBrowser'
-import { DiffIcon, PlusIcon, SessionIcon } from './icons'
+import { DiffIcon, PlusIcon, RestoreIcon, SessionIcon } from './icons'
 import { useCodeSession } from './useCodeSession'
 
 type CodeSessionApi = ReturnType<typeof useCodeSession>
@@ -50,6 +52,7 @@ export default function CodePanel({
   const [changesOpen, setChangesOpen] = useState(false)
   const [connectionModalOpen, setConnectionModalOpen] = useState(false)
   const [browserOpen, setBrowserOpen] = useState(false)
+  const [restoreTarget, setRestoreTarget] = useState<CodeTranscriptItem | null>(null)
   const changesRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [autoScroll, setAutoScroll] = useState(true)
@@ -127,6 +130,23 @@ export default function CodePanel({
     if (!el) return
     const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 24
     setAutoScroll((previous) => (previous === atBottom ? previous : atBottom))
+  }
+
+  const revertMessageId = session.activeSession?.revert?.messageID
+  const canRestore = !session.stream.busy
+
+  const confirmRestore = (): void => {
+    const target = restoreTarget
+    if (!target) return
+    setRestoreTarget(null)
+    void session.restoreToMessage(target.id, target.text)
+  }
+
+  const conversationProps = {
+    onRestore: (item: CodeTranscriptItem) => setRestoreTarget(item),
+    onRedo: () => void session.redoRevert(),
+    revertMessageId,
+    canRestore
   }
 
   const emptyState = session.runtimeProgress ? (
@@ -355,6 +375,7 @@ export default function CodePanel({
                   onScroll={handleScroll}
                   onReplyForm={(form, answer) => void session.replyForm(form, answer)}
                   onCancelForm={(form, message) => void session.cancelForm(form, message)}
+                  {...conversationProps}
                 />
               ) : (
                 emptyState
@@ -386,12 +407,25 @@ export default function CodePanel({
             onScroll={handleScroll}
             onReplyForm={(form, answer) => void session.replyForm(form, answer)}
             onCancelForm={(form, message) => void session.cancelForm(form, message)}
+            {...conversationProps}
           />
         ) : (
           emptyState
         )}
       </motion.div>
 
+      {restoreTarget && (
+        <ConfirmDeleteModal
+          title="Restore to this message?"
+          message="Reverts file changes made after this message and hides what came after. You can undo this with Redo."
+          confirmLabel="Restore"
+          danger={false}
+          contained
+          icon={<RestoreIcon />}
+          onConfirm={confirmRestore}
+          onCancel={() => setRestoreTarget(null)}
+        />
+      )}
     </>
   )
 }

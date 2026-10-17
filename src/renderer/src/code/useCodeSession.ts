@@ -67,6 +67,10 @@ export function useCodeSession(): {
   changeVariant: (value: string) => void
   submit: (text: string) => Promise<void>
   stop: () => Promise<void>
+  restoreToMessage: (messageId: string, text: string) => Promise<void>
+  redoRevert: () => Promise<void>
+  restoreDraft: string | null
+  clearRestoreDraft: () => void
   replyPermission: (request: CodePermissionRequest, reply: 'once' | 'always' | 'reject') => Promise<void>
   replyForm: (form: CodeFormRequest, answer: Record<string, CodeFormValue>) => Promise<void>
   cancelForm: (form: CodeFormRequest, message?: string) => Promise<void>
@@ -95,6 +99,7 @@ export function useCodeSession(): {
   const [diffs, setDiffs] = useState<CodeFileDiff[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loadingSessions, setLoadingSessions] = useState(false)
+  const [restoreDraft, setRestoreDraft] = useState<string | null>(null)
 
   const activeSessionRef = useRef<CodeSession | null>(null)
   const activeConnectionIdRef = useRef<string>('local')
@@ -304,6 +309,14 @@ export function useCodeSession(): {
         }
         return
       }
+      if (event.kind === 'revert') {
+        const active = activeSessionRef.current
+        if (active && event.sessionId && event.sessionId !== active.id) return
+        setActiveSession((current) =>
+          current && current.id === event.sessionId ? { ...current, revert: event.revert } : current
+        )
+        return
+      }
       if (event.kind === 'session') {
         setSessions((current) => {
           const idx = current.findIndex((session) => session.id === event.session.id)
@@ -364,14 +377,21 @@ export function useCodeSession(): {
         scheduleDiffRefresh(activity.sessionId)
         void (async () => {
           const project = activeProjectRef.current
-          if (!project) return
-          const result = await api.code?.listSessions(project.directory)
-          if (result?.success) {
-            setSessions(result.sessions)
+          const session = activeSessionRef.current
+          if (!project || !session) return
+          // Re-fetch the transcript so the assistant turn is coalesced into one
+          // server-backed item and any committed rollback is reflected.
+          const [sessionsResult, transcriptResult] = await Promise.all([
+            api.code?.listSessions(project.directory),
+            api.code?.getTranscript(session.id)
+          ])
+          if (sessionsResult?.success) {
+            setSessions(sessionsResult.sessions)
             setActiveSession((current) =>
-              current ? result.sessions.find((session) => session.id === current.id) ?? current : current
+              current ? sessionsResult.sessions.find((item) => item.id === current.id) ?? current : current
             )
           }
+          if (transcriptResult?.success) setTranscript(transcriptResult.transcript)
         })()
         return
       }
@@ -681,15 +701,29 @@ export function useCodeSession(): {
         setForms([])
       }
 
+      const tempId = noteId()
       setTranscript((current) => [
         ...current,
-        { id: noteId(), role: 'user', text, createdAt: Date.now() }
+        { id: tempId, role: 'user', text, createdAt: Date.now() }
       ])
+      // Sending a prompt commits any staged rollback on the server.
+      if (session.revert) {
+        setActiveSession((current) =>
+          current && current.id === session.id ? { ...current, revert: undefined } : current
+        )
+      }
       setStream({ ...EMPTY_STREAM, busy: true, agent: selectedAgentRef.current || undefined })
       const result = await api.code.prompt({ sessionId: session.id, text })
       if (!result.success) {
         setError(result.error)
         setStream((current) => ({ ...current, busy: false, error: result.error }))
+      } else if (result.userMessageId) {
+        // Swap the optimistic local id for the real OpenCode message id so the
+        // restore action on this message targets the correct boundary.
+        const userMessageId = result.userMessageId
+        setTranscript((current) =>
+          current.map((item) => (item.id === tempId ? { ...item, id: userMessageId } : item))
+        )
       }
     },
     [api, enable, currentModelRef]
@@ -701,6 +735,54 @@ export function useCodeSession(): {
     await api.code.interrupt(session.id)
     setStream((current) => ({ ...current, busy: false }))
   }, [api])
+
+  const clearRestoreDraft = useCallback(() => setRestoreDraft(null), [])
+
+  const reloadSession = useCallback(
+    async (sessionId: string) => {
+      if (!api?.code || !sessionId) return
+      const [transcriptResult, diffResult] = await Promise.all([
+        api.code.getTranscript(sessionId),
+        api.code.getDiff(sessionId)
+      ])
+      if (transcriptResult.success) setTranscript(transcriptResult.transcript)
+      if (diffResult.success) setDiffs(diffResult.diff)
+    },
+    [api]
+  )
+
+  const restoreToMessage = useCallback(
+    async (messageId: string, text: string) => {
+      const session = activeSessionRef.current
+      if (!api?.code || !session || !messageId) return
+      const result = await api.code.stageRevert({ sessionId: session.id, messageId })
+      if (!result.success) {
+        setError(result.error)
+        return
+      }
+      setActiveSession((current) =>
+        current && current.id === session.id ? { ...current, revert: { messageID: result.messageId } } : current
+      )
+      await reloadSession(session.id)
+      // OpenCode puts the reverted prompt back in the composer for editing.
+      setRestoreDraft(text)
+    },
+    [api, reloadSession]
+  )
+
+  const redoRevert = useCallback(async () => {
+    const session = activeSessionRef.current
+    if (!api?.code || !session) return
+    const result = await api.code.clearRevert(session.id)
+    if (!result.success) {
+      setError(result.error)
+      return
+    }
+    setActiveSession((current) =>
+      current && current.id === session.id ? { ...current, revert: undefined } : current
+    )
+    await reloadSession(session.id)
+  }, [api, reloadSession])
 
   const replyPermission = useCallback(
     async (request: CodePermissionRequest, reply: 'once' | 'always' | 'reject') => {
@@ -752,6 +834,14 @@ export function useCodeSession(): {
   const selectProject = useCallback((project: CodeProject) => setActiveProject(project), [])
   const dismissError = useCallback(() => setError(null), [])
 
+  const visibleTranscript = useMemo(() => {
+    const revertId = activeSession?.revert?.messageID
+    if (!revertId) return transcript
+    // Mirror OpenCode's own UI: ids are time-sortable, so anything at/after the
+    // rollback boundary is hidden.
+    return transcript.filter((item) => item.id < revertId)
+  }, [transcript, activeSession?.revert?.messageID])
+
   const totals = useMemo(
     () => ({
       additions: diffs.reduce((sum, diff) => sum + diff.additions, 0),
@@ -787,7 +877,7 @@ export function useCodeSession(): {
     selectedAgent,
     selectedVariant,
     activeVariants,
-    transcript,
+    transcript: visibleTranscript,
     stream,
     usage,
     liveCost,
@@ -814,6 +904,10 @@ export function useCodeSession(): {
     changeVariant,
     submit,
     stop,
+    restoreToMessage,
+    redoRevert,
+    restoreDraft,
+    clearRestoreDraft,
     replyPermission,
     replyForm,
     cancelForm,

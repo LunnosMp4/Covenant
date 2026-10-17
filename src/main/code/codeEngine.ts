@@ -77,10 +77,15 @@ export interface CodeEngine {
   deleteSession(sessionId: string): Promise<void>
   getTranscript(sessionId: string): Promise<CodeTranscriptItem[]>
 
-  prompt(input: { sessionId: string; text: string }): Promise<void>
+  prompt(input: { sessionId: string; text: string }): Promise<{ userMessageId?: string }>
   interrupt(sessionId: string): Promise<void>
   switchModel(sessionId: string, model: CodeModelRefInput): Promise<void>
   switchAgent(sessionId: string, agent: string): Promise<void>
+
+  /** Stage an OpenCode rollback to `messageId` (restores files, hides later messages). */
+  stageRevert(sessionId: string, messageId: string): Promise<{ messageId: string }>
+  /** Cancel a staged rollback, restoring the conversation and files. */
+  clearRevert(sessionId: string): Promise<void>
 
   listPermissions(sessionId: string): Promise<CodePermissionRequest[]>
   replyPermission(input: CodeEnginePermissionReply): Promise<void>

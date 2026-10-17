@@ -458,10 +458,18 @@ const api = {
       >,
     prompt: (payload: { sessionId: string; text: string }) =>
       ipcRenderer.invoke('code:prompt', payload) as Promise<
-        { success: true } | { success: false; error: string }
+        { success: true; userMessageId?: string } | { success: false; error: string }
       >,
     interrupt: (sessionId: string) =>
       ipcRenderer.invoke('code:interrupt', sessionId) as Promise<
+        { success: true } | { success: false; error: string }
+      >,
+    stageRevert: (payload: { sessionId: string; messageId: string }) =>
+      ipcRenderer.invoke('code:revert:stage', payload) as Promise<
+        { success: true; messageId: string } | { success: false; error: string }
+      >,
+    clearRevert: (sessionId: string) =>
+      ipcRenderer.invoke('code:revert:clear', sessionId) as Promise<
         { success: true } | { success: false; error: string }
       >,
     switchModel: (payload: { sessionId: string; model: { providerID: string; id: string; variant?: string } }) =>
