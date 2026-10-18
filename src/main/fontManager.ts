@@ -1,6 +1,14 @@
 import { execFileSync } from 'child_process'
 
-const FALLBACK_TERMINAL_FONTS = ['Cascadia Mono', 'Consolas', 'Courier New', 'Lucida Console']
+const FALLBACK_TERMINAL_FONTS = [
+  'Cascadia Mono',
+  'Consolas',
+  'Courier New',
+  'Lucida Console',
+  'Menlo',
+  'Monaco',
+  'DejaVu Sans Mono'
+]
 
 let cachedTerminalFonts: string[] | null = null
 
@@ -44,7 +52,9 @@ const TERMINAL_FONT_PATTERNS = [
   /\btamzen\b/i,
   /\bgohu\b/i,
   /\bm\+ ?1m\b/i,
-  /\bnerd font\b/i
+  /\bnerd font\b/i,
+  /\bmenlo\b/i,
+  /\bmonaco\b/i
 ]
 
 function normalizeFontName(fontName: string): string {
@@ -60,11 +70,14 @@ function isTerminalFont(fontName: string): boolean {
   return TERMINAL_FONT_PATTERNS.some((pattern) => pattern.test(normalizedName))
 }
 
-function getFontFamiliesFromSystem(): string[] {
-  if (process.platform !== 'win32') {
-    return []
-  }
+function toFontList(output: string): string[] {
+  return output
+    .split(/\r?\n/)
+    .map((item) => normalizeFontName(item))
+    .filter((item) => item.length > 0)
+}
 
+function getWindowsFontFamilies(): string[] {
   const script = `
 $ErrorActionPreference = 'SilentlyContinue'
 try {
@@ -90,12 +103,60 @@ try {
       }
     )
 
-    return output
-      .split(/\r?\n/)
-      .map((item) => normalizeFontName(item))
-      .filter((item) => item.length > 0)
+    return toFontList(output)
   } catch {
     return []
+  }
+}
+
+function getMacFontFamilies(): string[] {
+  const script = `
+ObjC.import('AppKit');
+const families = $.NSFontManager.sharedFontManager.availableFontFamilies;
+let out = [];
+for (let i = 0; i < families.count; i++) {
+  out.push(ObjC.unwrap(families.objectAtIndex(i)));
+}
+out.join('\\n');
+`
+
+  try {
+    const output = execFileSync('osascript', ['-l', 'JavaScript', '-e', script], {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+      timeout: 8000
+    })
+
+    return toFontList(output)
+  } catch {
+    return []
+  }
+}
+
+function getLinuxFontFamilies(): string[] {
+  try {
+    const output = execFileSync('fc-list', ['--format', '%{family}\\n'], {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+      timeout: 8000
+    })
+
+    return toFontList(output.replace(/,/g, '\n'))
+  } catch {
+    return []
+  }
+}
+
+function getFontFamiliesFromSystem(): string[] {
+  switch (process.platform) {
+    case 'win32':
+      return getWindowsFontFamilies()
+    case 'darwin':
+      return getMacFontFamilies()
+    case 'linux':
+      return getLinuxFontFamilies()
+    default:
+      return []
   }
 }
 

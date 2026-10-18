@@ -2156,6 +2156,10 @@ export default function App(): JSX.Element {
       }
 
       if (event.key === 'Tab' && !event.altKey && !event.ctrlKey && !event.metaKey) {
+        const target = event.target as HTMLElement | null
+        if (mode === 'terminal' && target?.closest?.('.terminal-surface')) {
+          return
+        }
         event.preventDefault()
         event.stopPropagation()
         toggleMode()
