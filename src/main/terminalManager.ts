@@ -10,7 +10,14 @@ import {
   MIN_TERMINAL_ROWS,
   sanitizeTerminalDimension
 } from '../shared/terminal/dimensions'
-import type { TerminalExitPayload, TerminalStartResult } from '../shared/terminal/terminal'
+import type {
+  TerminalCommandResult,
+  TerminalExitPayload,
+  TerminalSessionState,
+  TerminalStartResult
+} from '../shared/terminal/terminal'
+import { commandTerminator, wrapCommand } from './terminal/shellIntegration'
+import { ShellStateTracker } from './terminal/sessionState'
 
 export type { TerminalExitPayload, TerminalStartResult }
 
@@ -21,14 +28,19 @@ interface ShellCandidate {
 
 type DataListener = (sessionId: string, data: string) => void
 type ExitListener = (payload: TerminalExitPayload) => void
+type StateListener = (state: TerminalSessionState) => void
 
 interface PtySession {
   id: string
   pty: IPty
   shell: string
+  cwd: string
+  tracker: ShellStateTracker
   dataListeners: Set<DataListener>
   exitListeners: Set<ExitListener>
 }
+
+const COMMAND_TIMEOUT_MS = 60_000
 
 function validateShellPath(command: string): boolean {
   try {
@@ -107,6 +119,8 @@ class TerminalManager {
 
   private readonly globalExitListeners = new Set<ExitListener>()
 
+  private readonly globalStateListeners = new Set<StateListener>()
+
   createSession(cols?: number, rows?: number, preferredShell?: string): TerminalStartResult {
     const normalizedCols = sanitizeTerminalDimension(cols, DEFAULT_TERMINAL_COLS, MIN_TERMINAL_COLS, MAX_TERMINAL_COLS)
     const normalizedRows = sanitizeTerminalDimension(rows, DEFAULT_TERMINAL_ROWS, MIN_TERMINAL_ROWS, MAX_TERMINAL_ROWS)
@@ -143,10 +157,16 @@ class TerminalManager {
         })
 
         const sessionId = randomUUID()
+        const tracker = new ShellStateTracker(sessionId, candidate.command, spawnCwd)
+        tracker.onStateChange((state) => {
+          this.globalStateListeners.forEach((listener) => listener(state))
+        })
         const session: PtySession = {
           id: sessionId,
           pty: processHandle,
           shell: candidate.command,
+          cwd: spawnCwd,
+          tracker,
           dataListeners: new Set(),
           exitListeners: new Set()
         }
@@ -218,11 +238,95 @@ class TerminalManager {
     return first.done ? null : first.value
   }
 
-  getSessions(): Array<{ sessionId: string; shell: string }> {
+  getSessions(): Array<{ sessionId: string; shell: string; cwd: string }> {
     return [...this.sessionMap.entries()].map(([id, s]) => ({
       sessionId: id,
-      shell: extractShellName(s.shell)
+      shell: extractShellName(s.shell),
+      cwd: s.tracker.getState().cwd
     }))
+  }
+
+  getState(sessionId: string): TerminalSessionState | null {
+    const session = this.sessionMap.get(sessionId)
+    if (!session) return null
+    return session.tracker.getState()
+  }
+
+  readOutput(sessionId: string, lineCount?: number): string {
+    const session = this.sessionMap.get(sessionId)
+    if (!session) return ''
+    return session.tracker.read(lineCount)
+  }
+
+  onState(listener: StateListener): () => void {
+    this.globalStateListeners.add(listener)
+    return () => {
+      this.globalStateListeners.delete(listener)
+    }
+  }
+
+  /**
+   * Writes a command and, for shells that support the sentinel, resolves with
+   * its exit code, resulting cwd, and captured output once it completes.
+   */
+  runCommand(sessionId: string, command: string, timeoutMs = COMMAND_TIMEOUT_MS): Promise<TerminalCommandResult> {
+    const session = this.sessionMap.get(sessionId)
+    if (!session) {
+      return Promise.resolve({ success: false, exitCode: null, cwd: '', output: '', error: 'Unknown session.' })
+    }
+
+    const state = session.tracker.getState()
+    const { wrapped, token, supported } = wrapCommand(session.shell, command)
+    const terminator = commandTerminator(session.shell)
+
+    if (!supported) {
+      session.pty.write(`${command}${terminator}`)
+      return Promise.resolve({
+        success: true,
+        exitCode: null,
+        cwd: state.cwd,
+        output: '',
+        error: 'This shell does not report command completion; output could not be captured.'
+      })
+    }
+
+    const outputStart = session.tracker.getOutputLength()
+
+    return new Promise<TerminalCommandResult>((resolve) => {
+      let settled = false
+
+      const finish = (result: TerminalCommandResult): void => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        unsubscribe()
+        resolve(result)
+      }
+
+      const unsubscribe = session.tracker.onSentinel((match) => {
+        if (match.token !== token) return
+        finish({
+          success: true,
+          exitCode: match.exitCode,
+          cwd: match.cwd || state.cwd,
+          output: session.tracker.readSince(outputStart)
+        })
+      })
+
+      const timer = setTimeout(() => {
+        session.tracker.markCommandFinished()
+        finish({
+          success: false,
+          exitCode: null,
+          cwd: session.tracker.getState().cwd,
+          output: session.tracker.readSince(outputStart),
+          error: `Command timed out after ${Math.round(timeoutMs / 1000)}s.`
+        })
+      }, timeoutMs)
+
+      session.tracker.markCommandStart(command)
+      session.pty.write(`${wrapped}${terminator}`)
+    })
   }
 
   disposeAll(): void {
@@ -238,6 +342,7 @@ class TerminalManager {
     this.sessionMap.clear()
     this.globalDataListeners.clear()
     this.globalExitListeners.clear()
+    this.globalStateListeners.clear()
   }
 
   onData(listener: DataListener): () => void {
@@ -272,6 +377,7 @@ class TerminalManager {
     const { pty, id: sessionId } = session
 
     pty.onData((chunk) => {
+      session.tracker.feed(chunk)
       this.globalDataListeners.forEach((listener) => {
         listener(sessionId, chunk)
       })

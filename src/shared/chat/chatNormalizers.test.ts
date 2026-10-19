@@ -124,4 +124,20 @@ describe('normalizeConversation', () => {
     expect(conversation.messages).toHaveLength(1)
     expect(conversation.messages[0]?.content).toBe('valid')
   })
+
+  it('preserves a terminal session link', () => {
+    const conversation = normalizeConversation({
+      id: 'c2',
+      title: 'Terminal',
+      terminalSessionId: '  sess-1  '
+    } as Partial<ChatConversation>)
+    expect(conversation.terminalSessionId).toBe('sess-1')
+  })
+
+  it('drops an empty terminal session link', () => {
+    const conversation = normalizeConversation({
+      terminalSessionId: '   '
+    } as Partial<ChatConversation>)
+    expect(conversation.terminalSessionId).toBeUndefined()
+  })
 })

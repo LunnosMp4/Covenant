@@ -178,6 +178,7 @@ export const appStore = new StoreClass<AppStoreSchema>({
           createdAt: { type: 'number' },
           updatedAt: { type: 'number' },
           systemPrompt: { type: 'string' },
+          terminalSessionId: { type: 'string' },
           messages: {
             type: 'array',
             default: [],

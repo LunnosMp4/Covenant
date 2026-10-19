@@ -60,6 +60,8 @@ export interface ChatConversation {
   updatedAt: number
   messages: ChatMessage[]
   systemPrompt?: string
+  /** When set, this conversation is linked to a live terminal session. */
+  terminalSessionId?: string
 }
 
 export type ChatStreamEventType =

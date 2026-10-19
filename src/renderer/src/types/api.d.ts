@@ -13,7 +13,14 @@ import type {
   WorkflowStatusUpdatePayload
 } from './renderer'
 import type { ChatConversation, ChatRole, ChatStreamEvent, InputContent } from '../../../shared/chat/chat'
-import type { TerminalExitPayload, TerminalStartResult } from '../../../shared/terminal/terminal'
+import type {
+  TerminalApprovalReply,
+  TerminalApprovalRequest,
+  TerminalCommandResult,
+  TerminalExitPayload,
+  TerminalSessionState,
+  TerminalStartResult
+} from '../../../shared/terminal/terminal'
 import type { UpdateStatus } from '../../../shared/system/update'
 import type { PasteItemDetail, PasteItemMeta, PasteManagerSettings } from '../../../shared/paste/paste'
 import type { UsageMetricsResult, UsageProjectsResult } from '../../../shared/system/usage'
@@ -117,8 +124,14 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     getProjects: () => Promise<UsageProjectsResult>
   }
   chat: {
-    askCovenant: (messages: Array<{ role: ChatRole; content: string | InputContent[] }>) => Promise<string>
-    askCovenantStream: (messages: Array<{ role: ChatRole; content: string | InputContent[] }>) => Promise<{ id: string }>
+    askCovenant: (
+      messages: Array<{ role: ChatRole; content: string | InputContent[] }>,
+      options?: { terminalSessionId?: string }
+    ) => Promise<string>
+    askCovenantStream: (
+      messages: Array<{ role: ChatRole; content: string | InputContent[] }>,
+      options?: { terminalSessionId?: string }
+    ) => Promise<{ id: string }>
     onStreamEvent: (callback: (event: ChatStreamEvent) => void) => () => void
     cancelStream: (streamId: string) => void
     getConversations: () => Promise<ChatConversation[]>
@@ -134,8 +147,25 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     onData: (callback: (sessionId: string, chunk: string) => void) => () => void
     onExit: (callback: (payload: TerminalExitPayload) => void) => () => void
     reportActiveSession: (sessionId: string) => void
-    listSessions: () => Promise<Array<{ sessionId: string; shell: string }>>
+    listSessions: () => Promise<Array<{ sessionId: string; shell: string; cwd: string }>>
     sendToActiveSession: (code: string) => Promise<{ success: boolean; sessionId?: string; created?: boolean }>
+    getState: (sessionId: string) => Promise<
+      { success: true; state: TerminalSessionState } | { success: false; error: string }
+    >
+    read: (sessionId: string, lines?: number) => Promise<
+      { success: true; output: string } | { success: false; error: string }
+    >
+    runCommand: (sessionId: string, command: string) => Promise<
+      (TerminalCommandResult & { sessionId?: string }) | { success: false; error: string }
+    >
+    onStateChanged: (
+      callback: (payload: { sessionId: string; state: TerminalSessionState }) => void
+    ) => () => void
+    onApprovalRequest: (callback: (request: TerminalApprovalRequest) => void) => () => void
+    replyApproval: (
+      requestId: string,
+      reply: TerminalApprovalReply
+    ) => Promise<{ success: boolean }>
   }
   voice: {
     transcribe: (audioBuffer: ArrayBuffer) => Promise<string>

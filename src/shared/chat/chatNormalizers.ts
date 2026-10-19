@@ -148,6 +148,10 @@ export function normalizeConversation(payload: Partial<ChatConversation>): ChatC
     typeof payload.systemPrompt === 'string' && payload.systemPrompt.trim()
       ? payload.systemPrompt.trim()
       : undefined
+  const terminalSessionId =
+    typeof payload.terminalSessionId === 'string' && payload.terminalSessionId.trim()
+      ? payload.terminalSessionId.trim()
+      : undefined
 
   const rawMessages = Array.isArray(payload.messages) ? payload.messages : []
   const normalizedMessages = rawMessages
@@ -160,6 +164,7 @@ export function normalizeConversation(payload: Partial<ChatConversation>): ChatC
     createdAt,
     updatedAt,
     messages: normalizedMessages,
-    systemPrompt
+    systemPrompt,
+    terminalSessionId
   }
 }

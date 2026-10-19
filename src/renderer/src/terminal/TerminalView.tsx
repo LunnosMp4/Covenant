@@ -8,9 +8,15 @@ interface TerminalTab {
   sessionId: string
   shell: string
   shellPath: string
-  buffer: string
   isAlive: boolean
   isStarted: boolean
+}
+
+interface SessionHandle {
+  terminal: Terminal
+  fitAddon: FitAddon
+  host: HTMLDivElement
+  disposers: Array<() => void>
 }
 
 interface TerminalViewProps {
@@ -23,6 +29,7 @@ interface TerminalViewProps {
   isLight: boolean
   onTogglePin: () => void
   onToggleExpand: (event: MouseEvent<HTMLButtonElement>) => void
+  onActiveSessionChange: (sessionId: string | null) => void
 }
 
 function extractShellName(shellPath: string): string {
@@ -109,51 +116,112 @@ function TerminalView({
   isPinned,
   isLight,
   onTogglePin,
-  onToggleExpand
+  onToggleExpand,
+  onActiveSessionChange
 }: TerminalViewProps): JSX.Element {
-  const hostRef = useRef<HTMLDivElement>(null)
-  const terminalRef = useRef<Terminal | null>(null)
-  const fitAddonRef = useRef<FitAddon | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const sessionsRef = useRef<Map<string, SessionHandle>>(new Map())
   const activeSessionIdRef = useRef<string | null>(null)
   const tabsRef = useRef<TerminalTab[]>([])
   const hasUnavailableMessageRef = useRef(false)
-  const unsubscribeRef = useRef<Array<() => void>>([])
-  const isRestoringRef = useRef(false)
+  const fontFamilyRef = useRef(fontFamily)
+  const onActiveSessionChangeRef = useRef(onActiveSessionChange)
 
   const [tabs, setTabs] = useState<TerminalTab[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [hasSelection, setHasSelection] = useState(false)
+
+  useEffect(() => {
+    onActiveSessionChangeRef.current = onActiveSessionChange
+  }, [onActiveSessionChange])
 
   const tabsRefSetter = useCallback((next: TerminalTab[]) => {
     tabsRef.current = next
     setTabs(next)
   }, [])
 
-  const createTerminal = useCallback((host: HTMLElement) => {
+  useEffect(() => {
+    fontFamilyRef.current = fontFamily
+  }, [fontFamily])
+
+  const fitSession = useCallback((sessionId: string) => {
+    const handle = sessionsRef.current.get(sessionId)
+    if (!handle) return
+    try {
+      handle.fitAddon.fit()
+      void window.api?.terminal.resize(sessionId, handle.terminal.cols, handle.terminal.rows)
+    } catch {
+      // fit() throws when the host is not measurable yet.
+    }
+  }, [])
+
+  const fitActive = useCallback(() => {
+    const sessionId = activeSessionIdRef.current
+    if (sessionId) fitSession(sessionId)
+  }, [fitSession])
+
+  const disposeSession = useCallback((sessionId: string) => {
+    const handle = sessionsRef.current.get(sessionId)
+    if (!handle) return
+    for (const dispose of handle.disposers) dispose()
+    handle.terminal.dispose()
+    handle.host.remove()
+    sessionsRef.current.delete(sessionId)
+  }, [])
+
+  const setActiveSession = useCallback((sessionId: string | null) => {
+    activeSessionIdRef.current = sessionId
+    setActiveTabId(sessionId)
+
+    for (const [id, handle] of sessionsRef.current.entries()) {
+      handle.host.style.display = id === sessionId ? 'block' : 'none'
+    }
+
+    if (sessionId) {
+      const handle = sessionsRef.current.get(sessionId)
+      handle?.terminal.focus()
+      setHasSelection(handle?.terminal.hasSelection() ?? false)
+      window.api?.terminal.reportActiveSession(sessionId)
+    }
+
+    onActiveSessionChangeRef.current?.(sessionId)
+  }, [])
+
+  // Create a dedicated xterm instance for a session (one per tab, so scrollback,
+  // alternate-screen apps and cursor state are never replayed or lost).
+  const createSessionTerminal = useCallback((sessionId: string): SessionHandle | null => {
+    const container = containerRef.current
+    if (!container) return null
+
+    const host = document.createElement('div')
+    host.style.position = 'absolute'
+    host.style.inset = '0'
+    host.style.display = 'none'
+    container.appendChild(host)
+
     const terminal = new Terminal({
       ...TERMINAL_OPTIONS,
-      fontFamily
+      fontFamily: fontFamilyRef.current
     })
-
     const fitAddon = new FitAddon()
     terminal.loadAddon(fitAddon)
     terminal.open(host)
 
-    terminalRef.current = terminal
-    fitAddonRef.current = fitAddon
+    const disposers: Array<() => void> = []
 
-    const disposeInput = terminal.onData((input) => {
-      const sessionId = activeSessionIdRef.current
-      if (sessionId) {
-        void window.api?.terminal.sendInput(sessionId, input)
+    const dataSub = terminal.onData((input) => {
+      void window.api?.terminal.sendInput(sessionId, input)
+    })
+    disposers.push(() => dataSub.dispose())
+
+    const selectionSub = terminal.onSelectionChange(() => {
+      if (activeSessionIdRef.current === sessionId) {
+        setHasSelection(terminal.hasSelection())
       }
     })
+    disposers.push(() => selectionSub.dispose())
 
-    const disposeSelection = terminal.onSelectionChange(() => {
-      setHasSelection(terminal.hasSelection())
-    })
-
-    const disposeCustomKey = terminal.attachCustomKeyEventHandler((event) => {
+    terminal.attachCustomKeyEventHandler((event) => {
       const key = event.key.toLowerCase()
       const isCopyShortcut =
         ((event.ctrlKey || event.metaKey) && event.shiftKey && key === 'c') ||
@@ -170,117 +238,83 @@ function TerminalView({
       return true
     })
 
-    return { terminal, fitAddon, disposeInput, disposeSelection, disposeCustomKey }
-  }, [fontFamily])
-
-  const fitAndResize = useCallback((sessionId?: string) => {
-    const terminal = terminalRef.current
-    const fitAddon = fitAddonRef.current
-    const terminalApi = window.api?.terminal
-
-    if (!terminal || !fitAddon || !terminalApi) return
-
-    const sid = sessionId ?? activeSessionIdRef.current
-    if (!sid) return
-
-    try {
-      fitAddon.fit()
-      void terminalApi.resize(sid, terminal.cols, terminal.rows)
-    } catch {
-      // fit() can throw when the terminal container is not measurable yet.
-    }
+    const handle: SessionHandle = { terminal, fitAddon, host, disposers }
+    sessionsRef.current.set(sessionId, handle)
+    return handle
   }, [])
 
-  const switchToTab = useCallback((sessionId: string) => {
-    const terminal = terminalRef.current
-    if (!terminal) return
+  const switchToTab = useCallback(
+    (sessionId: string) => {
+      const next = tabsRef.current.find((t) => t.sessionId === sessionId)
+      if (!next) return
 
-    const next = tabsRef.current.find((t) => t.sessionId === sessionId)
-    if (!next) return
-
-    isRestoringRef.current = true
-    terminal.reset()
-
-    terminal.options.fontFamily = fontFamily
-    terminal.options.cursorBlink = TERMINAL_OPTIONS.cursorBlink
-    terminal.options.convertEol = TERMINAL_OPTIONS.convertEol
-    terminal.options.scrollback = TERMINAL_OPTIONS.scrollback
-    terminal.options.fontSize = TERMINAL_OPTIONS.fontSize
-    terminal.options.lineHeight = TERMINAL_OPTIONS.lineHeight
-    terminal.options.theme = TERMINAL_OPTIONS.theme
-
-    if (next.buffer) {
-      terminal.write(next.buffer)
-    }
-
-    isRestoringRef.current = false
-    activeSessionIdRef.current = sessionId
-    setActiveTabId(sessionId)
-    window.api?.terminal.reportActiveSession(sessionId)
-
-    requestAnimationFrame(() => {
-      fitAndResize(sessionId)
-    })
-  }, [fitAndResize, fontFamily])
+      setActiveSession(sessionId)
+      requestAnimationFrame(() => {
+        fitSession(sessionId)
+      })
+    },
+    [fitSession, setActiveSession]
+  )
 
   const addTab = useCallback(async () => {
     const terminalApi = window.api?.terminal
-    const terminal = terminalRef.current
-    if (!terminalApi || !terminal) return
+    if (!terminalApi) return
+
+    const reference = activeSessionIdRef.current
+      ? sessionsRef.current.get(activeSessionIdRef.current)?.terminal
+      : undefined
 
     try {
       const result = await terminalApi.startTerminal({
-        cols: terminal.cols,
-        rows: terminal.rows
+        cols: reference?.cols,
+        rows: reference?.rows
       })
 
-      if (result.error) {
-        terminal.writeln(`\r\n[error] ${result.error}\r\n`)
-        return
-      }
+      if (result.error) return
 
       const shellName = extractShellName(result.shell)
       const newTab: TerminalTab = {
         sessionId: result.sessionId,
         shell: shellName,
         shellPath: result.shell,
-        buffer: '',
         isAlive: true,
         isStarted: true
       }
 
-      const updated = [...tabsRef.current, newTab]
-      tabsRefSetter(updated)
+      createSessionTerminal(result.sessionId)
+      tabsRefSetter([...tabsRef.current, newTab])
       switchToTab(result.sessionId)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to start terminal.'
-      terminal.writeln(`\r\n[error] ${message}\r\n`)
+    } catch {
+      // Ignore: the header will simply not gain a new tab.
     }
-  }, [switchToTab, tabsRefSetter])
+  }, [createSessionTerminal, switchToTab, tabsRefSetter])
 
-  const closeTab = useCallback(async (sessionId: string) => {
-    const currentTabs = tabsRef.current
-    if (currentTabs.length <= 1) return
+  const closeTab = useCallback(
+    async (sessionId: string) => {
+      const currentTabs = tabsRef.current
+      if (currentTabs.length <= 1) return
 
-    const terminalApi = window.api?.terminal
-    if (terminalApi) {
-      await terminalApi.killTerminal(sessionId)
-    }
+      await window.api?.terminal.killTerminal(sessionId)
+      disposeSession(sessionId)
 
-    const updated = currentTabs.filter((t) => t.sessionId !== sessionId)
-    tabsRefSetter(updated)
+      const updated = currentTabs.filter((t) => t.sessionId !== sessionId)
+      tabsRefSetter(updated)
 
-    if (activeSessionIdRef.current === sessionId) {
-      const idx = currentTabs.findIndex((t) => t.sessionId === sessionId)
-      const nextTab = updated[Math.min(idx, updated.length - 1)]
-      if (nextTab) {
-        switchToTab(nextTab.sessionId)
+      if (activeSessionIdRef.current === sessionId) {
+        const idx = currentTabs.findIndex((t) => t.sessionId === sessionId)
+        const nextTab = updated[Math.min(idx, updated.length - 1)]
+        if (nextTab) {
+          switchToTab(nextTab.sessionId)
+        }
       }
-    }
-  }, [switchToTab, tabsRefSetter])
+    },
+    [disposeSession, switchToTab, tabsRefSetter]
+  )
 
   const copySelection = useCallback(() => {
-    const terminal = terminalRef.current
+    const sessionId = activeSessionIdRef.current
+    if (!sessionId) return
+    const terminal = sessionsRef.current.get(sessionId)?.terminal
     if (!terminal || !terminal.hasSelection()) return
     const selection = terminal.getSelection()
     if (selection) {
@@ -288,25 +322,11 @@ function TerminalView({
     }
   }, [])
 
-  // Create xterm on mount
+  // Subscribe to PTY data/exit once. Data is routed to the matching session's
+  // own xterm, so background tabs keep receiving output.
   useEffect(() => {
-    const host = hostRef.current
-    if (!host) return
-
-    const { terminal, fitAddon, disposeInput, disposeSelection, disposeCustomKey } = createTerminal(host)
-
     const unsubscribeData = window.api?.terminal.onData((sessionId, chunk) => {
-      if (tabsRef.current.some((t) => t.sessionId === sessionId)) {
-        // Accumulate buffer for this session
-        tabsRef.current = tabsRef.current.map((t) =>
-          t.sessionId === sessionId ? { ...t, buffer: t.buffer + chunk } : t
-        )
-        setTabs([...tabsRef.current])
-      }
-
-      if (sessionId === activeSessionIdRef.current && !isRestoringRef.current) {
-        terminal.write(chunk)
-      }
+      sessionsRef.current.get(sessionId)?.terminal.write(chunk)
     })
 
     const unsubscribeExit = window.api?.terminal.onExit((payload) => {
@@ -316,88 +336,103 @@ function TerminalView({
       setTabs([...tabsRef.current])
 
       if (payload.sessionId === activeSessionIdRef.current) {
-        terminal.write(`\r\n[terminal exited with code ${payload.exitCode}]\r\n`)
+        sessionsRef.current
+          .get(payload.sessionId)
+          ?.terminal.write(`\r\n[terminal exited with code ${payload.exitCode}]\r\n`)
       }
     })
 
-    unsubscribeRef.current = [disposeInput, disposeSelection, disposeCustomKey, unsubscribeData, unsubscribeExit].filter(
-      (f): f is (() => void) => typeof f === 'function'
-    )
+    return () => {
+      if (typeof unsubscribeData === 'function') unsubscribeData()
+      if (typeof unsubscribeExit === 'function') unsubscribeExit()
+    }
+  }, [])
 
-    // A native window resize fires this observer every frame. Reflowing the
-    // whole scrollback each frame stutters the expand/collapse animation, so
-    // debounce the refit until the resize settles.
+  // Refit the active terminal when the container resizes (debounced so the
+  // expand/collapse animation doesn't reflow the scrollback every frame).
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
     let fitTimer: ReturnType<typeof setTimeout> | null = null
     const resizeObserver = new ResizeObserver(() => {
       if (fitTimer) clearTimeout(fitTimer)
       fitTimer = setTimeout(() => {
         fitTimer = null
-        fitAndResize()
+        fitActive()
       }, 90)
     })
 
-    resizeObserver.observe(host)
-    const initialFitFrame = requestAnimationFrame(() => {
-      fitAndResize()
-    })
+    resizeObserver.observe(container)
+    const initialFitFrame = requestAnimationFrame(() => fitActive())
 
     return () => {
       if (fitTimer) clearTimeout(fitTimer)
       cancelAnimationFrame(initialFitFrame)
       resizeObserver.disconnect()
-      for (const unsub of unsubscribeRef.current) {
-        unsub()
-      }
-      unsubscribeRef.current = []
-      terminal.dispose()
-      terminalRef.current = null
-      fitAddonRef.current = null
     }
-  }, [createTerminal, fitAndResize])
+  }, [fitActive])
 
-  // Update font on change
+  // Tear down every session terminal on unmount.
   useEffect(() => {
-    const terminal = terminalRef.current
-    if (!terminal) return
+    return () => {
+      for (const sessionId of [...sessionsRef.current.keys()]) {
+        disposeSession(sessionId)
+      }
+    }
+  }, [disposeSession])
 
-    terminal.options.fontFamily = fontFamily
-    fitAndResize()
-  }, [fitAndResize, fontFamily])
+  // Update font on change.
+  useEffect(() => {
+    for (const handle of sessionsRef.current.values()) {
+      handle.terminal.options.fontFamily = fontFamily
+    }
+    fitActive()
+  }, [fitActive, fontFamily])
 
-  // Start initial tab when active becomes true
+  // Start the initial tab when the terminal becomes active.
   useEffect(() => {
     if (!active) return
 
-    const terminal = terminalRef.current
     const terminalApi = window.api?.terminal
-
-    if (!terminal) return
-
     if (!terminalApi) {
-      if (!hasUnavailableMessageRef.current) {
+      if (!hasUnavailableMessageRef.current && containerRef.current) {
         hasUnavailableMessageRef.current = true
-        terminal.writeln('Terminal mode is available only in the Electron app runtime.')
       }
       return
     }
 
     if (tabsRef.current.length > 0) {
-      // Sessions already exist — focus the terminal
-      fitAndResize()
-      terminal.focus()
+      fitActive()
+      const activeSessionId = activeSessionIdRef.current
+      if (activeSessionId) {
+        sessionsRef.current.get(activeSessionId)?.terminal.focus()
+      }
       return
     }
 
     void terminalApi.listSessions().then((existing) => {
       if (existing.length > 0) {
-        const liveTabs: TerminalTab[] = existing.map((s) => ({
-          sessionId: s.sessionId,
-          shell: s.shell,
-          shellPath: s.shell,
-          buffer: '',
-          isAlive: true,
-          isStarted: true
-        }))
+        const liveTabs: TerminalTab[] = []
+        for (const session of existing) {
+          const handle = createSessionTerminal(session.sessionId)
+          if (handle) {
+            // Rehydrated session: seed the fresh xterm with the scrollback the
+            // main process retained so the tab doesn't open blank.
+            void terminalApi.read(session.sessionId, 400).then((res) => {
+              if (res.success && res.output) {
+                handle.terminal.write(`${res.output}\r\n`)
+              }
+            })
+          }
+          liveTabs.push({
+            sessionId: session.sessionId,
+            shell: session.shell,
+            shellPath: session.shell,
+            isAlive: true,
+            isStarted: true
+          })
+        }
         tabsRefSetter(liveTabs)
         switchToTab(existing[0].sessionId)
         return
@@ -405,42 +440,29 @@ function TerminalView({
 
       const startInitialTab = async (): Promise<void> => {
         try {
-          const result = await terminalApi.startTerminal({
-            cols: terminal.cols,
-            rows: terminal.rows
-          })
-
-          if (result.error) {
-            terminal.writeln(`\r\n[error] ${result.error}\r\n`)
-            return
-          }
+          const result = await terminalApi.startTerminal()
+          if (result.error) return
 
           const shellName = extractShellName(result.shell)
           const tab: TerminalTab = {
             sessionId: result.sessionId,
             shell: shellName,
             shellPath: result.shell,
-            buffer: '',
             isAlive: true,
             isStarted: true
           }
 
+          createSessionTerminal(result.sessionId)
           tabsRefSetter([tab])
-          activeSessionIdRef.current = result.sessionId
-          setActiveTabId(result.sessionId)
-          window.api?.terminal.reportActiveSession(result.sessionId)
-
-          fitAndResize()
-          terminal.focus()
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'Unable to start terminal.'
-          terminal.writeln(`\r\n[error] ${message}\r\n`)
+          switchToTab(result.sessionId)
+        } catch {
+          // Ignore: the surface stays empty if the shell cannot start.
         }
       }
 
       void startInitialTab()
     })
-  }, [active, fitAndResize, switchToTab, tabsRefSetter])
+  }, [active, createSessionTerminal, fitActive, switchToTab, tabsRefSetter])
 
   const activeTab = tabs.find((t) => t.sessionId === activeTabId)
 
@@ -547,8 +569,8 @@ function TerminalView({
         </div>
       </div>
 
-      {/* Xterm host */}
-      <div ref={hostRef} className="min-h-0 flex-1 overflow-hidden px-2 py-2" />
+      {/* Xterm hosts (one per session) */}
+      <div ref={containerRef} className="relative min-h-0 flex-1 overflow-hidden px-2 py-2" />
     </div>
   )
 }

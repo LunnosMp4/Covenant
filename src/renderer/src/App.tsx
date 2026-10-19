@@ -3,11 +3,11 @@ import { motion, AnimatePresence } from 'framer-motion'
 import ModulePopup, { type ActivePopup, type PopupItem } from './launcher/ModulePopup'
 import LauncherResults from './launcher/LauncherResults'
 import TerminalView from './terminal/TerminalView'
+import TerminalApprovalModal from './terminal/TerminalApprovalModal'
 import VoiceWaveform from './chat/VoiceWaveform'
 import ConfirmDeleteModal from './ui/ConfirmDeleteModal'
-import { Favicon } from './chat/Favicon'
-import { AssistantMarkdown, CopyButton, ToolStepRow, WebSearchStepRow } from './chat/AssistantMarkdown'
-import ExcalidrawEmbed from './chat/ExcalidrawEmbed'
+import ChatTranscript from './chat/ChatTranscript'
+import { buildTerminalContext } from './terminal/terminalContext'
 import {
   ChevronDownIcon,
   ChevronUpIcon,
@@ -34,9 +34,7 @@ import { rankLauncherItems } from './utils/launcher/fuzzy'
 import { formatTargetsSummary, normalizeLaunchTargets } from './utils/launcher/launcherTargets'
 import {
   computeContextStats,
-  formatConversationTimestamp,
-  formatSourceUrl,
-  formatUsageSummary
+  formatConversationTimestamp
 } from './utils/chat/chatUsage'
 import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from './constants/terminalFonts'
 import {
@@ -53,6 +51,7 @@ import {
   TEXTURE_MAX_OPACITY
 } from '../../shared/config'
 import type { UpdateStatus } from '../../shared/system/update'
+import type { TerminalApprovalRequest } from '../../shared/terminal/terminal'
 import type {
   ChatConversation,
   ChatMessage,
@@ -61,7 +60,6 @@ import type {
   InputContent,
   ReasoningStep
 } from '../../shared/chat/chat'
-import { collectExcalidrawCheckpoints } from '../../shared/chat/excalidraw'
 import type { LauncherApp, LauncherAppTarget } from './types/renderer'
 import type { InstalledApp, LauncherItem } from '../../shared/launcher/launcher'
 import type { Preprompt } from './types/renderer'
@@ -135,8 +133,11 @@ export default function App(): JSX.Element {
   const [isAltHeld, setIsAltHeld] = useState(false)
   const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight)
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
+  const [barHeight, setBarHeight] = useState(0)
   const [mode, setMode] = useState<AppMode>('ai')
   const [hasInitializedTerminal, setHasInitializedTerminal] = useState(false)
+  const [terminalSessionId, setTerminalSessionId] = useState<string | null>(null)
+  const [terminalApproval, setTerminalApproval] = useState<TerminalApprovalRequest | null>(null)
   const [themeGradient, setThemeGradient] = useState<string>(DEFAULT_THEME_GRADIENT)
   const [terminalFont, setTerminalFont] = useState<string>(DEFAULT_TERMINAL_FONT)
   const [thinkingOpenById, setThinkingOpenById] = useState<Record<string, boolean>>({})
@@ -173,6 +174,7 @@ export default function App(): JSX.Element {
   // Prompt handed off from the Paste Manager; consumed once the window is shown.
   const [pendingExternalPrompt, setPendingExternalPrompt] = useState<string | null>(null)
   const inputRef = useRef<HTMLDivElement>(null)
+  const barRef = useRef<HTMLDivElement>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const pasteBlocksRef = useRef<Map<string, string>>(new Map())
   const isComposingRef = useRef(false)
@@ -180,10 +182,14 @@ export default function App(): JSX.Element {
   const moduleButtonsRef = useRef<HTMLDivElement>(null)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
   const chatScrollRef = useRef<HTMLDivElement>(null)
+  const terminalRailRef = useRef<HTMLDivElement>(null)
   const historyMenuRef = useRef<HTMLDivElement>(null)
   const historyButtonRef = useRef<HTMLButtonElement>(null)
   const successResetTimersRef = useRef<Record<string, number>>({})
   const activeConversationRef = useRef<ChatConversation | null>(null)
+  // Remembers the conversation shown before entering terminal mode so leaving
+  // the terminal returns the user to their previous AI thread.
+  const lastNonTerminalConversationRef = useRef<ChatConversation | null>(null)
   const conversationsRef = useRef<ChatConversation[]>([])
   const streamBufferRef = useRef<{ content: string; reasoning: string } | null>(null)
   const activeStreamIdRef = useRef<string | null>(null)
@@ -202,6 +208,10 @@ export default function App(): JSX.Element {
   // `chat`/`code` onto the surface; `bar` is the bare, new-conversation bar.
   const applyView = useCallback((view: WindowView): void => {
     if (view === 'terminal') {
+      const current = activeConversationRef.current
+      if (current && !current.terminalSessionId) {
+        lastNonTerminalConversationRef.current = current
+      }
       setHasInitializedTerminal(true)
       setMode('terminal')
       setActivePopup(null)
@@ -513,6 +523,27 @@ export default function App(): JSX.Element {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
+  // The terminal surface stacks above the command bar, so track the bar's
+  // height to offset it precisely. Re-run when `visible` changes because the
+  // bar (and its ref) only exists while the window is shown. A layout effect
+  // measures before paint so the terminal never flashes over the bar.
+  useLayoutEffect(() => {
+    const bar = barRef.current
+    if (!bar) return
+    const measure = (): void => {
+      // offsetHeight includes the bar's padding; contentRect does not, which
+      // would place the terminal 16px too low and overlap the bar.
+      const height = bar.offsetHeight
+      if (height > 0) {
+        setBarHeight((previous) => (Math.abs(previous - height) < 1 ? previous : height))
+      }
+    }
+    const observer = new ResizeObserver(measure)
+    observer.observe(bar)
+    measure()
+    return () => observer.disconnect()
+  }, [visible])
+
   // Track whether Alt is held so the expand control can switch to the
   // horizontal expand/collapse variant.
   useEffect(() => {
@@ -664,21 +695,33 @@ export default function App(): JSX.Element {
   }, [visible, mode])
 
   const toggleMode = useCallback(() => {
-    setMode((currentMode) => {
-      const nextMode: AppMode = currentMode === 'ai' ? 'terminal' : 'ai'
-      if (nextMode === 'terminal') {
-        setHasInitializedTerminal(true)
+    const nextMode: AppMode = mode === 'ai' ? 'terminal' : 'ai'
+    if (nextMode === 'terminal') {
+      const current = activeConversationRef.current
+      if (current && !current.terminalSessionId) {
+        lastNonTerminalConversationRef.current = current
       }
+      setHasInitializedTerminal(true)
+    } else {
+      const restore = lastNonTerminalConversationRef.current
+      if (restore) setActiveConversation(restore)
+    }
 
-      return nextMode
-    })
+    setMode(nextMode)
+    setActivePopup(null)
+  }, [mode])
 
+  const switchToAiMode = useCallback(() => {
+    const restore = lastNonTerminalConversationRef.current
+    if (restore) setActiveConversation(restore)
+    setMode('ai')
     setActivePopup(null)
   }, [])
 
-  const switchToAiMode = useCallback(() => {
-    setMode('ai')
-    setActivePopup(null)
+  const focusTerminalComposer = useCallback(() => {
+    setIsExpanded(true)
+    setIsWide(true)
+    window.setTimeout(() => inputRef.current?.focus(), 40)
   }, [])
 
   const handleTogglePin = useCallback(() => {
@@ -936,6 +979,43 @@ export default function App(): JSX.Element {
   useEffect(() => {
     conversationsRef.current = conversations
   }, [conversations])
+
+  // Swap the active conversation to the one linked with the focused terminal
+  // session. New tabs therefore get a fresh thread; returning to a tab reloads
+  // its previous thread.
+  useEffect(() => {
+    if (mode !== 'terminal' || !terminalSessionId) return
+    const linked =
+      conversationsRef.current.find(
+        (conversation) => conversation.terminalSessionId === terminalSessionId
+      ) ?? null
+    setActiveConversation(linked)
+    setActiveStreamId(null)
+    setActiveStreamMessageId(null)
+    setActiveStreamConversationId(null)
+    setSourcesPanelMessageId(null)
+  }, [mode, terminalSessionId])
+
+  // Approval requests come from the main process when the assistant wants to
+  // run a command in the linked terminal.
+  useEffect(() => {
+    const terminalApi = window.api?.terminal
+    if (!terminalApi?.onApprovalRequest) return
+    const unsubscribe = terminalApi.onApprovalRequest((request) => {
+      setTerminalApproval(request)
+    })
+    return () => unsubscribe()
+  }, [])
+
+  const handleTerminalApprovalReply = useCallback(
+    (reply: 'once' | 'always' | 'reject') => {
+      const request = terminalApproval
+      if (!request) return
+      setTerminalApproval(null)
+      void window.api?.terminal.replyApproval(request.requestId, reply)
+    },
+    [terminalApproval]
+  )
 
   useEffect(() => {
     activeStreamIdRef.current = activeStreamId
@@ -1348,9 +1428,17 @@ export default function App(): JSX.Element {
               }
             ]
           }))
-        } else if (event.toolType === 'mcp' && event.itemId) {
+        } else if ((event.toolType === 'mcp' || event.toolType === 'terminal') && event.itemId) {
           const toolItemId = event.itemId
-          const toolName = event.toolName ?? event.query ?? 'MCP tool'
+          const terminalLabels: Record<string, string> = {
+            terminal_run: 'Terminal › run',
+            terminal_read: 'Terminal › read',
+            terminal_get_state: 'Terminal › state'
+          }
+          const toolName =
+            event.toolType === 'terminal'
+              ? terminalLabels[event.toolName ?? ''] ?? 'Terminal'
+              : event.toolName ?? event.query ?? 'MCP tool'
           const serverName = event.serverName
           const serverId = event.serverId
           const query = event.query
@@ -1504,6 +1592,22 @@ export default function App(): JSX.Element {
     window.api?.chat.cancelStream?.(streamId)
   }, [])
 
+  const handleToggleThinking = useCallback((messageId: string) => {
+    const timerId = reasoningAutoCloseTimersRef.current[messageId]
+    if (timerId !== undefined) {
+      window.clearTimeout(timerId)
+      delete reasoningAutoCloseTimersRef.current[messageId]
+    }
+    setThinkingOpenById((previous) => ({
+      ...previous,
+      [messageId]: !previous[messageId]
+    }))
+  }, [])
+
+  const handleToggleSources = useCallback((messageId: string) => {
+    setSourcesPanelMessageId((previous) => (previous === messageId ? null : messageId))
+  }, [])
+
   const handleSubmit = useCallback(async () => {
     const rawPrompt = getFullPrompt().trim()
     if (!rawPrompt || isLoading) return
@@ -1511,7 +1615,13 @@ export default function App(): JSX.Element {
     const now = Date.now()
     const activeSystemPrompt = selectedSystemPrompt?.content.trim() || activeConversation?.systemPrompt?.trim() || ''
 
-    const shouldStartNewConversation = !isChatOpen || forceNewConversationRef.current
+    const terminalLinkedSessionId = mode === 'terminal' ? terminalSessionId : null
+    const isTerminalLinked = Boolean(terminalLinkedSessionId)
+    const activeMatchesLink =
+      !isTerminalLinked || activeConversation?.terminalSessionId === terminalLinkedSessionId
+
+    const shouldStartNewConversation =
+      forceNewConversationRef.current || (isTerminalLinked ? !activeMatchesLink : !isChatOpen)
     forceNewConversationRef.current = false
     let nextConversation = shouldStartNewConversation ? null : activeConversation
     if (!nextConversation) {
@@ -1522,7 +1632,8 @@ export default function App(): JSX.Element {
         createdAt,
         updatedAt: createdAt,
         messages: [],
-        systemPrompt: activeSystemPrompt || undefined
+        systemPrompt: activeSystemPrompt || undefined,
+        terminalSessionId: isTerminalLinked ? terminalLinkedSessionId ?? undefined : undefined
       }
       setActiveConversation(nextConversation)
       generateConversationTitleAsync(nextConversation.id, rawPrompt)
@@ -1546,7 +1657,9 @@ export default function App(): JSX.Element {
     }
 
     setIsLoading(true)
-    setIsChatOpen(true)
+    if (mode !== 'terminal') {
+      setIsChatOpen(true)
+    }
     setIsHistoryOpen(false)
     clearInput()
     setActiveConversation(userConversation)
@@ -1560,9 +1673,28 @@ export default function App(): JSX.Element {
         throw new Error('OpenAI chat is only available in the Electron app.')
       }
 
+      let terminalContextPreamble = ''
+      if (isTerminalLinked && terminalLinkedSessionId && window.api?.terminal) {
+        try {
+          const [stateResult, outputResult] = await Promise.all([
+            window.api.terminal.getState(terminalLinkedSessionId),
+            window.api.terminal.read(terminalLinkedSessionId, 120)
+          ])
+          terminalContextPreamble = buildTerminalContext(
+            stateResult.success ? stateResult.state : null,
+            outputResult.success ? outputResult.output : ''
+          )
+        } catch {
+          // Continue without terminal context if the session vanished.
+        }
+      }
+
       const requestMessages: Array<{ role: ChatRole; content: string | InputContent[] }> = [
         ...(userConversation.systemPrompt
           ? [{ role: 'system' as const, content: userConversation.systemPrompt }]
+          : []),
+        ...(terminalContextPreamble
+          ? [{ role: 'system' as const, content: terminalContextPreamble }]
           : []),
         ...userConversation.messages.map((message) => ({
           role: message.role,
@@ -1595,7 +1727,10 @@ export default function App(): JSX.Element {
       streamBufferRef.current = { content: '', reasoning: '' }
 
       if (window.api.chat.askCovenantStream) {
-        const streamResponse = await window.api.chat.askCovenantStream(requestMessages)
+        const streamResponse = await window.api.chat.askCovenantStream(requestMessages, {
+          terminalSessionId:
+            isTerminalLinked && terminalLinkedSessionId ? terminalLinkedSessionId : undefined
+        })
         setActiveStreamId(streamResponse.id)
         setActiveStreamMessageId(assistantMessageId)
         setActiveStreamConversationId(placeholderConversation.id)
@@ -1653,6 +1788,8 @@ export default function App(): JSX.Element {
     isLoading,
     mode,
     activeConversation,
+    isChatOpen,
+    terminalSessionId,
     selectedSystemPrompt,
     upsertConversation,
     persistConversation,
@@ -2121,6 +2258,13 @@ export default function App(): JSX.Element {
 
   const handleRootKeyDownCapture = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
+      // Keys typed inside the embedded terminal assistant must not trigger the
+      // terminal's global mode/pane shortcuts.
+      const origin = event.target as HTMLElement | null
+      if (origin?.closest?.('.terminal-rail')) {
+        return
+      }
+
       if (
         mode === 'ai' &&
         event.ctrlKey &&
@@ -2155,6 +2299,19 @@ export default function App(): JSX.Element {
         return
       }
 
+      if (
+        mode === 'terminal' &&
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey &&
+        !event.shiftKey &&
+        (event.key === 'i' || event.key === 'I')
+      ) {
+        event.preventDefault()
+        event.stopPropagation()
+        focusTerminalComposer()
+        return
+      }
+
       if (event.key === 'Tab' && !event.altKey && !event.ctrlKey && !event.metaKey) {
         const target = event.target as HTMLElement | null
         if (mode === 'terminal' && target?.closest?.('.terminal-surface')) {
@@ -2171,13 +2328,29 @@ export default function App(): JSX.Element {
         switchToAiMode()
       }
     },
-    [activeConversation, activePopup, conversations, isChatOpen, mode, switchToAiMode, toggleMode, openSearch]
+    [
+      activeConversation,
+      activePopup,
+      conversations,
+      focusTerminalComposer,
+      isChatOpen,
+      mode,
+      switchToAiMode,
+      toggleMode,
+      openSearch
+    ]
   )
 
   const chatMessages = useMemo(
     () => (activeConversation ? normalizeMessageOrder(activeConversation.messages) : []),
     [activeConversation]
   )
+
+  useEffect(() => {
+    if (mode !== 'terminal') return
+    const el = terminalRailRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [mode, chatMessages, isLoading])
 
 
   const themePalette = useMemo(() => getThemePalette(themeGradient), [themeGradient])
@@ -2234,6 +2407,14 @@ export default function App(): JSX.Element {
 
   const wideWidth = Math.max(750, viewportWidth - 80)
   const barBusy = isCodeOpen ? code.stream.busy : isLoading
+  // Keep the terminal surface on exactly the same height rhythm as chat/code:
+  // same body height (CHAT_SCROLL_HEIGHT / viewport-based when expanded) plus
+  // the same header+padding allowance. This prevents the terminal from growing
+  // taller than the other surfaces and cropping at the top when maximized.
+  const surfaceBodyHeight = isExpanded
+    ? Math.max(CHAT_SCROLL_HEIGHT, viewportHeight - 210)
+    : CHAT_SCROLL_HEIGHT
+  const terminalSurfaceHeight = surfaceBodyHeight + 80
 
   return (
     <div
@@ -2533,7 +2714,14 @@ export default function App(): JSX.Element {
                                     }}
                                     className="flex min-w-0 flex-1 flex-col gap-0.5 text-left"
                                   >
-                                    <span className="truncate font-medium">{conversation.title}</span>
+                                    <span className="flex min-w-0 items-center gap-1.5">
+                                      <span className="truncate font-medium">{conversation.title}</span>
+                                      {conversation.terminalSessionId ? (
+                                        <span className="shrink-0 rounded border border-white/10 px-1 py-0.5 text-[9px] uppercase tracking-[0.1em] text-neutral-400">
+                                          term
+                                        </span>
+                                      ) : null}
+                                    </span>
                                     <span className="mt-0.5 flex items-center justify-between gap-2">
                                       <span className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
                                         {conversation.messages.length} messages
@@ -2584,240 +2772,16 @@ export default function App(): JSX.Element {
                     }}
                     transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
                   >
-                    {chatMessages.length === 0 ? (
-                      <p className="text-xs text-neutral-500">No messages yet.</p>
-                    ) : (
-                      chatMessages.map((message) => {
-                        const isAssistant = message.role === 'assistant'
-                        const isUser = message.role === 'user'
-                        const isStreaming =
-                          isAssistant && isLoading && activeStreamMessageId === message.id
-                        const reasoningText = message.reasoning?.trim() ?? ''
-                        const reasoningSteps = message.steps ?? []
-                        const hasSteps = reasoningSteps.length > 0
-                        const hasReasoningContent =
-                          reasoningText.length > 0 ||
-                          hasSteps ||
-                          (message.reasoningTitle != null && message.reasoningTitle.trim().length > 0)
-                        const showThinking =
-                          isAssistant &&
-                          (hasReasoningContent || (isStreaming && Boolean(thinkingOpenById[message.id])))
-                        const isThinkingOpen = Boolean(thinkingOpenById[message.id])
-                        const modelLabel = message.model?.trim()
-                        const usageLabel = formatUsageSummary(message)
-                        const metaLabel = [message.stopped ? 'Stopped' : null, modelLabel, usageLabel]
-                          .filter(Boolean)
-                          .join(` \u00b7 `)
-
-                        return (
-                          <div
-                            key={message.id}
-                            data-message-id={message.id}
-                            className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
-                          >
-                            <div
-                              className={`chat-message max-w-[78%] rounded-2xl border px-3 py-2 text-[13px] leading-relaxed select-text ${
-                                isUser
-                                  ? 'chat-message--user whitespace-pre-wrap'
-                                  : 'chat-message--assistant'
-                              }`}
-                            >
-                               {showThinking && (
-                                <div className="chat-thinking">
-                                  <button
-                                    type="button"
-                                    className="chat-thinking-toggle"
-                                    onClick={() => {
-                                      setThinkingOpenById((previous) => {
-                                        const timerId = reasoningAutoCloseTimersRef.current[message.id]
-                                        if (timerId !== undefined) {
-                                          window.clearTimeout(timerId)
-                                          delete reasoningAutoCloseTimersRef.current[message.id]
-                                        }
-                                        return {
-                                          ...previous,
-                                          [message.id]: !isThinkingOpen
-                                        }
-                                      })
-                                    }}
-                                  >
-                                    <span
-                                      className={
-                                        isStreaming
-                                          ? 'chat-thinking-title chat-thinking-title--streaming'
-                                          : 'chat-thinking-title'
-                                      }
-                                    >
-                                      {message.reasoningTitle?.trim()
-                                        ? message.reasoningTitle.trim()
-                                        : 'Reasoning\u2026'}
-                                    </span>
-                                    <span
-                                      className={
-                                        `chat-thinking-chevron${isThinkingOpen ? ' chat-thinking-chevron--open' : ''}`
-                                      }
-                                    >
-                                      <svg
-                                        width="10"
-                                        height="10"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2.5"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                      >
-                                        <path d="m9 18 6-6-6-6" />
-                                      </svg>
-                                    </span>
-                                  </button>
-
-                                  {isThinkingOpen && (
-                                    <div className="chat-thinking-body">
-                                      {hasSteps ? (
-                                        reasoningSteps.map((step, stepIndex) => {
-                                          if (step.type === 'reasoning') {
-                                            const isLastStep = stepIndex === reasoningSteps.length - 1
-                                            return (
-                                              <p
-                                                key={`reasoning-${stepIndex}`}
-                                                className="chat-thinking-text whitespace-pre-wrap"
-                                              >
-                                                {step.text}
-                                                {isStreaming && isLastStep ? (
-                                                  <span className="chat-thinking-cursor">|</span>
-                                                ) : null}
-                                              </p>
-                                            )
-                                          }
-                                          if (step.type === 'tool') {
-                                            return <ToolStepRow key={step.id} step={step} />
-                                          }
-                                          return <WebSearchStepRow key={step.id} step={step} />
-                                        })
-                                      ) : reasoningText ? (
-                                        <p className="chat-thinking-text whitespace-pre-wrap">
-                                          {reasoningText}
-                                          {isStreaming ? (
-                                            <span className="chat-thinking-cursor">|</span>
-                                          ) : null}
-                                        </p>
-                                      ) : (
-                                        <p className="chat-thinking-empty">Reasoning not available.</p>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-
-                               {isAssistant ? (
-                                <>
-                                  {message.sources && message.sources.length > 0 ? (
-                                    <div className="chat-sources-wrapper">
-                                      <button
-                                        type="button"
-                                        className="chat-sources-toggle"
-                                        onClick={() =>
-                                          setSourcesPanelMessageId(
-                                            sourcesPanelMessageId === message.id ? null : message.id
-                                          )
-                                        }
-                                      >
-                                        <svg
-                                          width="12"
-                                          height="12"
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          strokeWidth="2"
-                                          aria-hidden
-                                        >
-                                          <circle cx="11" cy="11" r="8" />
-                                          <path d="m21 21-4.35-4.35" />
-                                        </svg>
-                                        <span>Sources</span>
-                                        <span className="chat-sources-count">{message.sources.length}</span>
-                                      </button>
-
-                                      {sourcesPanelMessageId === message.id && (
-                                        <div className="chat-sources-panel">
-                                          <div className="chat-sources-panel-header">
-                                            <span className="font-medium">Sources</span>
-                                            <button
-                                              type="button"
-                                              className="chat-sources-panel-close"
-                                              onClick={() => setSourcesPanelMessageId(null)}
-                                              aria-label="Close sources"
-                                            >
-                                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                <path d="M18 6 6 18M6 6l12 12" />
-                                              </svg>
-                                            </button>
-                                          </div>
-                                          <div className="chat-sources-panel-list">
-                                            {message.sources.map((source, idx) => (
-                                              <a
-                                                key={`${source.url}-${idx}`}
-                                                href={source.url}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="chat-source-item"
-                                              >
-                                                <Favicon url={source.url} className="chat-source-favicon" />
-                                                <div className="chat-source-text">
-                                                  <span className="chat-source-title">
-                                                    {source.title || formatSourceUrl(source.url)}
-                                                  </span>
-                                                  <span className="chat-source-url">
-                                                    {formatSourceUrl(source.url)}
-                                                  </span>
-                                                </div>
-                                              </a>
-                                            ))}
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  ) : null}
-                                  <AssistantMarkdown content={message.content} />
-                                  {collectExcalidrawCheckpoints(reasoningSteps).map((checkpoint) => (
-                                    <ExcalidrawEmbed
-                                      key={`${message.id}-${checkpoint.checkpointId}`}
-                                      checkpointId={checkpoint.checkpointId}
-                                      serverId={checkpoint.serverId}
-                                    />
-                                  ))}
-                                </>
-                              ) : (
-                                <>
-                                  {message.content}
-                                  {message.images && message.images.length > 0 && (
-                                    <div className="chat-message-meta flex items-center gap-1 mt-0.5">
-                                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                                        <circle cx="8.5" cy="8.5" r="1.5" />
-                                        <polyline points="21 15 16 10 5 21" />
-                                      </svg>
-                                      <span>{message.images.length} image{message.images.length !== 1 ? 's' : ''}</span>
-                                    </div>
-                                  )}
-                                </>
-                              )}
-
-                              {isAssistant ? (
-                                <div className="chat-message-meta flex items-center gap-2">
-                                  {metaLabel ? <span>{metaLabel}</span> : null}
-                                  <CopyButton
-                                    text={message.content}
-                                    className="flex items-center justify-center h-6 w-6 rounded-md text-neutral-500 hover:text-neutral-200 hover:bg-white/10 transition-colors"
-                                  />
-                                </div>
-                              ) : null}
-                            </div>
-                          </div>
-                        )
-                      })
-                    )}
+                    <ChatTranscript
+                      messages={chatMessages}
+                      isLoading={isLoading}
+                      activeStreamMessageId={activeStreamMessageId}
+                      thinkingOpenById={thinkingOpenById}
+                      onToggleThinking={handleToggleThinking}
+                      sourcesPanelMessageId={sourcesPanelMessageId}
+                      onToggleSources={handleToggleSources}
+                      emptyLabel="No messages yet."
+                    />
                   </motion.div>
                   </>
                   ) : (
@@ -2837,9 +2801,8 @@ export default function App(): JSX.Element {
             </AnimatePresence>
 
             <motion.div
-              className={`relative flex items-center w-[750px] max-w-full rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10 transition-opacity duration-100 texture-surface ${
-                mode === 'terminal' ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
-              }`}
+              ref={barRef}
+              className={`relative flex items-center w-[750px] max-w-full rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10 transition-opacity duration-100 texture-surface opacity-100 pointer-events-auto`}
               style={{
                 WebkitBackdropFilter: 'blur(40px)',
                 backdropFilter: 'blur(40px)'
@@ -3057,9 +3020,21 @@ export default function App(): JSX.Element {
                     if (d) setQuery(d.textContent ?? '')
                   }}
                   onKeyDown={handleKeyDown}
+                  onFocus={() => {
+                    if (mode === 'terminal') {
+                      setIsExpanded(true)
+                      setIsWide(true)
+                    }
+                  }}
                   onCompositionStart={() => { isComposingRef.current = true }}
                   onCompositionEnd={() => { isComposingRef.current = false }}
-                  data-placeholder={isCodeOpen ? 'Ask Covenant Code to change something…' : 'What can I help you with today?'}
+                  data-placeholder={
+                    mode === 'terminal'
+                      ? 'Ask about this terminal…'
+                      : isCodeOpen
+                        ? 'Ask Covenant Code to change something…'
+                        : 'What can I help you with today?'
+                  }
                   className="flex-1 bg-transparent text-lg text-neutral-100 placeholder:text-neutral-500 border-none focus:outline-none focus:ring-0 px-4 py-3 whitespace-pre overflow-hidden empty:before:content-[attr(data-placeholder)] empty:before:text-neutral-500"
                   style={{ caretColor: 'var(--chat-accent)' }}
                   spellCheck={false}
@@ -3178,17 +3153,17 @@ export default function App(): JSX.Element {
       {(hasInitializedTerminal || mode === 'terminal') && (
         <motion.div
           key="terminal-container"
-          className="absolute inset-x-0 bottom-5 z-20 pointer-events-none flex justify-center"
-          initial={{ scaleY: 0.12, opacity: 0, height: 400 }}
+          className="absolute inset-x-0 z-20 pointer-events-none flex justify-center"
+          initial={{ scaleY: 0.12, opacity: 0, height: terminalSurfaceHeight }}
           animate={
             enterReady && mode === 'terminal' && visible
               ? {
                   scaleY: 1,
                   y: 0,
                   opacity: 1,
-                  height: isExpanded ? Math.max(400, viewportHeight - 160) : 400
+                  height: terminalSurfaceHeight
                 }
-              : { scaleY: 0.12, y: 0, opacity: 0, height: 400 }
+              : { scaleY: 0.12, y: 0, opacity: 0, height: terminalSurfaceHeight }
           }
           transition={{
             ...TERMINAL_SPRING,
@@ -3196,7 +3171,8 @@ export default function App(): JSX.Element {
           }}
           style={{
             pointerEvents: 'none',
-            transformOrigin: 'bottom center'
+            transformOrigin: 'bottom center',
+            bottom: barHeight > 0 ? barHeight + 28 : 112
           }}
           aria-hidden={mode !== 'terminal' || !visible}
         >
@@ -3211,18 +3187,48 @@ export default function App(): JSX.Element {
               backdropFilter: 'blur(40px)'
             }}
           >
-            <div className="min-h-0 flex-1">
-              <TerminalView
-                active={mode === 'terminal' && visible && isAppVisible}
-                fontFamily={terminalFont}
-                isExpanded={isExpanded}
-                isWide={isWide}
-                isAltHeld={isAltHeld}
-                isPinned={isPinned}
-                isLight={getThemeMode(themeGradient) === 'light'}
-                onTogglePin={handleTogglePin}
-                onToggleExpand={handleToggleExpand}
-              />
+            <div className="flex h-full min-h-0 w-full">
+              <div className="min-h-0 flex-1">
+                <TerminalView
+                  active={mode === 'terminal' && visible && isAppVisible}
+                  fontFamily={terminalFont}
+                  isExpanded={isExpanded}
+                  isWide={isWide}
+                  isAltHeld={isAltHeld}
+                  isPinned={isPinned}
+                  isLight={getThemeMode(themeGradient) === 'light'}
+                  onTogglePin={handleTogglePin}
+                  onToggleExpand={handleToggleExpand}
+                  onActiveSessionChange={setTerminalSessionId}
+                />
+              </div>
+
+              {isExpanded && isWide && (
+                <div className="terminal-rail ml-2 flex h-full w-[30%] min-w-[300px] max-w-[420px] shrink-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-neutral-950/30">
+                  <div className="flex items-center justify-between border-b border-white/5 px-3 py-2">
+                    <span className="text-[11px] uppercase tracking-[0.24em] text-neutral-500">
+                      Assistant
+                    </span>
+                    <span className="truncate text-[11px] text-neutral-500">this terminal</span>
+                  </div>
+                  <div
+                    ref={terminalRailRef}
+                    className="chat-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3"
+                  >
+                    <ChatTranscript
+                      messages={chatMessages}
+                      isLoading={isLoading}
+                      activeStreamMessageId={activeStreamMessageId}
+                      thinkingOpenById={thinkingOpenById}
+                      onToggleThinking={handleToggleThinking}
+                      sourcesPanelMessageId={sourcesPanelMessageId}
+                      onToggleSources={handleToggleSources}
+                      emptyLabel="Ask about this terminal — errors, commands, or what to do next."
+                      fullWidthBubbles
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </motion.div>
         </motion.div>
@@ -3265,6 +3271,16 @@ export default function App(): JSX.Element {
             onReply={(reply) => void code.replyPermission(request, reply)}
           />
         ))}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {terminalApproval ? (
+          <TerminalApprovalModal
+            key={terminalApproval.requestId}
+            request={terminalApproval}
+            onReply={handleTerminalApprovalReply}
+          />
+        ) : null}
       </AnimatePresence>
     </div>
   )

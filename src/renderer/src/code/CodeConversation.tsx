@@ -140,7 +140,7 @@ function TranscriptBlock({
             <RestoreIcon />
           </button>
         )}
-        <div className="chat-message chat-message--user max-w-[78%] whitespace-pre-wrap rounded-2xl border px-3 py-2 text-[13px] leading-relaxed select-text">
+        <div className="chat-message chat-message--user w-full whitespace-pre-wrap rounded-2xl border px-3 py-2 text-[13px] leading-relaxed select-text">
           {item.text}
         </div>
       </div>
@@ -151,7 +151,7 @@ function TranscriptBlock({
     return (
       <div className="flex justify-start">
         <div
-          className="chat-message chat-message--assistant max-w-[78%] rounded-2xl border px-3 py-2 text-[12px] leading-relaxed select-text"
+          className="chat-message chat-message--assistant w-full rounded-2xl border px-3 py-2 text-[12px] leading-relaxed select-text"
           style={planMode ? PLAN_BUBBLE_STYLE : undefined}
         >
           {item.text}
@@ -163,7 +163,7 @@ function TranscriptBlock({
   return (
     <div className="flex justify-start">
       <div
-        className="chat-message chat-message--assistant max-w-[78%] rounded-2xl border px-3 py-2 text-[13px] leading-relaxed select-text"
+        className="chat-message chat-message--assistant w-full rounded-2xl border px-3 py-2 text-[13px] leading-relaxed select-text"
         style={planMode ? PLAN_BUBBLE_STYLE : undefined}
       >
         {item.reasoning && <ReasoningBlock text={item.reasoning} defaultOpen={false} />}
@@ -201,7 +201,7 @@ function StreamBlock({
   return (
     <div className="flex justify-start">
       <div
-        className="chat-message chat-message--assistant max-w-[78%] rounded-2xl border px-3 py-2 text-[13px] leading-relaxed select-text"
+        className="chat-message chat-message--assistant w-full rounded-2xl border px-3 py-2 text-[13px] leading-relaxed select-text"
         style={bubblePlan ? PLAN_BUBBLE_STYLE : undefined}
       >
         {stream.reasoning && <ReasoningBlock text={stream.reasoning} streaming defaultOpen />}
@@ -244,7 +244,7 @@ export default function CodeConversation({
       {isEmpty && !stream.busy && !stream.error && !revertMessageId ? (
         <p className="text-xs text-neutral-500">No messages yet.</p>
       ) : (
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
+        <div className="flex w-full flex-col gap-3">
           {transcript.map((item) => (
             <TranscriptBlock
               key={item.id}

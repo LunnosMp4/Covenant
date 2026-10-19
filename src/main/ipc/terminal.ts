@@ -9,8 +9,9 @@ import {
   sanitizeTerminalDimension,
   sanitizeTerminalInput
 } from '../../shared/terminal/dimensions'
-import type { TerminalExitPayload } from '../../shared/terminal/terminal'
+import type { TerminalApprovalReply, TerminalExitPayload, TerminalSessionState } from '../../shared/terminal/terminal'
 import { readConfig } from '../config/configStore'
+import { forgetSessionApprovals, resolveTerminalApproval } from '../terminal/approval'
 import { terminalManager } from '../terminalManager'
 import { assertMainWindowSender } from '../windows'
 
@@ -29,7 +30,10 @@ function attachTerminalSubscriber(sender: WebContents): void {
   })
 }
 
-function emitTerminalEvent(channel: 'terminal:data' | 'terminal:exit', payload: unknown): void {
+function emitTerminalEvent(
+  channel: 'terminal:data' | 'terminal:exit' | 'terminal:state-changed',
+  payload: unknown
+): void {
   terminalSubscribers.forEach((subscriber) => {
     if (subscriber.isDestroyed()) {
       terminalSubscribers.delete(subscriber)
@@ -49,7 +53,12 @@ export function registerTerminalIpc(): void {
     if (payload.sessionId === lastActiveSessionId) {
       lastActiveSessionId = null
     }
+    forgetSessionApprovals(payload.sessionId)
     emitTerminalEvent('terminal:exit', payload)
+  })
+
+  terminalManager.onState((state: TerminalSessionState) => {
+    emitTerminalEvent('terminal:state-changed', { sessionId: state.sessionId, state })
   })
 
   ipcMain.handle('terminal:start', (event, payload?: { cols?: unknown; rows?: unknown }) => {
@@ -136,6 +145,7 @@ export function registerTerminalIpc(): void {
     if (!sessionId) return { success: false }
 
     terminalManager.kill(sessionId)
+    forgetSessionApprovals(sessionId)
     if (sessionId === lastActiveSessionId) {
       lastActiveSessionId = null
     }
@@ -151,6 +161,56 @@ export function registerTerminalIpc(): void {
   ipcMain.handle('terminal:list-sessions', () => {
     return terminalManager.getSessions()
   })
+
+  ipcMain.handle('terminal:state', (event, payload?: { sessionId?: unknown }) => {
+    assertMainWindowSender(event.sender)
+    const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId : ''
+    if (!sessionId) return { success: false as const, error: 'Missing session id.' }
+    const state = terminalManager.getState(sessionId)
+    if (!state) return { success: false as const, error: 'Unknown session.' }
+    return { success: true as const, state }
+  })
+
+  ipcMain.handle('terminal:read', (event, payload?: { sessionId?: unknown; lines?: unknown }) => {
+    assertMainWindowSender(event.sender)
+    const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId : ''
+    if (!sessionId) return { success: false as const, error: 'Missing session id.' }
+    const lines = typeof payload?.lines === 'number' && Number.isFinite(payload.lines)
+      ? Math.floor(payload.lines)
+      : undefined
+    return { success: true as const, output: terminalManager.readOutput(sessionId, lines) }
+  })
+
+  ipcMain.handle('terminal:run-command', async (event, payload?: { sessionId?: unknown; command?: unknown }) => {
+    assertMainWindowSender(event.sender)
+
+    const command = typeof payload?.command === 'string' ? payload.command : ''
+    if (!command.trim()) return { success: false as const, error: 'Empty command.' }
+
+    let sessionId = typeof payload?.sessionId === 'string' && payload.sessionId.length > 0 ? payload.sessionId : ''
+    if (!sessionId || !terminalManager.hasSession(sessionId)) {
+      sessionId = terminalManager.getFirstSessionId() ?? ''
+    }
+    if (!sessionId) return { success: false as const, error: 'No active terminal session.' }
+
+    const result = await terminalManager.runCommand(sessionId, command)
+    return { ...result, sessionId }
+  })
+
+  ipcMain.handle(
+    'terminal:approval-reply',
+    (event, payload?: { requestId?: unknown; reply?: unknown }) => {
+      assertMainWindowSender(event.sender)
+
+      const requestId = typeof payload?.requestId === 'string' ? payload.requestId : ''
+      const rawReply = payload?.reply
+      const reply: TerminalApprovalReply | null =
+        rawReply === 'once' || rawReply === 'always' || rawReply === 'reject' ? rawReply : null
+
+      if (!requestId || !reply) return { success: false }
+      return { success: resolveTerminalApproval(requestId, reply) }
+    }
+  )
 
   ipcMain.handle('terminal:send-to-active-session', (event, payload?: { code?: unknown }) => {
     assertMainWindowSender(event.sender)

@@ -6,7 +6,14 @@ import type { ChatConversation, ChatRole, ChatStreamEvent, InputContent } from '
 import type { LauncherApp } from '../shared/launcher/launcher-app'
 import type { InstalledApp } from '../shared/launcher/launcher'
 import type { Preprompt } from '../shared/domain/preprompt'
-import type { TerminalExitPayload, TerminalStartResult } from '../shared/terminal/terminal'
+import type {
+  TerminalApprovalReply,
+  TerminalApprovalRequest,
+  TerminalCommandResult,
+  TerminalExitPayload,
+  TerminalSessionState,
+  TerminalStartResult
+} from '../shared/terminal/terminal'
 import type { ClearCompletedResult, Task } from '../shared/tasks/task'
 import type { GamificationState } from '../shared/tasks/gamification'
 import type { UpdateStatus } from '../shared/system/update'
@@ -282,10 +289,16 @@ const api = {
     getProjects: () => ipcRenderer.invoke('usage:get-projects') as Promise<UsageProjectsResult>
   },
   chat: {
-    askCovenant: (messages: Array<{ role: ChatRole; content: string | InputContent[] }>) =>
-      ipcRenderer.invoke('covenant:chat', messages) as Promise<string>,
-    askCovenantStream: (messages: Array<{ role: ChatRole; content: string | InputContent[] }>) =>
-      ipcRenderer.invoke('covenant:chat-stream', messages) as Promise<{ id: string }>,
+    askCovenant: (
+      messages: Array<{ role: ChatRole; content: string | InputContent[] }>,
+      options?: { terminalSessionId?: string }
+    ) =>
+      ipcRenderer.invoke('covenant:chat', { messages, ...options }) as Promise<string>,
+    askCovenantStream: (
+      messages: Array<{ role: ChatRole; content: string | InputContent[] }>,
+      options?: { terminalSessionId?: string }
+    ) =>
+      ipcRenderer.invoke('covenant:chat-stream', { messages, ...options }) as Promise<{ id: string }>,
     onStreamEvent: (callback: (event: ChatStreamEvent) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, payload: ChatStreamEvent) => {
         callback(payload)
@@ -556,9 +569,52 @@ const api = {
       ipcRenderer.send('terminal:report-active-session', sessionId)
     },
     listSessions: () =>
-      ipcRenderer.invoke('terminal:list-sessions') as Promise<Array<{ sessionId: string; shell: string }>>,
+      ipcRenderer.invoke('terminal:list-sessions') as Promise<
+        Array<{ sessionId: string; shell: string; cwd: string }>
+      >,
     sendToActiveSession: (code: string) =>
-      ipcRenderer.invoke('terminal:send-to-active-session', { code }) as Promise<{ success: boolean; sessionId?: string; created?: boolean }>
+      ipcRenderer.invoke('terminal:send-to-active-session', { code }) as Promise<{ success: boolean; sessionId?: string; created?: boolean }>,
+    getState: (sessionId: string) =>
+      ipcRenderer.invoke('terminal:state', { sessionId }) as Promise<
+        { success: true; state: TerminalSessionState } | { success: false; error: string }
+      >,
+    read: (sessionId: string, lines?: number) =>
+      ipcRenderer.invoke('terminal:read', { sessionId, lines }) as Promise<
+        { success: true; output: string } | { success: false; error: string }
+      >,
+    runCommand: (sessionId: string, command: string) =>
+      ipcRenderer.invoke('terminal:run-command', { sessionId, command }) as Promise<
+        (TerminalCommandResult & { sessionId?: string }) | { success: false; error: string }
+      >,
+    onStateChanged: (callback: (payload: { sessionId: string; state: TerminalSessionState }) => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        payload: { sessionId: string; state: TerminalSessionState }
+      ) => {
+        callback(payload)
+      }
+
+      ipcRenderer.on('terminal:state-changed', listener)
+
+      return () => {
+        ipcRenderer.removeListener('terminal:state-changed', listener)
+      }
+    },
+    onApprovalRequest: (callback: (request: TerminalApprovalRequest) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, request: TerminalApprovalRequest) => {
+        callback(request)
+      }
+
+      ipcRenderer.on('terminal:approval-request', listener)
+
+      return () => {
+        ipcRenderer.removeListener('terminal:approval-request', listener)
+      }
+    },
+    replyApproval: (requestId: string, reply: TerminalApprovalReply) =>
+      ipcRenderer.invoke('terminal:approval-reply', { requestId, reply }) as Promise<{
+        success: boolean
+      }>
   },
   voice: {
     transcribe: (audioBuffer: ArrayBuffer) =>

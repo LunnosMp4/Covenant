@@ -2,6 +2,7 @@ import type OpenAI from 'openai'
 import type { WebContents } from 'electron'
 import type { ChatUsage } from '../../shared/chat/chat'
 import { callMcpTool, sanitizeResponseOutputForInput, type McpToolRegistryEntry } from '../services/mcpClient'
+import type { BuiltinToolHandler } from '../services/builtinTools'
 import {
   extractWebSearchQuery,
   MAX_MCP_TOOL_ROUNDS,
@@ -22,13 +23,14 @@ export async function runStreamingChat(
   initialInput: Array<Record<string, unknown>>,
   tools: Array<Record<string, unknown>>,
   baseParams: Record<string, unknown>,
-  toolRegistry: McpToolRegistryEntry[]
+  toolRegistry: McpToolRegistryEntry[],
+  builtinTools: BuiltinToolHandler[] = []
 ): Promise<void> {
   const reasoningBufferMap = new Map<string, string>()
   const reasoningTitleParsed = new Set<string>()
   const reasoningTitleById = new Map<string, string>()
   const functionArgsById = new Map<string, string>()
-  const functionMetaById = new Map<string, { name: string; callId: string }>()
+  const functionMetaById = new Map<string, { name: string; callId: string; builtin: boolean }>()
 
   let currentInput = initialInput
 
@@ -74,18 +76,19 @@ export async function runStreamingChat(
               const itemId = item.id as string
               const callId = typeof item.call_id === 'string' ? item.call_id : itemId
               const name = typeof item.name === 'string' ? item.name : ''
+              const builtin = builtinTools.find((handler) => handler.name === name)
               functionArgsById.set(itemId, '')
-              functionMetaById.set(itemId, { name, callId })
+              functionMetaById.set(itemId, { name, callId, builtin: Boolean(builtin) })
               const entry = toolRegistry.find((e) => e.qualifiedName === name)
               ctx.sendStreamEvent({
                 id: ctx.streamId,
                 type: 'tool-start',
                 itemId,
-                toolType: 'mcp',
+                toolType: builtin ? 'terminal' : 'mcp',
                 toolName: entry ? `${entry.server.name} › ${entry.tool.name}` : name,
                 serverName: entry?.server.name,
                 serverId: entry?.server.id,
-                query: name,
+                query: builtin ? undefined : name,
                 actionType: 'call'
               })
             }
@@ -109,7 +112,18 @@ export async function runStreamingChat(
             const meta = itemId ? functionMetaById.get(itemId) : undefined
             if (itemId && meta) {
               functionArgsById.set(itemId, args)
-              ctx.sendStreamEvent({ id: ctx.streamId, type: 'tool-query', itemId, query: meta.name })
+              let query = meta.name
+              if (meta.builtin) {
+                try {
+                  const parsed = JSON.parse(args) as Record<string, unknown>
+                  if (typeof parsed.command === 'string' && parsed.command.trim()) {
+                    query = parsed.command.trim()
+                  }
+                } catch {
+                  // Fall back to the tool name when arguments are still partial.
+                }
+              }
+              ctx.sendStreamEvent({ id: ctx.streamId, type: 'tool-query', itemId, query })
             }
             break
           }
@@ -293,18 +307,22 @@ export async function runStreamingChat(
 
     const continuation: Array<Record<string, unknown>> = [...sanitizeResponseOutputForInput(output)]
     for (const call of functionCalls) {
-      const entry = toolRegistry.find((e) => e.qualifiedName === call.name)
+      const mcpEntry = toolRegistry.find((e) => e.qualifiedName === call.name)
+      const builtin = builtinTools.find((handler) => handler.name === call.name)
+      const toolType = builtin ? 'terminal' : 'mcp'
+      const serverName = mcpEntry?.server.name
+
       ctx.sendStreamEvent({
         id: ctx.streamId,
         type: 'tool-result',
         itemId: call.id,
-        toolType: 'mcp',
+        toolType,
         toolName: call.name,
-        serverName: entry?.server.name,
+        serverName,
         status: 'running'
       })
 
-      if (!entry) {
+      if (!mcpEntry && !builtin) {
         continuation.push({
           type: 'function_call_output',
           call_id: call.call_id,
@@ -314,7 +332,7 @@ export async function runStreamingChat(
           id: ctx.streamId,
           type: 'tool-result',
           itemId: call.id,
-          toolType: 'mcp',
+          toolType,
           toolName: call.name,
           status: 'error',
           content: 'Tool unavailable.'
@@ -323,28 +341,32 @@ export async function runStreamingChat(
       }
 
       try {
-        const result = await callMcpTool(entry.server, entry.tool, call.arguments, { signal: ctx.signal })
+        const result = builtin
+          ? await builtin.execute(call.arguments, { signal: ctx.signal, sender: ctx.sender })
+          : await callMcpTool(mcpEntry!.server, mcpEntry!.tool, call.arguments, {
+              signal: ctx.signal
+            })
         continuation.push({ type: 'function_call_output', call_id: call.call_id, output: result.content })
         ctx.sendStreamEvent({
           id: ctx.streamId,
           type: 'tool-result',
           itemId: call.id,
-          toolType: 'mcp',
+          toolType,
           toolName: call.name,
-          serverName: entry.server.name,
+          serverName,
           status: result.isError ? 'error' : 'done',
           content: truncateMcpResult(result.content)
         })
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'MCP tool call failed.'
+        const message = error instanceof Error ? error.message : 'Tool call failed.'
         continuation.push({ type: 'function_call_output', call_id: call.call_id, output: `Error: ${message}` })
         ctx.sendStreamEvent({
           id: ctx.streamId,
           type: 'tool-result',
           itemId: call.id,
-          toolType: 'mcp',
+          toolType,
           toolName: call.name,
-          serverName: entry.server.name,
+          serverName,
           status: 'error',
           content: message
         })
