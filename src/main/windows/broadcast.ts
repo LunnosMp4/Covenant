@@ -4,7 +4,6 @@ type WebContentsProvider = () => WebContents | null
 
 let mainProvider: WebContentsProvider = () => null
 let settingsProvider: WebContentsProvider = () => null
-let pasteProvider: WebContentsProvider = () => null
 
 /**
  * Wires the window-owning module's web contents into the broadcast helpers so
@@ -13,11 +12,9 @@ let pasteProvider: WebContentsProvider = () => null
 export function setBroadcastProviders(providers: {
   main: WebContentsProvider
   settings: WebContentsProvider
-  paste: WebContentsProvider
 }): void {
   mainProvider = providers.main
   settingsProvider = providers.settings
-  pasteProvider = providers.paste
 }
 
 function safeSend(provider: WebContentsProvider, channel: string, args: unknown[]): void {
@@ -32,10 +29,6 @@ export function sendToMain(channel: string, ...args: unknown[]): void {
 
 export function sendToSettings(channel: string, ...args: unknown[]): void {
   safeSend(settingsProvider, channel, args)
-}
-
-export function sendToPaste(channel: string, ...args: unknown[]): void {
-  safeSend(pasteProvider, channel, args)
 }
 
 export function broadcast(channel: string, ...args: unknown[]): void {

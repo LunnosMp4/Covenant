@@ -99,6 +99,7 @@ import { useChatSearch } from './app/hooks/useChatSearch'
 import CodePanel from './code/CodePanel'
 import CodePermissionModal from './code/CodePermissionModal'
 import { useCodeSession } from './code/useCodeSession'
+import PasteSurface from './paste/PasteSurface'
 
 export default function App(): JSX.Element {
   const [visible, setVisible] = useState(false)
@@ -229,6 +230,8 @@ export default function App(): JSX.Element {
       setActiveSurface('chat')
     } else if (view === 'code') {
       setActiveSurface('code')
+    } else if (view === 'paste') {
+      setActiveSurface('paste')
     } else if (view === 'tasks') {
       setActiveSurface(null)
       setActivePopup('tasks')
@@ -246,6 +249,7 @@ export default function App(): JSX.Element {
     if (activePopup) return 'popup'
     if (activeSurface === 'chat') return 'chat'
     if (activeSurface === 'code') return 'code'
+    if (activeSurface === 'paste') return 'paste'
     return 'bar'
   }, [mode, activePopup, activeSurface])
 
@@ -692,7 +696,7 @@ export default function App(): JSX.Element {
     return () => {
       clearTimeout(focusTimer)
     }
-  }, [visible, mode])
+  }, [visible, mode, activeSurface])
 
   const toggleMode = useCallback(() => {
     const nextMode: AppMode = mode === 'ai' ? 'terminal' : 'ai'
@@ -752,6 +756,35 @@ export default function App(): JSX.Element {
     },
     [isExpanded]
   )
+
+  // Keyboard equivalent of Alt+clicking the expand control: the first press
+  // grows the surface to the full window (both axes), the next returns to the
+  // small size.
+  const toggleFullSize = useCallback(() => {
+    const next = !(isExpanded && isWide)
+    setIsExpanded(next)
+    setIsWide(next)
+  }, [isExpanded, isWide])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+      // Compare the physical key so Option+1 (¡ on macOS) still works, and
+      // accept the numpad variant too.
+      if (event.code !== 'Digit1' && event.code !== 'Numpad1') return
+      // Only meaningful while a surface (chat/code/paste) or the terminal is
+      // actually open.
+      if (mode !== 'terminal' && activeSurface === null) return
+      event.preventDefault()
+      event.stopPropagation()
+      toggleFullSize()
+    }
+
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true)
+    }
+  }, [toggleFullSize, mode, activeSurface])
 
   const handleClose = useCallback(() => {
     setActivePopup(null)
@@ -2415,6 +2448,9 @@ export default function App(): JSX.Element {
     ? Math.max(CHAT_SCROLL_HEIGHT, viewportHeight - 210)
     : CHAT_SCROLL_HEIGHT
   const terminalSurfaceHeight = surfaceBodyHeight + 80
+  // The paste view gets the same header allowance as the terminal so its
+  // search/filter/list stack has room while matching the other surfaces.
+  const pasteSurfaceHeight = surfaceBodyHeight + 80
 
   return (
     <div
@@ -2510,8 +2546,8 @@ export default function App(): JSX.Element {
               {mode === 'ai' && activeSurface !== null && (
                 <MeasuredPanel
                   key="surface-panel"
-                  contentClassName="p-4"
-                  className={`relative mb-2 rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} chat-surface command-surface texture-surface pointer-events-auto`}
+                  contentClassName={activeSurface === 'paste' ? 'p-2' : 'p-4'}
+                  className={`relative ${activeSurface === 'paste' ? '' : 'mb-2'} rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} chat-surface command-surface texture-surface pointer-events-auto`}
                   width={isWide ? wideWidth : 750}
                 >
                   {isChatOpen ? (
@@ -2784,7 +2820,7 @@ export default function App(): JSX.Element {
                     />
                   </motion.div>
                   </>
-                  ) : (
+                  ) : isCodeOpen ? (
                     <CodePanel
                       session={code}
                       isExpanded={isExpanded}
@@ -2795,11 +2831,23 @@ export default function App(): JSX.Element {
                       onToggleExpand={handleToggleExpand}
                       onTogglePin={handleTogglePin}
                     />
+                  ) : (
+                    <PasteSurface
+                      active
+                      height={pasteSurfaceHeight}
+                      isExpanded={isExpanded}
+                      isWide={isWide}
+                      isAltHeld={isAltHeld}
+                      isPinned={isPinned}
+                      onToggleExpand={handleToggleExpand}
+                      onTogglePin={handleTogglePin}
+                    />
                   )}
                 </MeasuredPanel>
               )}
             </AnimatePresence>
 
+            {activeSurface !== 'paste' && (
             <motion.div
               ref={barRef}
               className={`relative flex items-center w-[750px] max-w-full rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10 transition-opacity duration-100 texture-surface opacity-100 pointer-events-auto`}
@@ -3146,6 +3194,7 @@ export default function App(): JSX.Element {
 
               </div>
             </motion.div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

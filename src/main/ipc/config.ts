@@ -16,7 +16,7 @@ import { configureMcpProxy } from '../services/mcpClient'
 import { applySessionProxy, resolveOpenAIProxyUrl } from '../proxy'
 import { checkForUpdatesManually, getUpdateStatus, quitAndInstallUpdate } from '../updater'
 import { registerShortcuts } from '../windows'
-import { broadcast, sendToPaste } from '../windows/broadcast'
+import { broadcast } from '../windows/broadcast'
 
 const isWindows = process.platform === 'win32'
 const VALID_REASONING_EFFORTS = ['low', 'medium', 'high']
@@ -79,7 +79,6 @@ export function registerConfigIpc(): void {
 
     updateConfig({ themeGradient: nextTheme })
     broadcast('theme-updated', nextTheme)
-    sendToPaste('theme-updated', nextTheme)
   })
 
   ipcMain.on('update-terminal-font', (_event, terminalFont: string) => {

@@ -2,21 +2,12 @@ import { dialog, ipcMain } from 'electron'
 import type { PasteManagerSettings } from '../../shared/paste/paste'
 import { readConfig } from '../config/configStore'
 import { getPasteManager, setPasteBlurSuppressed } from '../paste/runtime'
-import {
-  completeHidePasteWindow,
-  getMainWindow,
-  getPasteWindow,
-  hidePasteWindow,
-  markPasteRendererReady,
-  registerShortcuts,
-  showWindow
-} from '../windows'
-import { sendToMain, sendToPaste, sendToSettings } from '../windows/broadcast'
+import { getMainWindow, registerShortcuts, requestView } from '../windows'
+import { sendToMain, sendToSettings } from '../windows/broadcast'
 
 function broadcastPasteSettings(settings: PasteManagerSettings): void {
   sendToMain('paste:settings-updated', settings)
   sendToSettings('paste:settings-updated', settings)
-  sendToPaste('paste:settings-updated', settings)
 }
 
 export function registerPasteIpc(): void {
@@ -91,10 +82,10 @@ export function registerPasteIpc(): void {
 
     setPasteBlurSuppressed(true)
     try {
-      const pasteWindow = getPasteWindow()
+      const mainWindow = getMainWindow()
       const result =
-        pasteWindow && !pasteWindow.isDestroyed()
-          ? await dialog.showSaveDialog(pasteWindow, options)
+        mainWindow && !mainWindow.isDestroyed()
+          ? await dialog.showSaveDialog(mainWindow, options)
           : await dialog.showSaveDialog(options)
 
       if (result.canceled || !result.filePath) {
@@ -108,27 +99,13 @@ export function registerPasteIpc(): void {
     }
   })
 
-  ipcMain.on('paste:hide-window', () => {
-    hidePasteWindow()
-  })
-
-  // Renderer confirms it has mounted the paste surfaces in their hidden entry
-  // state, so the native window can safely be shown without blinking.
-  ipcMain.on('paste-renderer-ready', () => {
-    markPasteRendererReady()
-  })
-
-  // Renderer's exit animation finished and its frame is blank — hide now.
-  ipcMain.on('paste-renderer-exit-complete', () => {
-    completeHidePasteWindow()
-  })
-
   ipcMain.on('paste:ask-in-chat', (_event, rawText: unknown) => {
     const text = typeof rawText === 'string' ? rawText.trim() : ''
     if (!text) return
 
-    hidePasteWindow()
-    showWindow()
+    // The paste surface is a view of the main window: switch it to chat instead
+    // of closing one window and opening another.
+    requestView('chat')
     const mainWindow = getMainWindow()
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('covenant:chat-prompt', text)

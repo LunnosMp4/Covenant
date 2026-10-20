@@ -4,7 +4,7 @@
  * view, and pressing the same shortcut again while that view is active closes
  * the window instead of re-opening something stale.
  */
-export type WindowView = 'bar' | 'chat' | 'code' | 'terminal' | 'tasks' | 'popup'
+export type WindowView = 'bar' | 'chat' | 'code' | 'terminal' | 'tasks' | 'paste' | 'popup'
 
 /**
  * Views a global shortcut can explicitly request. `popup` is a reported-only
@@ -12,4 +12,4 @@ export type WindowView = 'bar' | 'chat' | 'code' | 'terminal' | 'tasks' | 'popup
  * settings), so a shortcut press switches views instead of being mistaken for a
  * repeat press.
  */
-export type WindowTargetView = 'bar' | 'chat' | 'code' | 'terminal' | 'tasks'
+export type WindowTargetView = 'bar' | 'chat' | 'code' | 'terminal' | 'tasks' | 'paste'

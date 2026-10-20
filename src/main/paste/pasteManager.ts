@@ -22,7 +22,7 @@ export interface PasteManagerDeps {
   getSettings: () => PasteManagerSettings
   saveSettings: (settings: PasteManagerSettings) => void
   getOpenAIConfig: () => { apiKey: string; proxyUrl?: string }
-  /** Push a change notification to any open paste window. */
+  /** Push a change notification to the main window's paste surface. */
   onChanged: () => void
 }
 

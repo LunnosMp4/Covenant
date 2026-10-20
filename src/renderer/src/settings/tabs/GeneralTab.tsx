@@ -403,7 +403,7 @@ export default function GeneralTab({
               Open Paste Manager
             </label>
             <p className="mb-2 text-xs text-neutral-500">
-              Opens the clipboard history window. Only active when Paste Manager is enabled.
+              Opens the clipboard history view. Only active when Paste Manager is enabled.
             </p>
             <ShortcutRecorder
               value={shortcuts.openPaste}

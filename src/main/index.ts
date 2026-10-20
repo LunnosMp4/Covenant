@@ -18,15 +18,13 @@ import {
   createWindow,
   destroyTray,
   getMainWindow,
-  getPasteWindow,
   getMainWebContents,
-  getPasteWebContents,
   getSettingsWebContents,
   registerPasteProtocol,
   registerShortcuts,
   showWindow
 } from './windows'
-import { setBroadcastProviders } from './windows/broadcast'
+import { sendToMain, setBroadcastProviders } from './windows/broadcast'
 
 const isMac = process.platform === 'darwin'
 const isWindows = process.platform === 'win32'
@@ -35,7 +33,7 @@ const isWindows = process.platform === 'win32'
 // Must be set before app.whenReady() — top-level module scope satisfies this.
 app.commandLine.appendSwitch('js-flags', '--expose_gc')
 
-// Custom scheme for serving clipboard image blobs to the paste window renderer
+// Custom scheme for serving clipboard image blobs to the paste surface renderer
 // without base64-in-IPC. Must be registered before app.whenReady().
 protocol.registerSchemesAsPrivileged([
   {
@@ -50,8 +48,7 @@ setupLogger()
 
 setBroadcastProviders({
   main: getMainWebContents,
-  settings: getSettingsWebContents,
-  paste: getPasteWebContents
+  settings: getSettingsWebContents
 })
 
 registerIpc()
@@ -130,12 +127,9 @@ app.whenReady().then(() => {
       }
     },
     onChanged: () => {
-      // Only push live updates while the window is actually open; on show the
-      // renderer reloads the full list anyway.
-      const pasteWindow = getPasteWindow()
-      if (pasteWindow && !pasteWindow.isDestroyed() && pasteWindow.isVisible()) {
-        pasteWindow.webContents.send('paste:changed')
-      }
+      // The paste surface lives in the main window; refresh it live when it is
+      // open. On show the renderer reloads the full list anyway.
+      sendToMain('paste:changed')
     }
   })
   setPasteManager(manager)

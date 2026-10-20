@@ -226,14 +226,8 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     clear: (keepPinned: boolean) => Promise<{ removed: number }>
     copy: (id: string, asPlainText?: boolean) => Promise<{ success: boolean }>
     saveImage: (id: string) => Promise<{ success: boolean; path?: string; canceled?: boolean }>
-    hideWindow: () => void
     askInChat: (text: string) => void
-    notifyReadyToShow: () => void
-    notifyExitComplete: () => void
-    onPrepare: (callback: () => void) => () => void
-    onHide: (callback: () => void) => () => void
     onChanged: (callback: () => void) => () => void
-    onShown: (callback: () => void) => () => void
     onSettingsUpdated: (callback: (settings: PasteManagerSettings) => void) => () => void
   }
   code: {

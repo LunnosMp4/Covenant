@@ -21,8 +21,6 @@ const WINDOW_BASE_HEIGHT = 520
 const WINDOW_BOTTOM_MARGIN = 48
 const SETTINGS_WINDOW_WIDTH = 1024
 const SETTINGS_WINDOW_HEIGHT = 576
-const PASTE_WINDOW_WIDTH = 960
-const PASTE_WINDOW_HEIGHT = 600
 const PASTE_PROTOCOL = 'covenant-paste'
 
 const RENDERER_READY_TIMEOUT_MS = 160
@@ -35,22 +33,18 @@ const WINDOW_EXPANDED_RATIO = 0.8
 
 let mainWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
-let pasteWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let trayShortcutDisplay = 'Disabled'
 let codeActivity: CodeActivitySummary | null = null
 let isVisible = false
 let isPinned = false
-let isPasteVisible = false
 // Mirror of the surface the renderer is currently showing. Only meaningful
 // while the window is visible; it drives the "same shortcut again closes"
 // behaviour of requestView().
 let currentView: WindowView | null = null
 
 let rendererReadyResolver: (() => void) | null = null
-let pasteReadyResolver: (() => void) | null = null
 let hideTimer: ReturnType<typeof setTimeout> | null = null
-let pasteHideTimer: ReturnType<typeof setTimeout> | null = null
 
 export function getMainWindow(): BrowserWindow | null {
   return mainWindow
@@ -60,20 +54,12 @@ export function getSettingsWindow(): BrowserWindow | null {
   return settingsWindow
 }
 
-export function getPasteWindow(): BrowserWindow | null {
-  return pasteWindow
-}
-
 export function getMainWebContents(): WebContents | null {
   return mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null
 }
 
 export function getSettingsWebContents(): WebContents | null {
   return settingsWindow && !settingsWindow.isDestroyed() ? settingsWindow.webContents : null
-}
-
-export function getPasteWebContents(): WebContents | null {
-  return pasteWindow && !pasteWindow.isDestroyed() ? pasteWindow.webContents : null
 }
 
 function getMainWindowLayout(): { x: number; y: number; width: number; height: number } {
@@ -113,20 +99,9 @@ function getSettingsWindowPosition(): { x: number; y: number } {
   }
 }
 
-function getPasteWindowPosition(): { x: number; y: number } {
-  const anchorPoint = screen.getCursorScreenPoint()
-  const display = screen.getDisplayNearestPoint(anchorPoint)
-  const { x: workAreaX, y: workAreaY, width: workAreaWidth, height: workAreaHeight } = display.workArea
-
-  return {
-    x: Math.max(workAreaX, Math.round(workAreaX + (workAreaWidth - PASTE_WINDOW_WIDTH) / 2)),
-    y: Math.max(workAreaY, Math.round(workAreaY + (workAreaHeight - PASTE_WINDOW_HEIGHT) / 2))
-  }
-}
-
 function loadRendererWindow(
   targetWindow: BrowserWindow,
-  route?: 'settings' | 'paste',
+  route?: 'settings',
   tab?: string
 ): void {
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -134,10 +109,6 @@ function loadRendererWindow(
     if (route === 'settings') {
       const query = tab ? `?tab=${encodeURIComponent(tab)}` : ''
       targetWindow.loadURL(`${rendererUrl}#/settings${query}`)
-      return
-    }
-    if (route === 'paste') {
-      targetWindow.loadURL(`${rendererUrl}#/paste`)
       return
     }
     targetWindow.loadURL(rendererUrl)
@@ -148,10 +119,6 @@ function loadRendererWindow(
   if (route === 'settings') {
     const hash = tab ? `settings?tab=${encodeURIComponent(tab)}` : 'settings'
     targetWindow.loadFile(rendererEntryFile, { hash })
-    return
-  }
-  if (route === 'paste') {
-    targetWindow.loadFile(rendererEntryFile, { hash: 'paste' })
     return
   }
 
@@ -216,7 +183,7 @@ export function createWindow(): void {
   })
 
   mainWindow.on('blur', () => {
-    if (isVisible && !isPinned) {
+    if (isVisible && !isPinned && !isPasteBlurSuppressed()) {
       hideWindow()
     }
   })
@@ -299,147 +266,6 @@ export function createSettingsWindow(tab?: string): void {
   loadRendererWindow(settingsWindow, 'settings', tab)
 }
 
-function createPasteWindow(): BrowserWindow {
-  if (pasteWindow && !pasteWindow.isDestroyed()) return pasteWindow
-
-  const { x, y } = getPasteWindowPosition()
-
-  pasteWindow = new BrowserWindow({
-    width: PASTE_WINDOW_WIDTH,
-    height: PASTE_WINDOW_HEIGHT,
-    x,
-    y,
-    minWidth: 640,
-    minHeight: 400,
-    show: false,
-    frame: false,
-    transparent: true,
-    backgroundMaterial: isWindows ? 'none' : undefined,
-    backgroundColor: 'rgba(0, 0, 0, 0)',
-    resizable: true,
-    skipTaskbar: true,
-    alwaysOnTop: true,
-    hasShadow: false,
-    title: 'Covenant Paste Manager',
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
-      contextIsolation: true,
-      nodeIntegration: false,
-      // Throttle timers/animations when hidden to save CPU.
-      backgroundThrottling: true
-    }
-  })
-
-  if (isWindows) {
-    try {
-      pasteWindow.setBackgroundMaterial('none')
-    } catch {
-      // Older Electron/Windows versions can ignore this safely.
-    }
-    pasteWindow.setBackgroundColor('rgba(0, 0, 0, 0)')
-  }
-
-  if (isMac) {
-    pasteWindow.setBackgroundColor('rgba(0, 0, 0, 0)')
-  }
-
-  // Keep renderer roots transparent so the OS never composites a white frame
-  // while the paste window is being shown.
-  pasteWindow.webContents.on('did-finish-load', () => {
-    pasteWindow?.webContents.insertCSS(
-      'html, body, #root, :root { background: transparent !important; }'
-    )
-  })
-
-  pasteWindow.on('blur', () => {
-    if (!isPasteBlurSuppressed() && pasteWindow && !pasteWindow.isDestroyed()) {
-      hidePasteWindow()
-    }
-  })
-
-  pasteWindow.on('closed', () => {
-    if (pasteHideTimer) {
-      clearTimeout(pasteHideTimer)
-      pasteHideTimer = null
-    }
-    isPasteVisible = false
-    pasteWindow = null
-  })
-
-  pasteWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
-
-  loadRendererWindow(pasteWindow, 'paste')
-  return pasteWindow
-}
-
-export function showPasteWindow(): void {
-  const win = createPasteWindow()
-  const { x, y } = getPasteWindowPosition()
-  win.setBounds({ x, y, width: PASTE_WINDOW_WIDTH, height: PASTE_WINDOW_HEIGHT })
-
-  if (win.isMinimized()) win.restore()
-
-  // Cancel any in-flight hide so it can't slam the window shut mid-reveal.
-  if (pasteHideTimer) {
-    clearTimeout(pasteHideTimer)
-    pasteHideTimer = null
-  }
-  isPasteVisible = true
-
-  // Two-phase reveal (mirrors the main window): mount the surfaces in their
-  // hidden entry state while the window is still off-screen, wait for the
-  // renderer to confirm the frame is ready, then show + animate. Showing before
-  // the renderer has painted makes the OS composite a stale/blank frame — the
-  // "blink" seen when the Paste Manager opens.
-  win.webContents.send('paste:prepare')
-
-  void waitForPasteRendererReady().then(() => {
-    if (!isPasteVisible || !pasteWindow || pasteWindow.isDestroyed()) return
-    pasteWindow.show()
-    pasteWindow.focus()
-    pasteWindow.webContents.send('paste:shown')
-  })
-}
-
-export function hidePasteWindow(): void {
-  if (!pasteWindow || pasteWindow.isDestroyed()) return
-  isPasteVisible = false
-
-  // Let the renderer animate out and blank its frame while still visible, then
-  // hide. Hiding first would leave the last painted (fully visible) frame in
-  // the compositor, which the OS shows for a frame on the next open — the
-  // "blink".
-  pasteWindow.webContents.send('paste:hide')
-
-  if (pasteHideTimer) clearTimeout(pasteHideTimer)
-  pasteHideTimer = setTimeout(completeHidePasteWindow, RENDERER_EXIT_TIMEOUT_MS)
-}
-
-export function completeHidePasteWindow(): void {
-  if (pasteHideTimer) {
-    clearTimeout(pasteHideTimer)
-    pasteHideTimer = null
-  }
-  if (isPasteVisible || !pasteWindow || pasteWindow.isDestroyed()) return
-  pasteWindow.hide()
-  scheduleSleepModeCleanup(pasteWindow)
-}
-
-export function togglePasteWindow(): void {
-  const config = readConfig()
-  if (!config.pasteManager?.enabled) return
-
-  if (isPasteVisible) {
-    hidePasteWindow()
-  } else {
-    showPasteWindow()
-  }
-}
-
 function pasteImageContentType(filePath: string): string {
   const lower = filePath.toLowerCase()
   if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg'
@@ -513,29 +339,6 @@ function waitForRendererReady(): Promise<void> {
     }
 
     rendererReadyResolver = finish
-    setTimeout(finish, RENDERER_READY_TIMEOUT_MS)
-  })
-}
-
-export function markPasteRendererReady(): void {
-  if (pasteReadyResolver) {
-    const resolve = pasteReadyResolver
-    pasteReadyResolver = null
-    resolve()
-  }
-}
-
-function waitForPasteRendererReady(): Promise<void> {
-  return new Promise((resolve) => {
-    let settled = false
-    const finish = (): void => {
-      if (settled) return
-      settled = true
-      if (pasteReadyResolver === finish) pasteReadyResolver = null
-      resolve()
-    }
-
-    pasteReadyResolver = finish
     setTimeout(finish, RENDERER_READY_TIMEOUT_MS)
   })
 }
@@ -808,7 +611,7 @@ export function registerShortcuts(config: AppConfig): void {
 
   if (shortcuts.openPaste && config.pasteManager?.enabled) {
     try {
-      const ok = globalShortcut.register(shortcuts.openPaste, togglePasteWindow)
+      const ok = globalShortcut.register(shortcuts.openPaste, () => requestView('paste'))
       if (!ok) {
         console.warn(`Failed to register global shortcut: ${shortcuts.openPaste} (may conflict with another app)`)
       }

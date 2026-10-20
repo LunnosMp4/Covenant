@@ -167,7 +167,7 @@ npm run dist    # package an installer with electron-builder
 | `Ctrl+Alt+Space` | Reopen the most recent conversation |
 | `Alt+T` | Open directly in terminal mode |
 | `Alt+L` | Open the Tasks quick-capture list |
-| `Alt+V` | Open the Paste Manager window |
+| `Alt+V` | Open the Paste Manager view |
 | `Alt+C` | Open the Covenant Code surface |
 | `Alt+M` | Toggle Code mode in the command bar |
 
@@ -178,6 +178,7 @@ Every shortcut can be remapped in **Settings → General**.
 | Shortcut | Action |
 | --- | --- |
 | `Tab` | Switch between AI chat and terminal mode |
+| `Alt+1` | Toggle the current surface between small and full window size |
 | `Ctrl+Tab` / `Ctrl+\`` | Toggle conversation history |
 | `Escape` | Dismiss popups, close the bar, or exit terminal mode |
 | `Enter` | Send the prompt |
