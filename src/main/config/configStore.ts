@@ -9,12 +9,14 @@ import {
   DEFAULT_CODE_SETTINGS,
   DEFAULT_ENABLE_WEB_SEARCH,
   DEFAULT_LAUNCHER_SHOW_SYSTEM_APPS,
+  DEFAULT_NOTES_SETTINGS,
   DEFAULT_REASONING_EFFORT,
   DEFAULT_SHORTCUTS,
   DEFAULT_TEXTURE_INTENSITY,
   normalizeAdminApiKey,
   normalizeChatModelId,
   normalizeCodeSettings,
+  normalizeNotesSettings,
   normalizeShortcuts,
   normalizeTextureIntensity,
   normalizeUsageProjectId
@@ -41,6 +43,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   shortcuts: { ...DEFAULT_SHORTCUTS },
   textureIntensity: DEFAULT_TEXTURE_INTENSITY,
   pasteManager: { ...DEFAULT_PASTE_SETTINGS },
+  notes: { ...DEFAULT_NOTES_SETTINGS },
   code: { ...DEFAULT_CODE_SETTINGS, permission: { ...DEFAULT_CODE_SETTINGS.permission } },
   hasOnboarded: false,
   autoUpdate: true
@@ -78,6 +81,7 @@ export function normalizeButtonVisibility(raw: unknown): AppConfig['buttonVisibi
     appLauncher: typeof obj.appLauncher === 'boolean' ? obj.appLauncher : DEFAULT_BUTTON_VISIBILITY.appLauncher,
     workflow: typeof obj.workflow === 'boolean' ? obj.workflow : DEFAULT_BUTTON_VISIBILITY.workflow,
     tasks: typeof obj.tasks === 'boolean' ? obj.tasks : DEFAULT_BUTTON_VISIBILITY.tasks,
+    notes: typeof obj.notes === 'boolean' ? obj.notes : DEFAULT_BUTTON_VISIBILITY.notes,
     code: typeof obj.code === 'boolean' ? obj.code : DEFAULT_BUTTON_VISIBILITY.code
   }
 }
@@ -126,6 +130,7 @@ export function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined
     shortcuts: normalizeShortcuts(rawConfig?.shortcuts),
     textureIntensity: normalizeTextureIntensity(rawConfig?.textureIntensity),
     pasteManager: normalizePasteManagerSettings(rawConfig?.pasteManager),
+    notes: normalizeNotesSettings(rawConfig?.notes),
     code: normalizeCodeSettings(rawConfig?.code),
     hasOnboarded:
       typeof rawConfig?.hasOnboarded === 'boolean' ? rawConfig.hasOnboarded : false,

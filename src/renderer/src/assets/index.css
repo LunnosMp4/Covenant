@@ -91,6 +91,17 @@ body[data-window='settings'] [contenteditable='true'] {
   user-select: text;
 }
 
+/* Notes surface: the editor, inputs and rendered Markdown must stay selectable. */
+.notes-selectable textarea,
+.notes-selectable input,
+.notes-selectable [contenteditable='true'],
+.notes-selectable pre,
+.notes-selectable .chat-markdown,
+.notes-selectable .chat-markdown * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 /* Custom scrollbar styling for xterm */
 .xterm-viewport::-webkit-scrollbar {
   width: 8px;
@@ -741,11 +752,17 @@ body[data-window='settings'] [contenteditable='true'] {
 [data-theme='light'] .text-emerald-100 {
   color: #065f46;
 }
+[data-theme='light'] .text-emerald-200 {
+  color: #065f46;
+}
 [data-theme='light'] .text-emerald-300 {
   color: #047857;
 }
 [data-theme='light'] .text-emerald-400 {
   color: #059669;
+}
+[data-theme='light'] .text-red-100 {
+  color: #991b1b;
 }
 [data-theme='light'] .text-red-200 {
   color: #991b1b;

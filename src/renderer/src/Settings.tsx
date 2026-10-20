@@ -20,8 +20,8 @@ import {
   getThemeMode,
   normalizeThemeGradient
 } from './constants/theme'
-import type { AppConfig, ButtonVisibility, ReasoningEffort, ShortcutConfig } from '../../shared/config'
-import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_REASONING_EFFORT, DEFAULT_SHORTCUTS, DEFAULT_TEXTURE_INTENSITY, MAX_TEXTURE_INTENSITY, REASONING_EFFORT_OPTIONS, TEXTURE_MAX_OPACITY, modelSupportsExtendedParams, modelSupportsWebSearch } from '../../shared/config'
+import type { AppConfig, ButtonVisibility, NotesSettings, ReasoningEffort, ShortcutConfig } from '../../shared/config'
+import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_NOTES_SETTINGS, DEFAULT_REASONING_EFFORT, DEFAULT_SHORTCUTS, DEFAULT_TEXTURE_INTENSITY, MAX_TEXTURE_INTENSITY, REASONING_EFFORT_OPTIONS, TEXTURE_MAX_OPACITY, modelSupportsExtendedParams, modelSupportsWebSearch, normalizeNotesSettings } from '../../shared/config'
 import type { UpdateStatus } from '../../shared/system/update'
 import {
   DEFAULT_PASTE_SETTINGS,
@@ -53,6 +53,7 @@ import AppLauncherTab from './settings/tabs/AppLauncherTab'
 import WorkflowsTab from './settings/tabs/WorkflowsTab'
 import PrepromptsTab from './settings/tabs/PrepromptsTab'
 import CodeTab from './settings/tabs/CodeTab'
+import NotesTab from './settings/tabs/NotesTab'
 import { DEFAULT_CODE_SETTINGS, type CodeModel, type CodeSettings, type CodeStatus } from '../../shared/code/code'
 
 
@@ -90,10 +91,11 @@ export default function Settings(): JSX.Element {
   const [textureIntensity, setTextureIntensity] = useState(DEFAULT_TEXTURE_INTENSITY)
   const [autoUpdate, setAutoUpdate] = useState(true)
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: 'idle', currentVersion: '' })
-  const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true, tasks: true, code: true })
+  const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true, tasks: true, notes: true, code: true })
   const [launcherShowSystemApps, setLauncherShowSystemApps] = useState(false)
   const [shortcuts, setShortcuts] = useState<ShortcutConfig>({ ...DEFAULT_SHORTCUTS })
   const [pasteSettings, setPasteSettings] = useState<PasteManagerSettings>({ ...DEFAULT_PASTE_SETTINGS })
+  const [notesSettings, setNotesSettings] = useState<NotesSettings>({ ...DEFAULT_NOTES_SETTINGS })
   const [codeSettings, setCodeSettings] = useState<CodeSettings>({ ...DEFAULT_CODE_SETTINGS })
   const [codeStatus, setCodeStatus] = useState<(CodeStatus & { hasApiKey: boolean }) | null>(null)
   const [codeModels, setCodeModels] = useState<CodeModel[]>([])
@@ -180,10 +182,11 @@ export default function Settings(): JSX.Element {
         setAutoCollapseReasoning(typeof config.autoCollapseReasoning === 'boolean' ? config.autoCollapseReasoning : true)
         setTextureIntensity(typeof config.textureIntensity === 'number' ? config.textureIntensity : DEFAULT_TEXTURE_INTENSITY)
         setAutoUpdate(typeof config.autoUpdate === 'boolean' ? config.autoUpdate : true)
-        setButtonVisibility(config.buttonVisibility ?? { appLauncher: true, workflow: true, tasks: true, code: true })
+        setButtonVisibility(config.buttonVisibility ?? { appLauncher: true, workflow: true, tasks: true, notes: true, code: true })
         setLauncherShowSystemApps(config.launcherShowSystemApps === true)
         setShortcuts(config.shortcuts ?? { ...DEFAULT_SHORTCUTS })
         setPasteSettings(normalizePasteManagerSettings(config.pasteManager))
+        setNotesSettings(normalizeNotesSettings(config.notes))
         setCodeSettings(config.code ?? { ...DEFAULT_CODE_SETTINGS })
         setIsConfigLoaded(true)
       } catch {
@@ -198,10 +201,11 @@ export default function Settings(): JSX.Element {
         setPreferredShell(undefined)
         setMcpServers([])
         setChatModel(DEFAULT_CHAT_MODEL)
-        setButtonVisibility({ appLauncher: true, workflow: true, tasks: true, code: true })
+        setButtonVisibility({ appLauncher: true, workflow: true, tasks: true, notes: true, code: true })
         setLauncherShowSystemApps(false)
         setAutoUpdate(true)
         setPasteSettings({ ...DEFAULT_PASTE_SETTINGS })
+        setNotesSettings({ ...DEFAULT_NOTES_SETTINGS })
       }
     }
 
@@ -227,6 +231,10 @@ export default function Settings(): JSX.Element {
       setPasteSettings(newSettings)
     })
 
+    const unsubNotesSettings = window.api?.config?.onNotesSettingsUpdated?.((newSettings) => {
+      setNotesSettings(newSettings)
+    })
+
     const unsubTheme = window.api?.config.onThemeUpdated?.((newGradient) => {
       setSelectedTheme(normalizeThemeGradient(newGradient))
     })
@@ -242,6 +250,7 @@ export default function Settings(): JSX.Element {
       if (typeof unsubButtonVisibility === 'function') unsubButtonVisibility()
       if (typeof unsubShortcuts === 'function') unsubShortcuts()
       if (typeof unsubPasteSettings === 'function') unsubPasteSettings()
+      if (typeof unsubNotesSettings === 'function') unsubNotesSettings()
       if (typeof unsubTheme === 'function') unsubTheme()
       if (typeof unsubTexture === 'function') unsubTexture()
     }
@@ -758,6 +767,11 @@ const handleMinimizeWindow = (): void => {
     void window.api?.paste?.updateSettings?.(patch).then((next) => setPasteSettings(next))
   }
 
+  const handleNotesSettingChange = (patch: Partial<NotesSettings>): void => {
+    setNotesSettings((prev) => normalizeNotesSettings({ ...prev, ...patch }))
+    window.api?.config?.updateNotesSettings?.(patch)
+  }
+
   const handleClearPasteHistory = (keepPinned: boolean): void => {
     void window.api?.paste?.clear?.(keepPinned).then((result) => {
       setPasteFeedbackMessage(
@@ -1017,6 +1031,7 @@ const handleMinimizeWindow = (): void => {
     if (activeTab === 'workflow') return 'Workflows'
     if (activeTab === 'preprompts') return 'Instructions'
     if (activeTab === 'mcp') return 'MCP Servers'
+    if (activeTab === 'notes') return 'Notes & Meetings'
     if (activeTab === 'code') return 'OpenCode'
     return 'Clipboard'
   }, [activeTab])
@@ -1228,6 +1243,9 @@ const handleMinimizeWindow = (): void => {
                 onClearHistory={handleClearPasteHistory}
                 feedbackMessage={pasteFeedbackMessage}
               />
+            )}
+            {activeTab === 'notes' && (
+              <NotesTab settings={notesSettings} onChange={handleNotesSettingChange} />
             )}
             {activeTab === 'code' && (
               <CodeTab

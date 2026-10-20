@@ -1,6 +1,6 @@
 import { clipboard, contextBridge, ipcRenderer } from 'electron'
 import type { AppConfig } from '../shared/config'
-import type { ButtonVisibility, ReasoningEffort, ShortcutConfig } from '../shared/config'
+import type { ButtonVisibility, NotesSettings, ReasoningEffort, ShortcutConfig } from '../shared/config'
 import type { McpServer } from '../shared/mcp/mcp'
 import type { ChatConversation, ChatRole, ChatStreamEvent, InputContent } from '../shared/chat/chat'
 import type { LauncherApp } from '../shared/launcher/launcher-app'
@@ -19,6 +19,15 @@ import type { GamificationState } from '../shared/tasks/gamification'
 import type { UpdateStatus } from '../shared/system/update'
 import type { UsageMetricsResult, UsageProjectsResult } from '../shared/system/usage'
 import type { PasteItemDetail, PasteItemMeta, PasteManagerSettings } from '../shared/paste/paste'
+import type {
+  Note,
+  NoteAiEvent,
+  NoteCreateInput,
+  NoteMeetingEvent,
+  NoteMeta,
+  NoteSaveInput
+} from '../shared/notes/note'
+import type { NoteAiRequest } from '../shared/notes/prompts'
 import type {
   Workflow,
   WorkflowLogPayload,
@@ -165,6 +174,8 @@ const api = {
       ipcRenderer.send('update-auto-collapse-reasoning', autoCollapseReasoning),
     updateTextureIntensity: (textureIntensity: number) =>
       ipcRenderer.send('update-texture-intensity', textureIntensity),
+    updateNotesSettings: (settings: Partial<NotesSettings>) =>
+      ipcRenderer.send('update-notes-settings', settings),
     updateAutoUpdate: (enabled: boolean) => ipcRenderer.send('update-auto-update', enabled),
     updateUsageProject: (projectId: string) => ipcRenderer.send('update-usage-project', projectId),
     checkForUpdates: () => ipcRenderer.invoke('check-for-updates') as Promise<UpdateStatus>,
@@ -279,6 +290,17 @@ const api = {
 
       return () => {
         ipcRenderer.removeListener('texture-intensity-updated', listener)
+      }
+    },
+    onNotesSettingsUpdated: (callback: (settings: NotesSettings) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, settings: NotesSettings) => {
+        callback(settings)
+      }
+
+      ipcRenderer.on('notes-settings-updated', listener)
+
+      return () => {
+        ipcRenderer.removeListener('notes-settings-updated', listener)
       }
     },
     getTerminalFonts: () => ipcRenderer.invoke('get-terminal-fonts') as Promise<string[]>
@@ -715,6 +737,80 @@ const api = {
       ipcRenderer.on('paste:settings-updated', listener)
       return () => {
         ipcRenderer.removeListener('paste:settings-updated', listener)
+      }
+    }
+  },
+  notes: {
+    list: () => ipcRenderer.invoke('notes:list') as Promise<NoteMeta[]>,
+    get: (id: string) => ipcRenderer.invoke('notes:get', id) as Promise<Note | null>,
+    create: (input: NoteCreateInput) =>
+      ipcRenderer.invoke('notes:create', input) as Promise<Note>,
+    save: (input: NoteSaveInput) =>
+      ipcRenderer.invoke('notes:save', input) as Promise<Note | null>,
+    delete: (id: string) =>
+      ipcRenderer.invoke('notes:delete', id) as Promise<NoteMeta[]>,
+    getSettings: () =>
+      ipcRenderer.invoke('notes:get-settings') as Promise<NotesSettings>,
+    onChanged: (callback: (metas: NoteMeta[]) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, metas: NoteMeta[]) => {
+        callback(metas)
+      }
+      ipcRenderer.on('notes:changed', listener)
+      return () => {
+        ipcRenderer.removeListener('notes:changed', listener)
+      }
+    },
+    meeting: {
+      start: (input: { captureSystemAudio?: boolean }) =>
+        ipcRenderer.invoke('notes:meeting:start', input) as Promise<Note>,
+      appendSegment: (payload: {
+        noteId: string
+        index: number
+        durationMs: number
+        data: ArrayBuffer
+      }) =>
+        ipcRenderer.invoke('notes:meeting:segment', payload) as Promise<{
+          success: boolean
+          error?: string
+        }>,
+      finish: (payload: { noteId: string; durationMs: number }) =>
+        ipcRenderer.invoke('notes:meeting:finish', payload) as Promise<Note | null>,
+      cancel: (noteId: string) =>
+        ipcRenderer.invoke('notes:meeting:cancel', noteId) as Promise<void>,
+      summarize: (noteId: string) =>
+        ipcRenderer.invoke('notes:meeting:summarize', noteId) as Promise<Note | null>,
+      retranscribe: (noteId: string) =>
+        ipcRenderer.invoke('notes:meeting:retranscribe', noteId) as Promise<Note | null>,
+      setActive: (active: boolean) => ipcRenderer.send('notes:meeting:active', active),
+      onEvent: (callback: (event: NoteMeetingEvent) => void) => {
+        const listener = (_event: Electron.IpcRendererEvent, payload: NoteMeetingEvent) => {
+          callback(payload)
+        }
+        ipcRenderer.on('notes:meeting-event', listener)
+        return () => {
+          ipcRenderer.removeListener('notes:meeting-event', listener)
+        }
+      },
+      onStopRequest: (callback: () => void) => {
+        const listener = (): void => callback()
+        ipcRenderer.on('notes:meeting-stop', listener)
+        return () => {
+          ipcRenderer.removeListener('notes:meeting-stop', listener)
+        }
+      }
+    },
+    ai: {
+      run: (request: NoteAiRequest) =>
+        ipcRenderer.invoke('notes:ai', request) as Promise<{ id: string }>,
+      cancel: (id: string) => ipcRenderer.send('notes:ai-cancel', id),
+      onEvent: (callback: (event: NoteAiEvent) => void) => {
+        const listener = (_event: Electron.IpcRendererEvent, payload: NoteAiEvent) => {
+          callback(payload)
+        }
+        ipcRenderer.on('notes:ai-event', listener)
+        return () => {
+          ipcRenderer.removeListener('notes:ai-event', listener)
+        }
       }
     }
   },

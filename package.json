@@ -50,8 +50,13 @@
     "mac": {
       "target": "dmg",
       "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "extendInfo": {
-        "LSUIElement": true
+        "LSUIElement": true,
+        "NSMicrophoneUsageDescription": "Covenant records your microphone to transcribe meetings and notes.",
+        "NSAudioCaptureUsageDescription": "Covenant records system audio so meeting transcripts include every participant."
       }
     }
   },

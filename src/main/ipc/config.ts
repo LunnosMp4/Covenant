@@ -7,6 +7,7 @@ import {
   DEFAULT_LAUNCHER_SHOW_SYSTEM_APPS,
   DEFAULT_REASONING_EFFORT,
   normalizeShortcuts,
+  normalizeNotesSettings,
   normalizeTextureIntensity
 } from '../../shared/config'
 import { DEFAULT_CONFIG, normalizeTerminalFont, readConfig, updateConfig } from '../config/configStore'
@@ -126,6 +127,7 @@ export function registerConfigIpc(): void {
       appLauncher: typeof buttonVisibility?.appLauncher === 'boolean' ? buttonVisibility.appLauncher : current.appLauncher,
       workflow: typeof buttonVisibility?.workflow === 'boolean' ? buttonVisibility.workflow : current.workflow,
       tasks: typeof buttonVisibility?.tasks === 'boolean' ? buttonVisibility.tasks : current.tasks,
+      notes: typeof buttonVisibility?.notes === 'boolean' ? buttonVisibility.notes : current.notes,
       code: typeof buttonVisibility?.code === 'boolean' ? buttonVisibility.code : current.code
     }
     updateConfig({ buttonVisibility: nextButtonVisibility })
@@ -171,6 +173,17 @@ export function registerConfigIpc(): void {
     const nextTextureIntensity = normalizeTextureIntensity(textureIntensity)
     updateConfig({ textureIntensity: nextTextureIntensity })
     broadcast('texture-intensity-updated', nextTextureIntensity)
+  })
+
+  ipcMain.on('update-notes-settings', (_event, rawSettings: unknown) => {
+    const current = readConfig().notes
+    const patch =
+      rawSettings && typeof rawSettings === 'object'
+        ? (rawSettings as Record<string, unknown>)
+        : {}
+    const nextNotes = normalizeNotesSettings({ ...current, ...patch })
+    updateConfig({ notes: nextNotes })
+    broadcast('notes-settings-updated', nextNotes)
   })
 
   ipcMain.on('update-shortcuts', (_event, rawShortcuts: unknown) => {

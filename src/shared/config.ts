@@ -7,6 +7,7 @@ export interface ButtonVisibility {
   appLauncher: boolean
   workflow: boolean
   tasks: boolean
+  notes: boolean
   code: boolean
 }
 
@@ -59,6 +60,7 @@ export const DEFAULT_BUTTON_VISIBILITY: ButtonVisibility = {
   appLauncher: true,
   workflow: true,
   tasks: true,
+  notes: true,
   code: true
 }
 
@@ -87,12 +89,95 @@ export function modelSupportsWebSearch(modelId: string): boolean {
     lower.startsWith('gpt-4o')
 }
 
+export type TranscriptionModel =
+  | 'gpt-4o-transcribe-diarize'
+  | 'gpt-4o-transcribe'
+  | 'whisper-1'
+
+export interface TranscriptionModelOption {
+  id: TranscriptionModel
+  label: string
+  description: string
+}
+
+export const TRANSCRIPTION_MODEL_OPTIONS: TranscriptionModelOption[] = [
+  {
+    id: 'gpt-4o-transcribe-diarize',
+    label: 'GPT-4o Transcribe Diarize',
+    description: 'Transcribes and identifies who is speaking. Recommended for meetings.'
+  },
+  {
+    id: 'gpt-4o-transcribe',
+    label: 'GPT-4o Transcribe',
+    description: 'Higher accuracy without speaker labels.'
+  },
+  {
+    id: 'whisper-1',
+    label: 'Whisper v1',
+    description: 'Legacy transcription model without speaker labels.'
+  }
+]
+
+export interface NotesSettings {
+  /** Capture system audio by default when starting a meeting. */
+  captureSystemAudio: boolean
+  /** Keep the recorded audio files after transcription. */
+  keepAudio: boolean
+  transcriptionModel: TranscriptionModel
+  /** ISO-639-1 language code, or empty for auto-detection. */
+  transcriptionLanguage: string
+  /** Model used to generate the meeting recap. Empty = current chat model. */
+  summaryModel: string
+  /** Optional custom recap instructions. Empty = built-in prompt. */
+  summaryPrompt: string
+}
+
+export const DEFAULT_NOTES_SETTINGS: NotesSettings = {
+  captureSystemAudio: true,
+  keepAudio: true,
+  transcriptionModel: 'gpt-4o-transcribe-diarize',
+  transcriptionLanguage: '',
+  summaryModel: '',
+  summaryPrompt: ''
+}
+
+export function normalizeNotesSettings(raw: unknown): NotesSettings {
+  const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+  const transcriptionModel =
+    typeof obj.transcriptionModel === 'string' &&
+    TRANSCRIPTION_MODEL_OPTIONS.some((option) => option.id === obj.transcriptionModel)
+      ? (obj.transcriptionModel as TranscriptionModel)
+      : DEFAULT_NOTES_SETTINGS.transcriptionModel
+  const language =
+    typeof obj.transcriptionLanguage === 'string'
+      ? obj.transcriptionLanguage.trim().slice(0, 12)
+      : DEFAULT_NOTES_SETTINGS.transcriptionLanguage
+
+  return {
+    captureSystemAudio:
+      typeof obj.captureSystemAudio === 'boolean'
+        ? obj.captureSystemAudio
+        : DEFAULT_NOTES_SETTINGS.captureSystemAudio,
+    keepAudio:
+      typeof obj.keepAudio === 'boolean' ? obj.keepAudio : DEFAULT_NOTES_SETTINGS.keepAudio,
+    transcriptionModel,
+    transcriptionLanguage: language,
+    summaryModel:
+      typeof obj.summaryModel === 'string' ? obj.summaryModel.trim() : DEFAULT_NOTES_SETTINGS.summaryModel,
+    summaryPrompt:
+      typeof obj.summaryPrompt === 'string'
+        ? obj.summaryPrompt.slice(0, 20_000)
+        : DEFAULT_NOTES_SETTINGS.summaryPrompt
+  }
+}
+
 export interface ShortcutConfig {
   openApp: string
   openLastConversation: string
   openAppTerminal: string
   openTasks: string
   openPaste: string
+  openNotes: string
   openCode: string
   toggleCodeMode: string
 }
@@ -103,6 +188,7 @@ export const DEFAULT_SHORTCUTS: ShortcutConfig = {
   openAppTerminal: 'Alt+T',
   openTasks: 'Alt+L',
   openPaste: 'Alt+V',
+  openNotes: 'Alt+N',
   openCode: 'Alt+C',
   toggleCodeMode: 'Alt+M'
 }
@@ -129,6 +215,7 @@ export function normalizeShortcuts(raw: unknown): ShortcutConfig {
     openTasks: typeof obj.openTasks === 'string' ? obj.openTasks : DEFAULT_SHORTCUTS.openTasks,
     // Migrate the previous default (`Ctrl+Alt+V`) to the new one.
     openPaste: openPaste === 'Ctrl+Alt+V' ? DEFAULT_SHORTCUTS.openPaste : openPaste,
+    openNotes: typeof obj.openNotes === 'string' ? obj.openNotes : DEFAULT_SHORTCUTS.openNotes,
     openCode: typeof obj.openCode === 'string' ? obj.openCode : DEFAULT_SHORTCUTS.openCode,
     toggleCodeMode:
       typeof obj.toggleCodeMode === 'string' ? obj.toggleCodeMode : DEFAULT_SHORTCUTS.toggleCodeMode
@@ -154,6 +241,7 @@ export interface AppConfig {
   shortcuts: ShortcutConfig
   textureIntensity: number
   pasteManager: PasteManagerSettings
+  notes: NotesSettings
   code: CodeSettings
   hasOnboarded?: boolean
   autoUpdate?: boolean

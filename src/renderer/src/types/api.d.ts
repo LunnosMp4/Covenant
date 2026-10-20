@@ -1,4 +1,4 @@
-import type { AppConfig, ButtonVisibility, ReasoningEffort, ShortcutConfig } from '../../../shared/config'
+import type { AppConfig, ButtonVisibility, NotesSettings, ReasoningEffort, ShortcutConfig } from '../../../shared/config'
 import type { WindowView } from '../../../shared/view'
 import type { McpServer } from '../../../shared/mcp/mcp'
 import type { InstalledApp } from '../../../shared/launcher/launcher'
@@ -23,6 +23,15 @@ import type {
 } from '../../../shared/terminal/terminal'
 import type { UpdateStatus } from '../../../shared/system/update'
 import type { PasteItemDetail, PasteItemMeta, PasteManagerSettings } from '../../../shared/paste/paste'
+import type {
+  Note,
+  NoteAiEvent,
+  NoteCreateInput,
+  NoteMeetingEvent,
+  NoteMeta,
+  NoteSaveInput
+} from '../../../shared/notes/note'
+import type { NoteAiRequest } from '../../../shared/notes/prompts'
 import type { UsageMetricsResult, UsageProjectsResult } from '../../../shared/system/usage'
 import type {
   CodeActivitySummary,
@@ -101,6 +110,7 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     updateWebSearch: (enableWebSearch: boolean) => void
     updateAutoCollapseReasoning: (autoCollapseReasoning: boolean) => void
     updateTextureIntensity: (textureIntensity: number) => void
+    updateNotesSettings: (settings: Partial<NotesSettings>) => void
     updateAutoUpdate: (enabled: boolean) => void
     updateUsageProject: (projectId: string) => void
     checkForUpdates: () => Promise<UpdateStatus>
@@ -117,6 +127,7 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     onReasoningEffortUpdated: (callback: (reasoningEffort: ReasoningEffort) => void) => () => void
     onAutoCollapseReasoningUpdated: (callback: (autoCollapseReasoning: boolean) => void) => () => void
     onTextureIntensityUpdated: (callback: (textureIntensity: number) => void) => () => void
+    onNotesSettingsUpdated: (callback: (settings: NotesSettings) => void) => () => void
     onShortcutsUpdated: (callback: (shortcuts: ShortcutConfig) => void) => () => void
   }
   usage: {
@@ -229,6 +240,36 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     askInChat: (text: string) => void
     onChanged: (callback: () => void) => () => void
     onSettingsUpdated: (callback: (settings: PasteManagerSettings) => void) => () => void
+  }
+  notes: {
+    list: () => Promise<NoteMeta[]>
+    get: (id: string) => Promise<Note | null>
+    create: (input: NoteCreateInput) => Promise<Note>
+    save: (input: NoteSaveInput) => Promise<Note | null>
+    delete: (id: string) => Promise<NoteMeta[]>
+    getSettings: () => Promise<NotesSettings>
+    onChanged: (callback: (metas: NoteMeta[]) => void) => () => void
+    meeting: {
+      start: (input: { captureSystemAudio?: boolean }) => Promise<Note>
+      appendSegment: (payload: {
+        noteId: string
+        index: number
+        durationMs: number
+        data: ArrayBuffer
+      }) => Promise<{ success: boolean; error?: string }>
+      finish: (payload: { noteId: string; durationMs: number }) => Promise<Note | null>
+      cancel: (noteId: string) => Promise<void>
+      summarize: (noteId: string) => Promise<Note | null>
+      retranscribe: (noteId: string) => Promise<Note | null>
+      setActive: (active: boolean) => void
+      onEvent: (callback: (event: NoteMeetingEvent) => void) => () => void
+      onStopRequest: (callback: () => void) => () => void
+    }
+    ai: {
+      run: (request: NoteAiRequest) => Promise<{ id: string }>
+      cancel: (id: string) => void
+      onEvent: (callback: (event: NoteAiEvent) => void) => () => void
+    }
   }
   code: {
     subscribe: () => void

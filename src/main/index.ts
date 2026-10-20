@@ -4,9 +4,11 @@ import dotenv from 'dotenv'
 import { readConfig, updateConfig } from './config/configStore'
 import { CodeService, getCodeService, setCodeService } from './code/codeService'
 import { createCodeActivityTracker, disposeCodeActivityTracker } from './code/codeActivity'
+import { markInterruptedMeetings } from './features/notes'
 import { warmInstalledAppsCache } from './installedApps'
 import { registerIpc } from './ipc'
 import { setupLogger } from './logger'
+import { registerNotesProtocol } from './notes/audioProtocol'
 import { PasteManager } from './paste/pasteManager'
 import { getPasteManager, setPasteManager } from './paste/runtime'
 import { applySessionProxy, resolveOpenAIProxyUrl } from './proxy'
@@ -14,9 +16,11 @@ import { configureMcpClient, configureMcpProxy } from './services/mcpClient'
 import { terminalManager } from './terminalManager'
 import { setupAutoUpdater } from './updater'
 import {
+  configureMeetingAudioCapture,
   createTray,
   createWindow,
   destroyTray,
+  disposeMeetingRecording,
   getMainWindow,
   getMainWebContents,
   getSettingsWebContents,
@@ -33,11 +37,15 @@ const isWindows = process.platform === 'win32'
 // Must be set before app.whenReady() — top-level module scope satisfies this.
 app.commandLine.appendSwitch('js-flags', '--expose_gc')
 
-// Custom scheme for serving clipboard image blobs to the paste surface renderer
+// Custom schemes for serving clipboard images and meeting audio to the renderer
 // without base64-in-IPC. Must be registered before app.whenReady().
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'covenant-paste',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true }
+  },
+  {
+    scheme: 'covenant-note',
     privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true }
   }
 ])
@@ -106,6 +114,9 @@ app.whenReady().then(() => {
 
   createWindow()
   createTray()
+  configureMeetingAudioCapture()
+  registerNotesProtocol()
+  void markInterruptedMeetings()
 
   // Build the application index in the background so the first keystroke in
   // the search field is already instant.
@@ -180,6 +191,7 @@ app.on('will-quit', () => {
   setCodeService(null)
 
   terminalManager.disposeAll()
+  disposeMeetingRecording()
 
   // Cleanup tray
   destroyTray()

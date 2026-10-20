@@ -7,7 +7,7 @@ export interface SelectedSystemPrompt {
 export type AppMode = 'ai' | 'terminal'
 
 /** The panel shown above the command bar in AI mode. */
-export type Surface = 'chat' | 'code' | 'paste'
+export type Surface = 'chat' | 'code' | 'paste' | 'notes'
 
 export interface AttachedImage {
   id: string

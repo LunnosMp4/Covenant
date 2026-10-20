@@ -3,6 +3,17 @@ export type { LauncherApp, LauncherAppTarget } from '../../../shared/launcher/la
 export type { Preprompt } from '../../../shared/domain/preprompt'
 export type { ClearCompletedResult, Task } from '../../../shared/tasks/task'
 export type {
+  MeetingMeta,
+  MeetingSegment,
+  MeetingStatus,
+  Note,
+  NoteAiEvent,
+  NoteKind,
+  NoteMeetingEvent,
+  NoteMeta
+} from '../../../shared/notes/note'
+export type { NoteAiAction, NoteAiRequest } from '../../../shared/notes/prompts'
+export type {
   Workflow,
   WorkflowLanguage,
   WorkflowLogPayload,

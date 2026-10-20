@@ -2,9 +2,9 @@ import { nativeImage, type NativeImage } from 'electron'
 import { existsSync } from 'fs'
 
 /**
- * Builds the tray icon at runtime so the activity badge dot needs no extra
- * asset files. The Covenant tray icon is composited with a small colored dot in
- * the bottom-right corner (idle returns the plain icon).
+ * Builds the tray icon at runtime so activity badges need no extra asset files.
+ * Code activity is a colored dot in the bottom-right; an active meeting
+ * recording adds a red mic badge in the top-right.
  *
  * The source PNG can be any size, so every state is normalized to a 16pt
  * (32px @2x) image. macOS draws a status-item image at its intrinsic size and
@@ -27,6 +27,8 @@ const STATE_COLORS: Record<string, Rgb> = {
   finished: { r: 34, g: 197, b: 94 },
   error: { r: 239, g: 68, b: 68 }
 }
+
+const RECORDING_COLOR: Rgb = { r: 239, g: 68, b: 68 }
 
 let baseIconPath: string | null = null
 const cache = new Map<string, NativeImage>()
@@ -63,39 +65,7 @@ function clampByte(value: number): number {
   return value < 0 ? 0 : value > 255 ? 255 : Math.round(value)
 }
 
-/**
- * Draws the status dot with supersampled, anti-aliased edges (a hard-edged
- * circle reads as pixelated at menu-bar size). The dot is rendered on a 4x grid
- * then box-downsampled and composited over the icon with a thin white outline.
- */
-function compositeDot(base: NativeImage, color: Rgb): NativeImage {
-  const dest = base.resize({ width: PX, height: PX, quality: 'best' }).toBitmap() // premultiplied BGRA
-
-  const big = PX * SUPERSAMPLE
-  const cx = (PX - DOT_RADIUS_PX - 1 + 0.5) * SUPERSAMPLE - 0.5
-  const cy = cx
-  const outerR = DOT_RADIUS_PX * SUPERSAMPLE
-  const ringW = Math.max(1, SCALE) * SUPERSAMPLE
-  const innerR = Math.max(0, outerR - ringW)
-
-  const overlay = Buffer.alloc(big * big * 4)
-  for (let y = 0; y < big; y += 1) {
-    for (let x = 0; x < big; x += 1) {
-      const dist = Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy))
-      const aOuter = clamp01(outerR - dist + 0.5)
-      if (aOuter <= 0) continue
-      const aInner = clamp01(innerR - dist + 0.5)
-      const aRing = aOuter - aInner
-      const i = (y * big + x) * 4
-      // Premultiplied: ring is white, inner disc is the state color. The two
-      // layers are disjoint, so channels just add.
-      overlay[i] = clampByte(255 * aRing + color.b * aInner)
-      overlay[i + 1] = clampByte(255 * aRing + color.g * aInner)
-      overlay[i + 2] = clampByte(255 * aRing + color.r * aInner)
-      overlay[i + 3] = clampByte((aRing + aInner) * 255)
-    }
-  }
-
+function downsampleOverlay(dest: Buffer, overlay: Buffer, big: number): void {
   for (let y = 0; y < PX; y += 1) {
     for (let x = 0; x < PX; x += 1) {
       let sb = 0
@@ -122,17 +92,144 @@ function compositeDot(base: NativeImage, color: Rgb): NativeImage {
       dest[di + 3] = clampByte(alpha * 255 + dest[di + 3] * inv)
     }
   }
+}
 
+function compositeDot(base: NativeImage, color: Rgb): NativeImage {
+  const dest = base.resize({ width: PX, height: PX, quality: 'best' }).toBitmap() // premultiplied BGRA
+  const big = PX * SUPERSAMPLE
+  const s = SUPERSAMPLE
+  const cx = (PX - DOT_RADIUS_PX - 1 + 0.5) * s - 0.5
+  const cy = cx
+  const outerR = DOT_RADIUS_PX * s
+  const ringW = Math.max(1, SCALE) * s
+  const innerR = Math.max(0, outerR - ringW)
+
+  const overlay = Buffer.alloc(big * big * 4)
+  for (let y = 0; y < big; y += 1) {
+    for (let x = 0; x < big; x += 1) {
+      const dx = x - cx
+      const dy = y - cy
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      const aOuter = clamp01(outerR - dist + 0.5)
+      if (aOuter <= 0) continue
+      const aInner = clamp01(innerR - dist + 0.5)
+      const aRing = aOuter - aInner
+      const i = (y * big + x) * 4
+      // Premultiplied: ring is white, inner disc is the state color. The two
+      // layers are disjoint, so channels just add.
+      overlay[i] = clampByte(255 * aRing + color.b * aInner)
+      overlay[i + 1] = clampByte(255 * aRing + color.g * aInner)
+      overlay[i + 2] = clampByte(255 * aRing + color.r * aInner)
+      overlay[i + 3] = clampByte((aRing + aInner) * 255)
+    }
+  }
+
+  downsampleOverlay(dest, overlay, big)
   return nativeImage.createFromBitmap(dest, { width: PX, height: PX, scaleFactor: SCALE })
 }
 
-export function buildTrayIcon(state: string): NativeImage | null {
-  const cached = cache.get(state)
+function distanceToSegment(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number
+): number {
+  const dx = bx - ax
+  const dy = by - ay
+  const lengthSq = dx * dx + dy * dy
+  const t = lengthSq > 0 ? clamp01(((px - ax) * dx + (py - ay) * dy) / lengthSq) : 0
+  const cx = ax + t * dx
+  const cy = ay + t * dy
+  return Math.sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy))
+}
+
+function compositeMicBadge(base: NativeImage): NativeImage {
+  const dest = base.resize({ width: PX, height: PX, quality: 'best' }).toBitmap()
+  const big = PX * SUPERSAMPLE
+  const s = SUPERSAMPLE
+  const badgeCx = (25.2 + 0.5) * s - 0.5
+  const badgeCy = (6.8 + 0.5) * s - 0.5
+  const badgeR = 6.4 * s
+  const stroke = 1.05 * s
+  const micBodyRadius = 1.45 * s
+  const micCx = 25.2 * s
+  const micBodyTop = 3.6 * s
+  const micBodyBottom = 8.2 * s
+  const micArcCy = 8.1 * s
+  const micArcR = 3.05 * s
+  const micStemTop = 11.2 * s
+  const micStemBottom = 12.7 * s
+  const micBaseY = 12.8 * s
+
+  const overlay = Buffer.alloc(big * big * 4)
+  for (let y = 0; y < big; y += 1) {
+    for (let x = 0; x < big; x += 1) {
+      const dx = x - badgeCx
+      const dy = y - badgeCy
+      const badgeDist = Math.sqrt(dx * dx + dy * dy)
+      const badgeAlpha = clamp01(badgeR - badgeDist + 0.5)
+      if (badgeAlpha <= 0) continue
+
+      // White microphone glyph inside the red badge.
+      const bodyDist = distanceToSegment(x, y, micCx, micBodyTop, micCx, micBodyBottom)
+      const body = clamp01(micBodyRadius - bodyDist + 0.5)
+
+      const arcDist = Math.abs(Math.sqrt((x - micCx) * (x - micCx) + (y - micArcCy) * (y - micArcCy)) - micArcR)
+      const arc =
+        y >= micArcCy ? clamp01(stroke - arcDist + 0.5) : 0
+
+      const stemDist = distanceToSegment(
+        x,
+        y,
+        micCx,
+        micStemTop,
+        micCx,
+        micStemBottom
+      )
+      const stem = clamp01(0.6 * s - stemDist + 0.5)
+      const baseDist = distanceToSegment(
+        x,
+        y,
+        micCx - 1.9 * s,
+        micBaseY,
+        micCx + 1.9 * s,
+        micBaseY
+      )
+      const baseLine = clamp01(0.6 * s - baseDist + 0.5)
+
+      const whiteAlpha = Math.max(body, arc, stem, baseLine)
+      const i = (y * big + x) * 4
+      const redR = RECORDING_COLOR.r
+      const redG = RECORDING_COLOR.g
+      const redB = RECORDING_COLOR.b
+
+      // Badge red first, then the white glyph composited over it.
+      const aBadge = badgeAlpha
+      const aWhite = whiteAlpha * badgeAlpha
+      const aRed = aBadge - aWhite
+      overlay[i] = clampByte(255 * aWhite + redB * aRed)
+      overlay[i + 1] = clampByte(255 * aWhite + redG * aRed)
+      overlay[i + 2] = clampByte(255 * aWhite + redR * aRed)
+      overlay[i + 3] = clampByte(aBadge * 255)
+    }
+  }
+
+  downsampleOverlay(dest, overlay, big)
+  return nativeImage.createFromBitmap(dest, { width: PX, height: PX, scaleFactor: SCALE })
+}
+
+export function buildTrayIcon(state: string, recording = false): NativeImage | null {
+  const cacheKey = `${state}:${recording ? 'recording' : 'idle'}`
+  const cached = cache.get(cacheKey)
   if (cached) return cached
+
   const base = baseIcon()
   if (!base) return null
   const color = STATE_COLORS[state]
-  const image = color ? compositeDot(base, color) : normalizedBase(base)
-  cache.set(state, image)
+  let image = color ? compositeDot(base, color) : normalizedBase(base)
+  if (recording) image = compositeMicBadge(image)
+  cache.set(cacheKey, image)
   return image
 }

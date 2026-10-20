@@ -16,6 +16,7 @@ import {
   ImageIcon,
   MenuIcon,
   MicIcon,
+  NotesIcon,
   PinIcon,
   SearchIcon,
   SendIcon,
@@ -100,6 +101,8 @@ import CodePanel from './code/CodePanel'
 import CodePermissionModal from './code/CodePermissionModal'
 import { useCodeSession } from './code/useCodeSession'
 import PasteSurface from './paste/PasteSurface'
+import NotesSurface from './notes/NotesSurface'
+import { useMeetingRecorder } from './notes/useMeetingRecorder'
 
 export default function App(): JSX.Element {
   const [visible, setVisible] = useState(false)
@@ -118,6 +121,8 @@ export default function App(): JSX.Element {
   const [activeSurface, setActiveSurface] = useState<Surface | null>(null)
   const isChatOpen = activeSurface === 'chat'
   const isCodeOpen = activeSurface === 'code'
+  const isNotesOpen = activeSurface === 'notes'
+  const isFullSurface = activeSurface === 'paste' || activeSurface === 'notes'
   const setIsChatOpen = useCallback<React.Dispatch<React.SetStateAction<boolean>>>((value) => {
     setActiveSurface((current) => {
       const next =
@@ -161,7 +166,7 @@ export default function App(): JSX.Element {
   >({})
   const [workflowLogsOpenById, setWorkflowLogsOpenById] = useState<Record<string, boolean>>({})
   const [activePopup, setActivePopup] = useState<ActivePopup | null>(null)
-  const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true, tasks: true, code: true })
+  const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true, tasks: true, notes: true, code: true })
   const [chatModel, setChatModel] = useState<string>(DEFAULT_CHAT_MODEL)
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT)
   const [autoCollapseReasoning, setAutoCollapseReasoning] = useState(true)
@@ -232,6 +237,10 @@ export default function App(): JSX.Element {
       setActiveSurface('code')
     } else if (view === 'paste') {
       setActiveSurface('paste')
+    } else if (view === 'notes') {
+      setActiveSurface('notes')
+      setIsExpanded(true)
+      setIsWide(true)
     } else if (view === 'tasks') {
       setActiveSurface(null)
       setActivePopup('tasks')
@@ -250,6 +259,7 @@ export default function App(): JSX.Element {
     if (activeSurface === 'chat') return 'chat'
     if (activeSurface === 'code') return 'code'
     if (activeSurface === 'paste') return 'paste'
+    if (activeSurface === 'notes') return 'notes'
     return 'bar'
   }, [mode, activePopup, activeSurface])
 
@@ -293,6 +303,7 @@ export default function App(): JSX.Element {
     setActivePopup
   })
   const code = useCodeSession()
+  const meeting = useMeetingRecorder()
 
   function getFullPrompt(): string {
     const div = inputRef.current
@@ -570,10 +581,16 @@ export default function App(): JSX.Element {
   }, [])
 
   // The horizontal expand only makes sense for the surface currently shown, so
-  // drop it when the mode or chat visibility changes.
+  // drop it when the mode or chat visibility changes. Notes opens fully
+  // maximized (both axes, the same as Alt+1) because it needs the room.
   useEffect(() => {
-    setIsWide(false)
-  }, [mode, isChatOpen])
+    if (activeSurface === 'notes') {
+      setIsExpanded(true)
+      setIsWide(true)
+      return
+    }
+    if (isChatOpen || activeSurface === null) setIsWide(false)
+  }, [mode, isChatOpen, activeSurface])
 
   // Make the reserved (empty) area of the oversized window click-through so the
   // desktop/apps behind stay usable, and re-enable mouse events over content.
@@ -2297,6 +2314,11 @@ export default function App(): JSX.Element {
       if (origin?.closest?.('.terminal-rail')) {
         return
       }
+      // Notes has its own inputs, toolbar and keyboard handling. Don't let the
+      // command bar's Tab/search shortcuts hijack typing inside a note.
+      if (activeSurface === 'notes') {
+        return
+      }
 
       if (
         mode === 'ai' &&
@@ -2364,6 +2386,7 @@ export default function App(): JSX.Element {
     [
       activeConversation,
       activePopup,
+      activeSurface,
       conversations,
       focusTerminalComposer,
       isChatOpen,
@@ -2448,9 +2471,15 @@ export default function App(): JSX.Element {
     ? Math.max(CHAT_SCROLL_HEIGHT, viewportHeight - 210)
     : CHAT_SCROLL_HEIGHT
   const terminalSurfaceHeight = surfaceBodyHeight + 80
-  // The paste view gets the same header allowance as the terminal so its
-  // search/filter/list stack has room while matching the other surfaces.
-  const pasteSurfaceHeight = surfaceBodyHeight + 80
+  // Full-bleed surfaces (paste/notes) get the same header allowance as the
+  // terminal so their search/filter/list stack has room while matching the
+  // other surfaces.
+  const fullSurfaceHeight = surfaceBodyHeight + 80
+  // Notes gets extra vertical room compared to chat/code when maximized: the
+  // command bar is hidden for full surfaces, so use nearly the whole viewport.
+  const notesSurfaceHeight = isExpanded
+    ? Math.max(fullSurfaceHeight, viewportHeight - 80)
+    : fullSurfaceHeight
 
   return (
     <div
@@ -2546,8 +2575,8 @@ export default function App(): JSX.Element {
               {mode === 'ai' && activeSurface !== null && (
                 <MeasuredPanel
                   key="surface-panel"
-                  contentClassName={activeSurface === 'paste' ? 'p-2' : 'p-4'}
-                  className={`relative ${activeSurface === 'paste' ? '' : 'mb-2'} rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} chat-surface command-surface texture-surface pointer-events-auto`}
+                  contentClassName={isFullSurface ? 'p-2' : 'p-4'}
+                  className={`relative ${isFullSurface ? '' : 'mb-2'} rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} chat-surface command-surface texture-surface pointer-events-auto`}
                   width={isWide ? wideWidth : 750}
                 >
                   {isChatOpen ? (
@@ -2831,10 +2860,22 @@ export default function App(): JSX.Element {
                       onToggleExpand={handleToggleExpand}
                       onTogglePin={handleTogglePin}
                     />
+                  ) : isNotesOpen ? (
+                    <NotesSurface
+                      active
+                      height={notesSurfaceHeight}
+                      isExpanded={isExpanded}
+                      isWide={isWide}
+                      isAltHeld={isAltHeld}
+                      isPinned={isPinned}
+                      onToggleExpand={handleToggleExpand}
+                      onTogglePin={handleTogglePin}
+                      meeting={meeting}
+                    />
                   ) : (
                     <PasteSurface
                       active
-                      height={pasteSurfaceHeight}
+                      height={fullSurfaceHeight}
                       isExpanded={isExpanded}
                       isWide={isWide}
                       isAltHeld={isAltHeld}
@@ -2847,7 +2888,7 @@ export default function App(): JSX.Element {
               )}
             </AnimatePresence>
 
-            {activeSurface !== 'paste' && (
+            {!isFullSurface && (
             <motion.div
               ref={barRef}
               className={`relative flex items-center w-[750px] max-w-full rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10 transition-opacity duration-100 texture-surface opacity-100 pointer-events-auto`}
@@ -3189,6 +3230,24 @@ export default function App(): JSX.Element {
                     aria-pressed={activePopup === 'tasks'}
                   >
                     <TasksIcon />
+                  </button>
+                )}
+
+                {buttonVisibility.notes && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setMode('ai')
+                      setActivePopup(null)
+                      setActiveSurface('notes')
+                      setIsExpanded(true)
+                      setIsWide(true)
+                    }}
+                    className="flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all duration-150"
+                    aria-label="Notes"
+                    aria-pressed={isNotesOpen}
+                  >
+                    <NotesIcon />
                   </button>
                 )}
 

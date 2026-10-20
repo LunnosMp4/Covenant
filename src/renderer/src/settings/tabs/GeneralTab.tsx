@@ -424,6 +424,31 @@ export default function GeneralTab({
 
           <div>
             <label className="mb-2 block text-sm font-medium text-neutral-300">
+              Open Notes &amp; Meetings
+            </label>
+            <p className="mb-2 text-xs text-neutral-500">
+              Opens the notes surface. From another view it switches to Notes; pressing it again
+              closes the window.
+            </p>
+            <ShortcutRecorder
+              value={shortcuts.openNotes}
+              onChange={(val) => onShortcutChange('openNotes', val)}
+              conflictWarning={
+                shortcuts.openNotes && shortcuts.openApp && shortcuts.openNotes === shortcuts.openApp
+                  ? 'This shortcut is also assigned to Open App'
+                  : shortcuts.openNotes && shortcuts.openPaste && shortcuts.openNotes === shortcuts.openPaste
+                    ? 'This shortcut is also assigned to Open Paste Manager'
+                    : shortcuts.openNotes && shortcuts.openTasks && shortcuts.openNotes === shortcuts.openTasks
+                      ? 'This shortcut is also assigned to Open Tasks'
+                      : null
+              }
+              defaultShortcut={DEFAULT_SHORTCUTS.openNotes}
+              onReset={() => onShortcutChange('openNotes', DEFAULT_SHORTCUTS.openNotes)}
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-neutral-300">
               Open Covenant Code
             </label>
             <p className="mb-2 text-xs text-neutral-500">

@@ -46,6 +46,37 @@ export function TasksIcon(): JSX.Element {
   )
 }
 
+export function NotesIcon(): JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+      <path d="M14 3v6h6" />
+      <path d="M8 13h8" />
+      <path d="M8 17h5" />
+    </svg>
+  )
+}
+
+export function MeetingIcon({ className }: { className?: string }): JSX.Element {
+  return (
+    <svg
+      className={className}
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="2.5" y="6" width="13" height="12" rx="2" />
+      <path d="m15.5 10 5-3v10l-5-3" />
+    </svg>
+  )
+}
+
 export function SpinnerIcon(): JSX.Element {
   return (
     <svg

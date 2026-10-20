@@ -7,6 +7,7 @@ import type { Task } from '../../shared/tasks/task'
 import type { Workflow } from '../../shared/domain/workflow'
 import type { CodeProject } from '../../shared/code/code'
 import type { CodeConnection } from '../../shared/code/connection'
+import type { NoteMeta } from '../../shared/notes/note'
 
 export interface AppStoreSchema {
   preprompts: Preprompt[]
@@ -16,6 +17,7 @@ export interface AppStoreSchema {
   conversations: ChatConversation[]
   tasks: Task[]
   gamification: GamificationState
+  notes: NoteMeta[]
   codeProjects: CodeProject[]
   codeConnections: CodeConnection[]
   codeActiveConnectionId: string
@@ -35,6 +37,7 @@ export const appStore = new StoreClass<AppStoreSchema>({
     conversations: [],
     tasks: [],
     gamification: DEFAULT_GAMIFICATION,
+    notes: [],
     codeProjects: [],
     codeConnections: [],
     codeActiveConnectionId: 'local'
@@ -165,6 +168,31 @@ export const appStore = new StoreClass<AppStoreSchema>({
         lastActiveDate: { type: ['string', 'null'] }
       },
       required: ['currentLevel', 'currentXP', 'totalLifetimeXP', 'streakDays', 'lastActiveDate']
+    },
+    notes: {
+      type: 'array',
+      default: [],
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          id: { type: 'string' },
+          title: { type: 'string' },
+          createdAt: { type: 'number' },
+          updatedAt: { type: 'number' },
+          pinned: { type: 'boolean' },
+          tags: { type: 'array', items: { type: 'string' } },
+          kind: { type: 'string', enum: ['note', 'meeting'] },
+          preview: { type: 'string' },
+          meetingStatus: {
+            type: 'string',
+            enum: ['recording', 'transcribing', 'summarizing', 'completed', 'error']
+          },
+          meetingDurationMs: { type: 'number' },
+          meetingSegmentCount: { type: 'number' }
+        },
+        required: ['id', 'title', 'createdAt', 'updatedAt', 'pinned', 'kind']
+      }
     },
     conversations: {
       type: 'array',

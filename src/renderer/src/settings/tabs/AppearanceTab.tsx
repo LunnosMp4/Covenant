@@ -152,6 +152,12 @@ export default function AppearanceTab({
             label="Tasks"
             description="Show the Tasks button to quickly capture and check off to-dos."
           />
+          <MinimalistToggle
+            checked={buttonVisibility.notes}
+            onChange={(checked) => onButtonVisibilityChange({ ...buttonVisibility, notes: checked })}
+            label="Notes & Meetings"
+            description="Show the Notes button to open notes and start a meeting recording."
+          />
         </div>
       </SectionCard>
 

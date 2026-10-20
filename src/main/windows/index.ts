@@ -1,4 +1,16 @@
-import { app, BrowserWindow, globalShortcut, Menu, protocol, screen, shell, Tray } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  desktopCapturer,
+  globalShortcut,
+  Menu,
+  powerSaveBlocker,
+  protocol,
+  screen,
+  session,
+  shell,
+  Tray
+} from 'electron'
 import { existsSync, promises as fsPromises } from 'fs'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
@@ -38,6 +50,8 @@ let trayShortcutDisplay = 'Disabled'
 let codeActivity: CodeActivitySummary | null = null
 let isVisible = false
 let isPinned = false
+let isMeetingRecording = false
+let meetingPowerBlockerId: number | null = null
 // Mirror of the surface the renderer is currently showing. Only meaningful
 // while the window is visible; it drives the "same shortcut again closes"
 // behaviour of requestView().
@@ -178,6 +192,10 @@ export function createWindow(): void {
     )
   })
 
+  mainWindow.webContents.on('render-process-gone', () => {
+    setMeetingRecordingActive(false)
+  })
+
   mainWindow.on('ready-to-show', () => {
     // Don't show on start – wait for shortcut
   })
@@ -304,6 +322,94 @@ export function registerPasteProtocol(): void {
     console.error('Failed to register paste protocol handler:', error)
   }
 }
+
+/**
+ * Grants the main command window system-audio capture for meeting recording.
+ * The renderer asks for getDisplayMedia() with audio; Electron resolves it to
+ * the primary screen's loopback audio (CoreAudio Tap on macOS 14.2+, WASAPI on
+ * Windows).
+ */
+export function configureMeetingAudioCapture(): void {
+  session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
+    const deny = (): void => callback(null as never)
+    try {
+      if (!request.audioRequested || !mainWindow || mainWindow.isDestroyed()) {
+        deny()
+        return
+      }
+
+      const mainFrame = mainWindow.webContents.mainFrame
+      if (!request.frame || request.frame.top !== mainFrame) {
+        deny()
+        return
+      }
+
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width: 0, height: 0 }
+      })
+      const source = sources[0]
+      if (!source) {
+        deny()
+        return
+      }
+
+      callback({ video: source, audio: 'loopback' })
+    } catch (error) {
+      console.error('Failed to resolve meeting audio capture:', error)
+      deny()
+    }
+  })
+}
+
+export function setMeetingRecordingActive(active: boolean): void {
+  const next = active === true
+  if (isMeetingRecording === next) return
+  isMeetingRecording = next
+
+  const contents = getMainWebContents()
+  if (contents) {
+    contents.setBackgroundThrottling(!next)
+  }
+
+  if (next) {
+    if (meetingPowerBlockerId === null) {
+      meetingPowerBlockerId = powerSaveBlocker.start('prevent-app-suspension')
+    }
+  } else if (meetingPowerBlockerId !== null) {
+    if (powerSaveBlocker.isStarted(meetingPowerBlockerId)) {
+      powerSaveBlocker.stop(meetingPowerBlockerId)
+    }
+    meetingPowerBlockerId = null
+  }
+
+  refreshTray()
+}
+
+export function stopMeetingRecording(): void {
+  const contents = getMainWebContents()
+  if (contents && !contents.isDestroyed()) {
+    contents.send('notes:meeting-stop')
+  }
+  // The renderer normally clears this after finalizing. If it is gone, clear it
+  // now so the tray doesn't keep showing a stale mic badge.
+  if (!contents || contents.isDestroyed()) {
+    setMeetingRecordingActive(false)
+    return
+  }
+  setTimeout(() => {
+    if (isMeetingRecording) setMeetingRecordingActive(false)
+  }, 4_000)
+}
+
+export function disposeMeetingRecording(): void {
+  if (meetingPowerBlockerId !== null && powerSaveBlocker.isStarted(meetingPowerBlockerId)) {
+    powerSaveBlocker.stop(meetingPowerBlockerId)
+  }
+  meetingPowerBlockerId = null
+  isMeetingRecording = false
+}
+
 
 // ---------------------------------------------------------------------------
 // Two-phase window show/hide
@@ -515,13 +621,25 @@ function codeStatusLabel(summary: CodeActivitySummary): string | null {
 
 function refreshTrayTooltip(): void {
   if (!tray || tray.isDestroyed()) return
-  const label = codeActivity ? codeStatusLabel(codeActivity) : null
-  tray.setToolTip(label ? `Covenant — ${label}` : `Covenant - ${trayShortcutDisplay}`)
+  const codeLabel = codeActivity ? codeStatusLabel(codeActivity) : null
+  const labels: string[] = []
+  if (isMeetingRecording) labels.push('Meeting recording')
+  if (codeLabel) labels.push(codeLabel)
+  tray.setToolTip(
+    labels.length > 0 ? `Covenant — ${labels.join(' · ')}` : `Covenant - ${trayShortcutDisplay}`
+  )
 }
 
 function buildTrayContextMenu(): Menu {
   const label = codeActivity ? codeStatusLabel(codeActivity) : null
   const template: Electron.MenuItemConstructorOptions[] = []
+  if (isMeetingRecording) {
+    template.push({
+      label: 'Stop meeting recording',
+      click: () => stopMeetingRecording()
+    })
+    template.push({ type: 'separator' })
+  }
   if (label) {
     template.push({ label, enabled: false })
     template.push({ label: 'Open Code', click: () => openCodeSurface() })
@@ -529,6 +647,7 @@ function buildTrayContextMenu(): Menu {
   }
   template.push(
     { label: 'Open Covenant', click: () => showWindow() },
+    { label: 'Open Notes', click: () => requestView('notes') },
     { label: 'Settings', click: () => createSettingsWindow() },
     { type: 'separator' },
     { label: 'Check for Updates…', click: () => checkForUpdatesManually() },
@@ -541,7 +660,7 @@ function buildTrayContextMenu(): Menu {
 
 function refreshTray(): void {
   if (!tray || tray.isDestroyed()) return
-  const icon = buildTrayIcon(codeActivity?.state ?? 'idle')
+  const icon = buildTrayIcon(codeActivity?.state ?? 'idle', isMeetingRecording)
   if (icon && !icon.isEmpty()) tray.setImage(icon)
   refreshTrayTooltip()
   tray.setContextMenu(buildTrayContextMenu())
@@ -620,6 +739,17 @@ export function registerShortcuts(config: AppConfig): void {
     }
   }
 
+  if (shortcuts.openNotes) {
+    try {
+      const ok = globalShortcut.register(shortcuts.openNotes, () => requestView('notes'))
+      if (!ok) {
+        console.warn(`Failed to register global shortcut: ${shortcuts.openNotes} (may conflict with another app)`)
+      }
+    } catch (error) {
+      console.warn(`Error registering global shortcut '${shortcuts.openNotes}':`, error)
+    }
+  }
+
   if (shortcuts.openCode) {
     try {
       const ok = globalShortcut.register(shortcuts.openCode, openCodeSurface)
@@ -682,7 +812,7 @@ export function createTray(): void {
     const config = readConfig()
     trayShortcutDisplay = getShortcutDisplay(config.shortcuts?.openApp ?? DEFAULT_SHORTCUTS.openApp)
 
-    const initialIcon = buildTrayIcon('idle')
+    const initialIcon = buildTrayIcon('idle', isMeetingRecording)
     tray = initialIcon && !initialIcon.isEmpty() ? new Tray(initialIcon) : new Tray(trayIconPath)
 
     refreshTray()
