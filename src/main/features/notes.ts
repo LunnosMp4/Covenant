@@ -10,6 +10,7 @@ import type {
   NoteSaveInput
 } from '../../shared/notes/note'
 import {
+  isValidNoteId,
   normalizeNote,
   sortNoteMetas,
   toNoteMeta
@@ -18,6 +19,16 @@ import { appStore } from '../store/appStore'
 import { sendToMain } from '../windows/broadcast'
 
 const notesDir = (): string => join(app.getPath('userData'), 'notes')
+
+/**
+ * Note ids arrive from the renderer and are used as folder names, so validate
+ * them before they touch the filesystem (path traversal hardening).
+ */
+function normalizeNoteId(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const id = value.trim()
+  return isValidNoteId(id) ? id : null
+}
 
 export function getNotesRoot(): string {
   return notesDir()
@@ -41,12 +52,14 @@ const writeQueues = new Map<string, Promise<unknown>>()
 function withNoteLock<T>(noteId: string, task: () => Promise<T>): Promise<T> {
   const previous = writeQueues.get(noteId) ?? Promise.resolve()
   const next = previous.then(task, task)
-  writeQueues.set(
-    noteId,
-    next.catch(() => {
-      // Keep the chain alive after a failed write.
-    })
-  )
+  const settled = next.catch(() => {
+    // Keep the chain alive after a failed write.
+  })
+  writeQueues.set(noteId, settled)
+  // Don't keep an entry per note forever once its queue drains.
+  void settled.then(() => {
+    if (writeQueues.get(noteId) === settled) writeQueues.delete(noteId)
+  })
   return next
 }
 
@@ -58,7 +71,13 @@ async function readNoteFile(noteId: string): Promise<Note | null> {
   try {
     const raw = await fs.readFile(getNoteFilePath(noteId), 'utf-8')
     const parsed = JSON.parse(raw) as unknown
-    return normalizeNote(parsed, noteId)
+    // Trust the directory name over the stored id so a copied/renamed note file
+    // can't redirect later writes to a different note folder.
+    const withCanonicalId =
+      parsed && typeof parsed === 'object'
+        ? { ...(parsed as Record<string, unknown>), id: noteId }
+        : parsed
+    return normalizeNote(withCanonicalId, noteId)
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code
     if (code === 'ENOENT') return null
@@ -80,7 +99,9 @@ function emitChanged(metas: NoteMeta[]): void {
 async function writeNoteFile(note: Note): Promise<void> {
   await ensureBaseDirs(note.id)
   await fs.mkdir(dirname(getNoteFilePath(note.id)), { recursive: true })
-  await fs.writeFile(getNoteFilePath(note.id), JSON.stringify(note, null, 2), 'utf-8')
+  // Compact JSON: autosave rewrites this file every ~650ms, and notes can be
+  // multi-megabyte, so avoid doubling the write size with pretty-printing.
+  await fs.writeFile(getNoteFilePath(note.id), JSON.stringify(note), 'utf-8')
 }
 
 async function persistNote(note: Note): Promise<Note> {
@@ -95,7 +116,7 @@ export function getNoteMetas(): NoteMeta[] {
 }
 
 export async function getNote(noteId: string): Promise<Note | null> {
-  const id = typeof noteId === 'string' ? noteId.trim() : ''
+  const id = normalizeNoteId(noteId)
   if (!id) return null
   return readNoteFile(id)
 }
@@ -127,7 +148,7 @@ export async function createNote(input: NoteCreateInput = {}): Promise<Note> {
  * by the meeting service and is intentionally preserved here.
  */
 export async function saveNote(input: NoteSaveInput): Promise<Note | null> {
-  const id = typeof input?.id === 'string' ? input.id.trim() : ''
+  const id = normalizeNoteId(input?.id)
   if (!id) return null
 
   return withNoteLock(id, async () => {
@@ -151,7 +172,7 @@ export async function saveNote(input: NoteSaveInput): Promise<Note | null> {
 }
 
 export async function deleteNote(noteId: string): Promise<NoteMeta[]> {
-  const id = typeof noteId === 'string' ? noteId.trim() : ''
+  const id = normalizeNoteId(noteId)
   if (!id) return getNoteMetas()
 
   await withNoteLock(id, async () => {
@@ -169,7 +190,7 @@ export async function updateNoteMeeting(
   noteId: string,
   updater: (meeting: MeetingMeta, note: Note) => MeetingMeta
 ): Promise<Note | null> {
-  const id = typeof noteId === 'string' ? noteId.trim() : ''
+  const id = normalizeNoteId(noteId)
   if (!id) return null
 
   return withNoteLock(id, async () => {
@@ -194,8 +215,10 @@ export async function applyMeetingRecap(
   recap: string,
   title?: string
 ): Promise<Note | null> {
-  return withNoteLock(noteId, async () => {
-    const existing = await readNoteFile(noteId)
+  const id = normalizeNoteId(noteId)
+  if (!id) return null
+  return withNoteLock(id, async () => {
+    const existing = await readNoteFile(id)
     if (!existing || !existing.meeting) return null
     const next = normalizeNote(
       {
@@ -210,7 +233,7 @@ export async function applyMeetingRecap(
           error: undefined
         }
       },
-      noteId
+      id
     )
     return persistNote(next)
   })

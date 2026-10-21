@@ -100,6 +100,7 @@ export function useMeetingRecorder(): MeetingRecorderApi {
   const reset = useCallback((): void => {
     recordingRef.current = false
     startingRef.current = false
+    discardRef.current = false
     noteIdRef.current = null
     startedAtRef.current = null
     segmentResolverRef.current = null
@@ -331,6 +332,8 @@ export function useMeetingRecorder(): MeetingRecorderApi {
     async (options?: { captureSystemAudio?: boolean }): Promise<Note | null> => {
       if (startingRef.current || recordingRef.current || state.status === 'starting') return null
       startingRef.current = true
+      // A previous "discard" must never leak into this recording.
+      discardRef.current = false
       noteIdRef.current = null
       startedAtRef.current = null
 
@@ -408,6 +411,37 @@ export function useMeetingRecorder(): MeetingRecorderApi {
     [captureStreams, startSegment, state.status, stopTracks, tick]
   )
 
+  const summarizeMeeting = useCallback(async (noteId?: string): Promise<void> => {
+    const id = noteId ?? noteIdRef.current
+    if (!id) return
+    if (id === noteIdRef.current) {
+      setState((previous) => ({ ...previous, status: 'summarizing', error: null }))
+    }
+    try {
+      const note = await window.api?.notes?.meeting?.summarize?.(id)
+      if (note) {
+        setState((previous) => {
+          if (note.id !== noteIdRef.current) {
+            return previous
+          }
+          return {
+            ...previous,
+            note,
+            status: note.meeting?.status === 'completed' ? 'completed' : 'error',
+            transcript: note.meeting?.transcript ?? previous.transcript,
+            error: note.meeting?.error ?? null
+          }
+        })
+      }
+    } catch (error) {
+      setState((previous) => ({
+        ...previous,
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unable to generate the recap.'
+      }))
+    }
+  }, [])
+
   const stopMeeting = useCallback(async (): Promise<void> => {
     const noteId = noteIdRef.current
     if (!noteId || (!recordingRef.current && state.status !== 'starting')) return
@@ -457,8 +491,7 @@ export function useMeetingRecorder(): MeetingRecorderApi {
     if (note.meeting?.status === 'completed' && note.meeting.transcript.trim()) {
       await summarizeMeeting(note.id)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clearTimers, state.status, stopTracks, waitForSegmentStop])
+  }, [clearTimers, state.status, stopTracks, summarizeMeeting, waitForSegmentStop])
 
   const cancelMeeting = useCallback(async (): Promise<void> => {
     const noteId = noteIdRef.current
@@ -474,37 +507,6 @@ export function useMeetingRecorder(): MeetingRecorderApi {
     }
     reset()
   }, [clearTimers, reset, stopTracks, waitForSegmentStop])
-
-  const summarizeMeeting = useCallback(async (noteId?: string): Promise<void> => {
-    const id = noteId ?? noteIdRef.current
-    if (!id) return
-    if (id === noteIdRef.current) {
-      setState((previous) => ({ ...previous, status: 'summarizing', error: null }))
-    }
-    try {
-      const note = await window.api?.notes?.meeting?.summarize?.(id)
-      if (note) {
-        setState((previous) => {
-          if (note.id !== noteIdRef.current) {
-            return previous
-          }
-          return {
-            ...previous,
-            note,
-            status: note.meeting?.status === 'completed' ? 'completed' : 'error',
-            transcript: note.meeting?.transcript ?? previous.transcript,
-            error: note.meeting?.error ?? null
-          }
-        })
-      }
-    } catch (error) {
-      setState((previous) => ({
-        ...previous,
-        status: 'error',
-        error: error instanceof Error ? error.message : 'Unable to generate the recap.'
-      }))
-    }
-  }, [])
 
   // The tray's "Stop meeting recording" action is delivered to the renderer so
   // the MediaRecorder can flush its final segment before the note is finalized.

@@ -1,11 +1,9 @@
 import { ipcMain } from 'electron'
 import type { ChatConversation } from '../../shared/chat/chat'
 import type { Preprompt } from '../../shared/domain/preprompt'
-import type { LauncherApp } from '../../shared/launcher/launcher-app'
 import type { Workflow } from '../../shared/domain/workflow'
 import { readConfig } from '../config/configStore'
 import { deleteConversation, getConversations, saveConversation } from '../features/conversations'
-import { deleteApp, getApps, saveApp } from '../features/launcherApps'
 import {
   deletePreprompt,
   getGlobalInstructions,
@@ -68,18 +66,6 @@ export function registerStoreIpc(): void {
 
   ipcMain.handle('save-global-instructions', (_event, value: string) => {
     return saveGlobalInstructions(value)
-  })
-
-  ipcMain.handle('get-apps', () => {
-    return getApps()
-  })
-
-  ipcMain.handle('save-app', (_event, payload: Partial<LauncherApp>) => {
-    return saveApp(payload)
-  })
-
-  ipcMain.handle('delete-app', (_event, appId: string) => {
-    return deleteApp(appId)
   })
 
   ipcMain.handle('get-installed-apps', () => {

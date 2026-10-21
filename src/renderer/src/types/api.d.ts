@@ -5,7 +5,6 @@ import type { InstalledApp } from '../../../shared/launcher/launcher'
 import type {
   ClearCompletedResult,
   GamificationState,
-  LauncherApp,
   Preprompt,
   Task,
   Workflow,
@@ -180,6 +179,8 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
   }
   voice: {
     transcribe: (audioBuffer: ArrayBuffer) => Promise<string>
+    setRecordingActive: (active: boolean) => void
+    onStopRequest: (callback: () => void) => () => void
   }
   store: {
     getPreprompts: () => Promise<Preprompt[]>
@@ -187,9 +188,6 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     deletePreprompt: (prepromptId: string) => Promise<Preprompt[]>
     getGlobalInstructions: () => Promise<string>
     saveGlobalInstructions: (value: string) => Promise<string>
-    getApps: () => Promise<LauncherApp[]>
-    saveApp: (launcherApp: Partial<LauncherApp>) => Promise<LauncherApp[]>
-    deleteApp: (appId: string) => Promise<LauncherApp[]>
     getWorkflows: () => Promise<Workflow[]>
     saveWorkflow: (workflow: Partial<Workflow>) => Promise<Workflow[]>
     deleteWorkflow: (workflowId: string) => Promise<Workflow[]>
@@ -202,7 +200,6 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     clearCompletedTasks: () => Promise<ClearCompletedResult>
     onTasksUpdated: (callback: (tasks: Task[]) => void) => () => void
   }
-  selectFile: () => Promise<string>
   getFavicon: (url: string) => Promise<string>
   installedApps: {
     list: () => Promise<InstalledApp[]>

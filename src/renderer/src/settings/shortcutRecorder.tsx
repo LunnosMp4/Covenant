@@ -24,11 +24,9 @@ import {
   type PasteManagerSettings
 } from '../../../shared/paste/paste'
 import type { McpServer } from '../../../shared/mcp/mcp'
-import type { LauncherApp } from '../types/renderer'
 import type { Preprompt } from '../types/renderer'
 import type { Workflow } from '../types/renderer'
 import { getAppBadgeText } from '../utils/helpers'
-import { formatTargetsSummary, normalizeLaunchTargets } from '../utils/launcher/launcherTargets'
 
 const MODIFIER_KEY_DISPLAY: Record<string, string> = {
   Control: 'Ctrl',

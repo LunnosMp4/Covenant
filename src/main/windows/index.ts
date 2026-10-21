@@ -51,6 +51,7 @@ let codeActivity: CodeActivitySummary | null = null
 let isVisible = false
 let isPinned = false
 let isMeetingRecording = false
+let isVoiceRecording = false
 let meetingPowerBlockerId: number | null = null
 // Mirror of the surface the renderer is currently showing. Only meaningful
 // while the window is visible; it drives the "same shortcut again closes"
@@ -194,6 +195,7 @@ export function createWindow(): void {
 
   mainWindow.webContents.on('render-process-gone', () => {
     setMeetingRecordingActive(false)
+    setVoiceRecordingActive(false)
   })
 
   mainWindow.on('ready-to-show', () => {
@@ -201,7 +203,9 @@ export function createWindow(): void {
   })
 
   mainWindow.on('blur', () => {
-    if (isVisible && !isPinned && !isPasteBlurSuppressed()) {
+    // Keep the bar on screen while dictating so a stray click outside doesn't
+    // dismiss the command bar mid-recording.
+    if (isVisible && !isPinned && !isVoiceRecording && !isPasteBlurSuppressed()) {
       hideWindow()
     }
   })
@@ -402,12 +406,34 @@ export function stopMeetingRecording(): void {
   }, 4_000)
 }
 
+/**
+ * Reflects the command-bar mic dictation (voice input) in the tray with the
+ * same mic badge used for meeting recordings.
+ */
+export function setVoiceRecordingActive(active: boolean): void {
+  const next = active === true
+  if (isVoiceRecording === next) return
+  isVoiceRecording = next
+  refreshTray()
+}
+
+export function stopVoiceRecording(): void {
+  const contents = getMainWebContents()
+  if (!contents || contents.isDestroyed()) {
+    setVoiceRecordingActive(false)
+    return
+  }
+  // The renderer stops its MediaRecorder and clears the badge on stop.
+  contents.send('voice:stop-recording')
+}
+
 export function disposeMeetingRecording(): void {
   if (meetingPowerBlockerId !== null && powerSaveBlocker.isStarted(meetingPowerBlockerId)) {
     powerSaveBlocker.stop(meetingPowerBlockerId)
   }
   meetingPowerBlockerId = null
   isMeetingRecording = false
+  isVoiceRecording = false
 }
 
 
@@ -624,6 +650,7 @@ function refreshTrayTooltip(): void {
   const codeLabel = codeActivity ? codeStatusLabel(codeActivity) : null
   const labels: string[] = []
   if (isMeetingRecording) labels.push('Meeting recording')
+  if (isVoiceRecording) labels.push('Voice recording')
   if (codeLabel) labels.push(codeLabel)
   tray.setToolTip(
     labels.length > 0 ? `Covenant — ${labels.join(' · ')}` : `Covenant - ${trayShortcutDisplay}`
@@ -637,6 +664,13 @@ function buildTrayContextMenu(): Menu {
     template.push({
       label: 'Stop meeting recording',
       click: () => stopMeetingRecording()
+    })
+    template.push({ type: 'separator' })
+  }
+  if (isVoiceRecording) {
+    template.push({
+      label: 'Stop voice recording',
+      click: () => stopVoiceRecording()
     })
     template.push({ type: 'separator' })
   }
@@ -660,7 +694,7 @@ function buildTrayContextMenu(): Menu {
 
 function refreshTray(): void {
   if (!tray || tray.isDestroyed()) return
-  const icon = buildTrayIcon(codeActivity?.state ?? 'idle', isMeetingRecording)
+  const icon = buildTrayIcon(codeActivity?.state ?? 'idle', isMeetingRecording || isVoiceRecording)
   if (icon && !icon.isEmpty()) tray.setImage(icon)
   refreshTrayTooltip()
   tray.setContextMenu(buildTrayContextMenu())

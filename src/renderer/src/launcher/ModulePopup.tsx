@@ -9,20 +9,18 @@ import {
   REASONING_EFFORT_OPTIONS,
   modelSupportsExtendedParams
 } from '../../../shared/config'
-import type { LauncherAppTarget } from '../types/renderer'
 import type { Workflow, WorkflowExecutionState } from '../types/renderer'
 import type { Task } from '../types/renderer'
 import type { GamificationState, XpToastState } from '../types/renderer'
 import CustomSelect from '../ui/CustomSelect'
 import WorkflowList from '../workflow/WorkflowList'
 import TasksPopup from '../tasks/TasksPopup'
-import { getAppBadgeText } from '../utils/helpers'
 
-export type ActivePopup = 'appLauncher' | 'workflow' | 'settings' | 'tasks'
+export type ActivePopup = 'workflow' | 'settings' | 'tasks'
 export type PopupAnchorSide = 'left' | 'right'
 type SettingsPopupTab = 'prompt' | 'model'
 
-type PopupIcon = 'grid' | 'folder' | 'doc' | 'bolt' | 'shield' | 'clock'
+type PopupIcon = 'folder' | 'doc' | 'bolt' | 'shield' | 'clock'
 
 export interface PopupItem {
   id: string
@@ -30,14 +28,10 @@ export interface PopupItem {
   icon: PopupIcon
   subtitle?: string
   promptText?: string
-  appPath?: string
-  launchArguments?: string
-  appLaunchTargets?: LauncherAppTarget[]
   workflowData?: Workflow
 }
 
 const MODULE_LABELS: Record<ActivePopup, string> = {
-  appLauncher: 'App Launcher',
   workflow: 'Workflows',
   settings: 'Settings',
   tasks: 'Tasks'
@@ -48,7 +42,6 @@ interface ModulePopupProps {
   popupRef: RefObject<HTMLDivElement>
   onAddNew: () => void
   onSelectItem: (item: PopupItem) => void
-  appLauncherItems?: PopupItem[]
   workflowItems?: PopupItem[]
   settingsItems?: PopupItem[]
   workflowExecutionById?: Record<string, WorkflowExecutionState>
@@ -103,17 +96,6 @@ function PlusIcon(): JSX.Element {
 }
 
 function ItemIcon({ icon }: { icon: PopupIcon }): JSX.Element {
-  if (icon === 'grid') {
-    return (
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-        <rect x="3" y="3" width="7" height="7" rx="1.5" />
-        <rect x="14" y="3" width="7" height="7" rx="1.5" />
-        <rect x="3" y="14" width="7" height="7" rx="1.5" />
-        <rect x="14" y="14" width="7" height="7" rx="1.5" />
-      </svg>
-    )
-  }
-
   if (icon === 'folder') {
     return (
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -343,7 +325,6 @@ export default function ModulePopup({
   popupRef,
   onAddNew,
   onSelectItem,
-  appLauncherItems,
   workflowItems,
   settingsItems,
   workflowExecutionById = {},
@@ -369,11 +350,7 @@ export default function ModulePopup({
   xpToast
 }: ModulePopupProps): JSX.Element {
   const items =
-    activePopup === 'appLauncher'
-      ? appLauncherItems && appLauncherItems.length > 0
-        ? appLauncherItems
-        : []
-      : activePopup === 'workflow'
+    activePopup === 'workflow'
       ? workflowItems && workflowItems.length > 0
         ? workflowItems
         : []
@@ -384,10 +361,8 @@ export default function ModulePopup({
       : []
 
   const emptyMessage =
-    activePopup === 'appLauncher'
-      ? 'No applications saved yet.'
-      : activePopup === 'workflow'
-        ? 'No workflows saved yet.'
+    activePopup === 'workflow'
+      ? 'No workflows saved yet.'
       : activePopup === 'settings'
         ? 'No instructions saved yet.'
         : 'No items available.'
@@ -456,7 +431,7 @@ export default function ModulePopup({
                 className="flex w-full items-center gap-3 rounded-xl p-3 text-left text-sm transition-colors duration-150 cursor-pointer text-neutral-200 hover:bg-white/5"
               >
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-xs font-semibold uppercase tracking-[0.08em] text-neutral-200">
-                  {activePopup === 'appLauncher' ? getAppBadgeText(item.title) : <ItemIcon icon={item.icon} />}
+                  <ItemIcon icon={item.icon} />
                 </span>
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate">{item.title}</span>

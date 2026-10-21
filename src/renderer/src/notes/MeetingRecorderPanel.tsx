@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import type { Note } from '../../../shared/notes/note'
 import { formatDuration } from '../../../shared/notes/meeting'
 import { MeetingIcon } from '../ui/icons'
@@ -35,6 +36,12 @@ export default function MeetingRecorderPanel({
   const isActiveNote = meeting.state.noteId === note.id
   const activeMeeting = isActiveNote ? meeting.state : null
   const meetingMeta = note.meeting
+  const transcript = activeMeeting?.transcript ?? meetingMeta?.transcript ?? ''
+  // The recorder ticks 4x/second; don't rescan the transcript on every tick.
+  const transcriptWords = useMemo(() => {
+    const trimmed = transcript.trim()
+    return trimmed ? trimmed.split(/\s+/).length : 0
+  }, [transcript])
   if (!activeMeeting && !meetingMeta) return null
 
   const status = (() => {
@@ -43,7 +50,6 @@ export default function MeetingRecorderPanel({
     // closed/crashed mid-meeting. Don't offer a Stop button that can't work.
     return raw === 'recording' && !activeMeeting ? 'error' : raw
   })()
-  const transcript = activeMeeting?.transcript ?? meetingMeta?.transcript ?? ''
   const error = activeMeeting?.error ?? meetingMeta?.error ?? (status === 'error' && meetingMeta?.status === 'recording' ? 'Recording is no longer active.' : null)
   const warning = activeMeeting?.systemAudioWarning ?? null
   const isRecording = status === 'recording'
@@ -120,7 +126,7 @@ export default function MeetingRecorderPanel({
                   : status === 'summarizing'
                     ? 'The transcript is being turned into a structured recap…'
                     : transcript
-                      ? `${transcript.split(/\s+/).filter(Boolean).length} words · ${meetingMeta?.segments.length ?? 0} audio segment(s)`
+                      ? `${transcriptWords} words · ${meetingMeta?.segments.length ?? 0} audio segment(s)`
                       : 'No transcript yet.'}
             </p>
           </div>

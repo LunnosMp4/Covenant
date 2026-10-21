@@ -14,6 +14,7 @@ import { runStreamingChat } from '../openai/streaming'
 import { buildOpenAIToolDefinitions } from '../services/mcpClient'
 import { terminalManager } from '../terminalManager'
 import { createTerminalToolHandlers } from '../terminal/tools'
+import { setVoiceRecordingActive } from '../windows'
 
 const activeChatStreams = new Map<string, AbortController>()
 
@@ -131,6 +132,10 @@ export function registerChatIpc(): void {
       ...(params as Record<string, unknown>)
     } as any)
     return (response as any).output_text?.trim() || 'No response from model.'
+  })
+
+  ipcMain.on('voice:recording-active', (_event, active: unknown) => {
+    setVoiceRecordingActive(active === true)
   })
 
   ipcMain.handle('voice:transcribe', async (_event, audioBuffer: ArrayBuffer) => {

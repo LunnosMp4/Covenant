@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion, useAnimationControls, type Transition } from 'framer-motion'
 import { WINDOW_ENTER_TRANSITION, WINDOW_EXIT_TRANSITION } from './constants/motion'
-import AppFormModal from './settings/modals/AppFormModal'
 import ConfirmDeleteModal from './ui/ConfirmDeleteModal'
 import CustomSelect from './ui/CustomSelect'
 import McpServerFormModal from './settings/modals/McpServerFormModal'
@@ -29,11 +28,8 @@ import {
   type PasteManagerSettings
 } from '../../shared/paste/paste'
 import type { McpServer } from '../../shared/mcp/mcp'
-import type { LauncherApp } from './types/renderer'
 import type { Preprompt } from './types/renderer'
 import type { Workflow } from './types/renderer'
-import { getAppBadgeText } from './utils/helpers'
-import { formatTargetsSummary, normalizeLaunchTargets } from './utils/launcher/launcherTargets'
 import {
   SETTINGS_NAV_GROUPS,
   SETTINGS_WINDOW_ENTER_TRANSITION,
@@ -49,7 +45,6 @@ import { ShortcutRecorder } from './settings/shortcutRecorder'
 import AppearanceTab from './settings/tabs/AppearanceTab'
 import GeneralTab from './settings/tabs/GeneralTab'
 import TerminalTab from './settings/tabs/TerminalTab'
-import AppLauncherTab from './settings/tabs/AppLauncherTab'
 import WorkflowsTab from './settings/tabs/WorkflowsTab'
 import PrepromptsTab from './settings/tabs/PrepromptsTab'
 import CodeTab from './settings/tabs/CodeTab'
@@ -91,7 +86,7 @@ export default function Settings(): JSX.Element {
   const [textureIntensity, setTextureIntensity] = useState(DEFAULT_TEXTURE_INTENSITY)
   const [autoUpdate, setAutoUpdate] = useState(true)
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: 'idle', currentVersion: '' })
-  const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true, tasks: true, notes: true, code: true })
+  const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ workflow: true, tasks: true, notes: true, code: true })
   const [launcherShowSystemApps, setLauncherShowSystemApps] = useState(false)
   const [shortcuts, setShortcuts] = useState<ShortcutConfig>({ ...DEFAULT_SHORTCUTS })
   const [pasteSettings, setPasteSettings] = useState<PasteManagerSettings>({ ...DEFAULT_PASTE_SETTINGS })
@@ -112,12 +107,6 @@ export default function Settings(): JSX.Element {
     authType: McpServer['auth']['type']
   } | undefined>(undefined)
   const [deletingMcpServer, setDeletingMcpServer] = useState<McpServer | undefined>(undefined)
-  const [apps, setApps] = useState<LauncherApp[]>([])
-  const [isAppsLoading, setIsAppsLoading] = useState(false)
-  const [appsFeedbackMessage, setAppsFeedbackMessage] = useState('')
-  const [isAppFormOpen, setIsAppFormOpen] = useState(false)
-  const [editingApp, setEditingApp] = useState<LauncherApp | undefined>(undefined)
-  const [deletingApp, setDeletingApp] = useState<LauncherApp | undefined>(undefined)
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [isWorkflowsLoading, setIsWorkflowsLoading] = useState(false)
   const [workflowsFeedbackMessage, setWorkflowsFeedbackMessage] = useState('')
@@ -182,7 +171,7 @@ export default function Settings(): JSX.Element {
         setAutoCollapseReasoning(typeof config.autoCollapseReasoning === 'boolean' ? config.autoCollapseReasoning : true)
         setTextureIntensity(typeof config.textureIntensity === 'number' ? config.textureIntensity : DEFAULT_TEXTURE_INTENSITY)
         setAutoUpdate(typeof config.autoUpdate === 'boolean' ? config.autoUpdate : true)
-        setButtonVisibility(config.buttonVisibility ?? { appLauncher: true, workflow: true, tasks: true, notes: true, code: true })
+        setButtonVisibility(config.buttonVisibility ?? { workflow: true, tasks: true, notes: true, code: true })
         setLauncherShowSystemApps(config.launcherShowSystemApps === true)
         setShortcuts(config.shortcuts ?? { ...DEFAULT_SHORTCUTS })
         setPasteSettings(normalizePasteManagerSettings(config.pasteManager))
@@ -201,7 +190,7 @@ export default function Settings(): JSX.Element {
         setPreferredShell(undefined)
         setMcpServers([])
         setChatModel(DEFAULT_CHAT_MODEL)
-        setButtonVisibility({ appLauncher: true, workflow: true, tasks: true, notes: true, code: true })
+        setButtonVisibility({ workflow: true, tasks: true, notes: true, code: true })
         setLauncherShowSystemApps(false)
         setAutoUpdate(true)
         setPasteSettings({ ...DEFAULT_PASTE_SETTINGS })
@@ -343,33 +332,6 @@ export default function Settings(): JSX.Element {
     }
 
     void loadMcpServers()
-
-    return () => {
-      isMounted = false
-    }
-  }, [])
-
-  useEffect(() => {
-    let isMounted = true
-
-    const loadApps = async (): Promise<void> => {
-      if (!window.api?.store.getApps) return
-
-      try {
-        setIsAppsLoading(true)
-        const savedApps = await window.api.store.getApps()
-        if (!isMounted) return
-        setApps(savedApps)
-      } catch {
-        if (!isMounted) return
-        setApps([])
-      } finally {
-        if (!isMounted) return
-        setIsAppsLoading(false)
-      }
-    }
-
-    void loadApps()
 
     return () => {
       isMounted = false
@@ -781,62 +743,6 @@ const handleMinimizeWindow = (): void => {
     })
   }
 
-  const handleOpenAddApp = (): void => {
-    setEditingApp(undefined)
-    setAppsFeedbackMessage('')
-    setIsAppFormOpen(true)
-  }
-
-  const handleOpenEditApp = (launcherApp: LauncherApp): void => {
-    setEditingApp(launcherApp)
-    setAppsFeedbackMessage('')
-    setIsAppFormOpen(true)
-  }
-
-  const handleCloseAppForm = (): void => {
-    setIsAppFormOpen(false)
-    setEditingApp(undefined)
-  }
-
-  const handleSaveApp = async (payload: {
-    id?: string
-    title: string
-    iconBase64: string
-    targets: LauncherApp['targets']
-    path?: string
-    arguments?: string
-  }): Promise<void> => {
-    if (!window.api?.store.saveApp) return
-
-    try {
-      const updatedApps = await window.api.store.saveApp(payload)
-      setApps(updatedApps)
-      setIsAppFormOpen(false)
-      setEditingApp(undefined)
-      setAppsFeedbackMessage('Application saved.')
-      window.setTimeout(() => setAppsFeedbackMessage(''), 1600)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to save application.'
-      setAppsFeedbackMessage(message)
-    }
-  }
-
-  const handleConfirmDeleteApp = async (): Promise<void> => {
-    const targetApp = deletingApp
-    if (!targetApp || !window.api?.store.deleteApp) return
-
-    try {
-      const updatedApps = await window.api.store.deleteApp(targetApp.id)
-      setApps(updatedApps)
-      setDeletingApp(undefined)
-      setAppsFeedbackMessage('Application removed.')
-      window.setTimeout(() => setAppsFeedbackMessage(''), 1600)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to delete application.'
-      setAppsFeedbackMessage(message)
-    }
-  }
-
   const handleOpenAddWorkflow = (): void => {
     setEditingWorkflow(undefined)
     setWorkflowsFeedbackMessage('')
@@ -1027,7 +933,6 @@ const handleMinimizeWindow = (): void => {
     if (activeTab === 'usage') return 'Usage & Cost'
     if (activeTab === 'appearance') return 'Appearance'
     if (activeTab === 'terminal') return 'Terminal'
-    if (activeTab === 'appLauncher') return 'App Launcher'
     if (activeTab === 'workflow') return 'Workflows'
     if (activeTab === 'preprompts') return 'Instructions'
     if (activeTab === 'mcp') return 'MCP Servers'
@@ -1185,16 +1090,6 @@ const handleMinimizeWindow = (): void => {
                 onPreferredShellChange={handlePreferredShellChange}
               />
             )}
-            {activeTab === 'appLauncher' && (
-              <AppLauncherTab
-                apps={apps}
-                isLoading={isAppsLoading}
-                feedbackMessage={appsFeedbackMessage}
-                onAdd={handleOpenAddApp}
-                onEdit={handleOpenEditApp}
-                onDelete={(launcherApp) => setDeletingApp(launcherApp)}
-              />
-            )}
             {activeTab === 'workflow' && (
               <WorkflowsTab
                 workflows={workflows}
@@ -1263,31 +1158,6 @@ const handleMinimizeWindow = (): void => {
           </main>
         </div>
       </div>
-
-      <AnimatePresence>
-        {isAppFormOpen ? (
-          <AppFormModal
-            initialData={editingApp}
-            onCancel={handleCloseAppForm}
-            onSave={(payload) => {
-              void handleSaveApp(payload)
-            }}
-          />
-        ) : null}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {deletingApp ? (
-          <ConfirmDeleteModal
-            title="Delete Application"
-            message={`Are you sure you want to delete \"${deletingApp.title}\" from the launcher list?`}
-            onCancel={() => setDeletingApp(undefined)}
-            onConfirm={() => {
-              void handleConfirmDeleteApp()
-            }}
-          />
-        ) : null}
-      </AnimatePresence>
 
       <AnimatePresence>
         {isWorkflowFormOpen ? (

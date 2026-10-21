@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  isValidNoteId,
   MAX_NOTE_TAGS,
   normalizeNote,
   notePreview,
@@ -118,6 +119,15 @@ describe('notes', () => {
       { index: 1, file: 'b', durationMs: 0, transcript: 'two' },
       { index: 0, file: 'a', durationMs: 0, transcript: 'one' }
     ])).toBe('one\n\ntwo')
+  })
+
+  it('rejects note ids that could escape the notes folder', () => {
+    expect(isValidNoteId('4f1c2a1e-0000-4000-8000-123456789abc')).toBe(true)
+    expect(isValidNoteId('..')).toBe(false)
+    expect(isValidNoteId('../config')).toBe(false)
+    expect(isValidNoteId('a/b')).toBe(false)
+    expect(isValidNoteId('')).toBe(false)
+    expect(isValidNoteId(42)).toBe(false)
   })
 
   it('chunks long transcripts without dropping text', () => {

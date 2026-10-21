@@ -24,15 +24,12 @@ import {
   type PasteManagerSettings
 } from '../../../shared/paste/paste'
 import type { McpServer } from '../../../shared/mcp/mcp'
-import type { LauncherApp } from '../types/renderer'
 import type { Preprompt } from '../types/renderer'
 import type { Workflow } from '../types/renderer'
-import { getAppBadgeText } from '../utils/helpers'
-import { formatTargetsSummary, normalizeLaunchTargets } from '../utils/launcher/launcherTargets'
 
-export type SettingsTab = 'general' | 'appearance' | 'terminal' | 'appLauncher' | 'workflow' | 'preprompts' | 'mcp' | 'paste' | 'notes' | 'usage' | 'code'
+export type SettingsTab = 'general' | 'appearance' | 'terminal' | 'workflow' | 'preprompts' | 'mcp' | 'paste' | 'notes' | 'usage' | 'code'
 
-export const VALID_SETTINGS_TABS: readonly SettingsTab[] = ['general', 'appearance', 'terminal', 'appLauncher', 'workflow', 'preprompts', 'mcp', 'paste', 'notes', 'usage', 'code']
+export const VALID_SETTINGS_TABS: readonly SettingsTab[] = ['general', 'appearance', 'terminal', 'workflow', 'preprompts', 'mcp', 'paste', 'notes', 'usage', 'code']
 
 export interface SettingsNavGroup {
   label: string
@@ -59,7 +56,6 @@ export const SETTINGS_NAV_GROUPS: readonly SettingsNavGroup[] = [
   {
     label: 'Tools',
     items: [
-      { id: 'appLauncher', label: 'App Launcher' },
       { id: 'paste', label: 'Clipboard' },
       { id: 'notes', label: 'Notes & Meetings' }
     ]

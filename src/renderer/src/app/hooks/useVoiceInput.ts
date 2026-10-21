@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 
 export type VoiceState = 'idle' | 'recording' | 'transcribing' | 'error'
 
@@ -14,14 +14,28 @@ export function useVoiceInput(
   const micStreamRef = useRef<MediaStream | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
+  const recordingActiveRef = useRef(false)
+  const unmountedRef = useRef(false)
+
+  // Mirror the dictation state into the tray mic badge (same badge as meetings).
+  const setTrayRecording = useCallback((active: boolean) => {
+    if (recordingActiveRef.current === active) return
+    recordingActiveRef.current = active
+    window.api?.voice.setRecordingActive(active)
+  }, [])
+
+  const stopRecording = useCallback(() => {
+    const recorder = mediaRecorderRef.current
+    if (recorder && recorder.state !== 'inactive') recorder.stop()
+    micStreamRef.current?.getTracks().forEach((t) => t.stop())
+    micStreamRef.current = null
+  }, [])
 
   const toggleRecording = useCallback(async () => {
     if (voiceState === 'transcribing') return
 
     if (voiceState === 'recording') {
-      mediaRecorderRef.current?.stop()
-      micStreamRef.current?.getTracks().forEach((t) => t.stop())
-      micStreamRef.current = null
+      stopRecording()
       return
     }
 
@@ -38,9 +52,12 @@ export function useVoiceInput(
       }
 
       recorder.onstop = () => {
+        setTrayRecording(false)
         setVoiceState('transcribing')
         micStreamRef.current?.getTracks().forEach((t) => t.stop())
         micStreamRef.current = null
+
+        if (unmountedRef.current) return
 
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
         blob.arrayBuffer().then(async (buffer) => {
@@ -65,11 +82,31 @@ export function useVoiceInput(
 
       recorder.start(250)
       setVoiceState('recording')
+      setTrayRecording(true)
     } catch {
+      setTrayRecording(false)
       setVoiceState('error')
       setTimeout(() => setVoiceState('idle'), 400)
     }
-  }, [voiceState, inputRef, setQuery])
+  }, [voiceState, inputRef, setQuery, stopRecording, setTrayRecording])
+
+  // Stop the dictation from the tray menu without focusing the window.
+  useEffect(() => {
+    return window.api?.voice.onStopRequest(() => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        stopRecording()
+      }
+    })
+  }, [stopRecording])
+
+  useEffect(() => {
+    unmountedRef.current = false
+    return () => {
+      unmountedRef.current = true
+      stopRecording()
+      setTrayRecording(false)
+    }
+  }, [stopRecording, setTrayRecording])
 
   return { voiceState, micStreamRef, toggleRecording }
 }

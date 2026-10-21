@@ -12,7 +12,6 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   CodeIcon,
-  GridIcon,
   ImageIcon,
   MenuIcon,
   MicIcon,
@@ -32,7 +31,6 @@ import { createId } from './utils/helpers'
 import MeasuredPanel from './ui/MeasuredPanel'
 import { TERMINAL_SPRING, WINDOW_SPRING } from './constants/motion'
 import { rankLauncherItems } from './utils/launcher/fuzzy'
-import { formatTargetsSummary, normalizeLaunchTargets } from './utils/launcher/launcherTargets'
 import {
   computeContextStats,
   formatConversationTimestamp
@@ -61,7 +59,6 @@ import type {
   InputContent,
   ReasoningStep
 } from '../../shared/chat/chat'
-import type { LauncherApp, LauncherAppTarget } from './types/renderer'
 import type { InstalledApp, LauncherItem } from '../../shared/launcher/launcher'
 import type { Preprompt } from './types/renderer'
 import type { Task } from './types/renderer'
@@ -82,7 +79,6 @@ import {
   sortConversations
 } from './app/utils/chat'
 import { splitWorkflowLogLines } from './app/utils/workflow'
-import { normalizeLauncherAppTargets, normalizePopupLaunchTargets } from './app/utils/launcher'
 import {
   CHAT_SCROLL_HEIGHT,
   DEFAULT_GAMIFICATION_STATE,
@@ -151,7 +147,6 @@ export default function App(): JSX.Element {
   const [activeStreamMessageId, setActiveStreamMessageId] = useState<string | null>(null)
   const [activeStreamConversationId, setActiveStreamConversationId] = useState<string | null>(null)
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
-  const [apps, setApps] = useState<LauncherApp[]>([])
   const [installedApps, setInstalledApps] = useState<InstalledApp[]>([])
   const [launcherSelectedIndex, setLauncherSelectedIndex] = useState(0)
   const [launcherIcons, setLauncherIcons] = useState<Record<string, string>>({})
@@ -166,7 +161,7 @@ export default function App(): JSX.Element {
   >({})
   const [workflowLogsOpenById, setWorkflowLogsOpenById] = useState<Record<string, boolean>>({})
   const [activePopup, setActivePopup] = useState<ActivePopup | null>(null)
-  const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ appLauncher: true, workflow: true, tasks: true, notes: true, code: true })
+  const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ workflow: true, tasks: true, notes: true, code: true })
   const [chatModel, setChatModel] = useState<string>(DEFAULT_CHAT_MODEL)
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT)
   const [autoCollapseReasoning, setAutoCollapseReasoning] = useState(true)
@@ -828,20 +823,6 @@ export default function App(): JSX.Element {
     }
   }, [])
 
-  const loadApps = useCallback(async (): Promise<void> => {
-    if (!window.api?.store.getApps) {
-      setApps([])
-      return
-    }
-
-    try {
-      const savedApps = await window.api.store.getApps()
-      setApps(savedApps)
-    } catch {
-      setApps([])
-    }
-  }, [])
-
   const loadInstalledApps = useCallback(async (): Promise<void> => {
     if (!window.api?.installedApps?.list) {
       setInstalledApps([])
@@ -1132,11 +1113,6 @@ export default function App(): JSX.Element {
       return
     }
 
-    if (activePopup === 'appLauncher') {
-      void loadApps()
-      return
-    }
-
     if (activePopup === 'workflow') {
       void loadWorkflows()
       return
@@ -1146,7 +1122,7 @@ export default function App(): JSX.Element {
       void loadTasks()
       void loadGamification()
     }
-  }, [activePopup, loadApps, loadPreprompts, loadTasks, loadWorkflows, loadGamification])
+  }, [activePopup, loadPreprompts, loadTasks, loadWorkflows, loadGamification])
 
   useEffect(() => {
     void loadInstalledApps()
@@ -1956,29 +1932,6 @@ export default function App(): JSX.Element {
         })
 
         setTimeout(() => inputRef.current?.focus(), 40)
-      } else if (activePopup === 'appLauncher') {
-        const launchTargets = normalizePopupLaunchTargets(item)
-        if (launchTargets.length === 0) {
-          return
-        }
-
-        const launchApp = window.api?.launchApp
-        if (!launchApp) {
-          appendAssistantMessage('App launching is only available in the Electron app.')
-        } else {
-          void (async () => {
-            for (const target of launchTargets) {
-              const result = await launchApp(target.path, target.arguments ?? '')
-              if (!result.success) {
-                appendAssistantMessage(`Error: ${result.error ?? 'Unable to launch application.'}`)
-                return
-              }
-            }
-          })().catch((error) => {
-            const message = error instanceof Error ? error.message : 'Unable to launch application.'
-            appendAssistantMessage(`Error: ${message}`)
-          })
-        }
       } else if (activePopup === 'workflow' && item.workflowData) {
         if (!window.api?.executeWorkflow) {
           appendAssistantMessage('Workflow execution is only available in the Electron app.')
@@ -2919,16 +2872,6 @@ export default function App(): JSX.Element {
                   isAppVisible={isAppVisible}
                   selectedSettingsItemId={selectedSystemPrompt?.id}
                   onClearSelectedSettingsItem={clearCurrentSystemPrompt}
-                  appLauncherItems={apps.map((item) => {
-                    const targets = normalizeLauncherAppTargets(item)
-                    return {
-                      id: item.id,
-                      title: item.title,
-                      subtitle: formatTargetsSummary(targets),
-                      icon: 'grid',
-                      appLaunchTargets: targets
-                    }
-                  })}
                   workflowItems={workflows.map((item) => ({
                     id: item.id,
                     title: item.title,
@@ -2949,7 +2892,6 @@ export default function App(): JSX.Element {
                   onAddNew={() => {
                     setActivePopup(null)
                     const tab =
-                      activePopup === 'appLauncher' ? 'appLauncher' :
                       activePopup === 'workflow' ? 'workflow' :
                       'preprompts'
                     if (window.api?.window.openSettings) {
@@ -3191,20 +3133,6 @@ export default function App(): JSX.Element {
               )}
 
               <div ref={moduleButtonsRef} className="flex items-center gap-1">
-                {buttonVisibility.appLauncher && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      togglePopup('appLauncher')
-                    }}
-                    className="flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all duration-150"
-                    aria-label="App Launcher"
-                    aria-pressed={activePopup === 'appLauncher'}
-                  >
-                    <GridIcon />
-                  </button>
-                )}
-
                 {buttonVisibility.workflow && (
                   <button
                     onClick={(e) => {

@@ -1,5 +1,4 @@
 export type { GamificationState } from '../../../shared/tasks/gamification'
-export type { LauncherApp, LauncherAppTarget } from '../../../shared/launcher/launcher-app'
 export type { Preprompt } from '../../../shared/domain/preprompt'
 export type { ClearCompletedResult, Task } from '../../../shared/tasks/task'
 export type {

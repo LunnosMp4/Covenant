@@ -132,7 +132,9 @@ export default function NoteList({
       <div className="chat-scrollbar min-h-0 flex-1 overflow-y-auto p-2">
         {notes.length === 0 ? (
           <div className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-8 text-center text-xs text-neutral-500">
-            {query.trim() ? 'No matches.' : 'No notes yet. Create one to get started.'}
+            {query.trim() || filter !== 'all'
+              ? 'No matches.'
+              : 'No notes yet. Create one to get started.'}
           </div>
         ) : (
           notes.map((meta) => {

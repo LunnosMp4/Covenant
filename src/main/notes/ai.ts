@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
 import type { WebContents } from 'electron'
 import type { Note } from '../../shared/notes/note'
+import { MAX_NOTE_CONTENT_LENGTH } from '../../shared/notes/note'
 import type { NoteAiRequest } from '../../shared/notes/prompts'
 import { buildNoteAiInput, NOTE_AI_INSTRUCTIONS } from '../../shared/notes/prompts'
 import { readConfig } from '../config/configStore'
@@ -34,7 +35,10 @@ function normalizeRequest(raw: unknown): NoteAiRequest | null {
   return {
     noteId,
     action: action as NoteAiRequest['action'],
-    noteContent: typeof obj.noteContent === 'string' ? obj.noteContent : undefined,
+    noteContent:
+      typeof obj.noteContent === 'string'
+        ? obj.noteContent.slice(0, MAX_NOTE_CONTENT_LENGTH)
+        : undefined,
     noteTitle: typeof obj.noteTitle === 'string' ? obj.noteTitle : undefined,
     selection: typeof obj.selection === 'string' ? obj.selection : undefined,
     text: typeof obj.text === 'string' ? obj.text : undefined,

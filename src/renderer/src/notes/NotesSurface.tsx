@@ -4,12 +4,12 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type RefObject
 } from 'react'
 import type { NotesSettings } from '../../../shared/config'
 import type { Note, NoteMeta } from '../../../shared/notes/note'
-import { formatDuration } from '../../../shared/notes/meeting'
 import { AssistantMarkdown } from '../chat/AssistantMarkdown'
 import ConfirmDeleteModal from '../ui/ConfirmDeleteModal'
 import ExpandButton from '../ui/ExpandButton'
@@ -17,6 +17,7 @@ import { PinIcon as WindowPinIcon, MeetingIcon, SpinnerIcon } from '../ui/icons'
 import { CopyIcon, SparklesIcon, TrashIcon } from '../paste/PasteIcons'
 import { formatRelativeTime } from '../utils/paste/pasteFormat'
 import NoteAIPanel from './NoteAIPanel'
+import NoteAudioPlayer from './NoteAudioPlayer'
 import NoteList, { type NoteFilter } from './NoteList'
 import MeetingRecorderPanel from './MeetingRecorderPanel'
 import type { MeetingRecorderApi } from './useMeetingRecorder'
@@ -70,6 +71,9 @@ export default function NotesSurface({
   const [deleting, setDeleting] = useState<NoteMeta | null>(null)
   const [meetingTab, setMeetingTab] = useState<'recap' | 'transcript' | 'audio'>('recap')
   const [loading, setLoading] = useState(false)
+  // True while the user explicitly went back to the list on a narrow layout.
+  // Without it the "pick an initial note" effect immediately reselects a note.
+  const [browsingList, setBrowsingList] = useState(false)
 
   const noteRef = useRef<Note | null>(null)
   const titleRef = useRef('')
@@ -77,6 +81,9 @@ export default function NotesSurface({
   const dirtyRef = useRef(false)
   const selectedIdRef = useRef<string | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const saveChainRef = useRef<Promise<void>>(Promise.resolve())
+  const flushSaveRef = useRef<() => Promise<void>>(() => Promise.resolve())
+  const loadRequestRef = useRef(0)
   const titleInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const selectionRangeRef = useRef<{ start: number; end: number }>({ start: 0, end: 0 })
@@ -109,11 +116,15 @@ export default function NotesSurface({
   const loadNote = useCallback(
     async (id: string, options?: { keepSelection?: boolean }): Promise<void> => {
       if (!id) return
+      // Guard against out-of-order responses when notes are switched quickly.
+      const requestId = ++loadRequestRef.current
       setLoading(true)
       try {
         const next = (await window.api?.notes?.get?.(id)) ?? null
+        if (requestId !== loadRequestRef.current) return
         if (!next) {
           const remaining = await window.api?.notes?.delete?.(id)
+          if (requestId !== loadRequestRef.current) return
           if (remaining) setMetas(remaining)
           setSelectedId(null)
           selectedIdRef.current = null
@@ -127,6 +138,7 @@ export default function NotesSurface({
           dirtyRef.current = false
           return
         }
+        setBrowsingList(false)
         setSelectedId(next.id)
         selectedIdRef.current = next.id
         setNote(next)
@@ -151,46 +163,81 @@ export default function NotesSurface({
           )
         }
       } finally {
-        setLoading(false)
+        if (requestId === loadRequestRef.current) setLoading(false)
       }
     },
     []
   )
 
-  const flushSave = useCallback(async (): Promise<void> => {
-    const current = noteRef.current
-    if (!current || !dirtyRef.current) return
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current)
-      saveTimerRef.current = null
-    }
-    setSaveState('saving')
-    try {
-      const updated = await window.api?.notes?.save?.({
-        id: current.id,
-        title: titleRef.current,
-        content: contentRef.current
-      })
-      if (updated) {
-        setNote((previous) =>
-          previous && previous.id === updated.id
-            ? { ...previous, title: titleRef.current, content: contentRef.current, meeting: updated.meeting }
-            : previous
-        )
-        setDirty(false)
-        dirtyRef.current = false
-        setSaveState('saved')
-        await reloadMetas()
+  /**
+   * Saves the current draft. Saves are chained so they are applied in order, and
+   * "clean" is only reported when nothing changed while the write was in flight
+   * — otherwise an edit made during an autosave could be silently dropped.
+   */
+  const flushSave = useCallback((): Promise<void> => {
+    const run = async (): Promise<void> => {
+      const current = noteRef.current
+      if (!current || !dirtyRef.current) return
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = null
       }
-    } catch {
-      setSaveState('idle')
+
+      const id = current.id
+      const title = titleRef.current
+      const content = contentRef.current
+      setSaveState('saving')
+      try {
+        const updated = await window.api?.notes?.save?.({ id, title, content })
+        if (!updated) {
+          setSaveState('idle')
+          return
+        }
+        if (noteRef.current?.id === id) {
+          setNote((previous) =>
+            previous && previous.id === id
+              ? {
+                  ...previous,
+                  title,
+                  content,
+                  meeting: updated.meeting,
+                  updatedAt: updated.updatedAt
+                }
+              : previous
+          )
+          if (titleRef.current === title && contentRef.current === content) {
+            setDirty(false)
+            dirtyRef.current = false
+            setSaveState('saved')
+          } else {
+            // A newer edit slipped in: stay dirty and let the debounce save it.
+            setSaveState('idle')
+          }
+        }
+      } catch {
+        setSaveState('idle')
+        // Retry if the write failed while there is still unsaved work.
+        if (dirtyRef.current && !saveTimerRef.current) {
+          saveTimerRef.current = setTimeout(() => {
+            saveTimerRef.current = null
+            void flushSaveRef.current()
+          }, 1500)
+        }
+      }
     }
-  }, [reloadMetas])
+
+    const next = saveChainRef.current.then(run, run)
+    saveChainRef.current = next.catch(() => {})
+    return next
+  }, [])
+
+  flushSaveRef.current = flushSave
 
   // Debounced autosave. The surface unmounts when the command window hides, so
-  // flushSave also runs from the unmount cleanup below.
+  // flushSave also runs from the unmount cleanup below. It deliberately does not
+  // depend on `note`, so meeting events can't postpone a pending autosave.
   useEffect(() => {
-    if (!dirty || !note) return undefined
+    if (!dirty || !noteRef.current) return undefined
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null
@@ -202,19 +249,13 @@ export default function NotesSurface({
         saveTimerRef.current = null
       }
     }
-  }, [dirty, note, title, content, flushSave])
+  }, [dirty, title, content, flushSave])
 
   useEffect(() => {
     return () => {
-      if (dirtyRef.current && noteRef.current) {
-        void window.api?.notes?.save?.({
-          id: noteRef.current.id,
-          title: titleRef.current,
-          content: contentRef.current
-        })
-      }
+      if (dirtyRef.current && noteRef.current) void flushSave()
     }
-  }, [])
+  }, [flushSave])
 
   useEffect(() => {
     void window.api?.notes?.getSettings?.().then(setNotesSettings).catch(() => {})
@@ -233,7 +274,7 @@ export default function NotesSurface({
 
   // Meeting events can update the transcript/recap while the user is editing.
   // Never overwrite a dirty draft; only refresh the meeting metadata in that
-  // case.
+  // case. The notes list itself is refreshed by the `notes:changed` broadcast.
   useEffect(() => {
     return window.api?.notes?.meeting?.onEvent?.((event) => {
       const currentId = selectedIdRef.current
@@ -255,9 +296,8 @@ export default function NotesSurface({
       if (event.type === 'recap-done') {
         setMeetingTab('recap')
       }
-      void reloadMetas()
     })
-  }, [reloadMetas])
+  }, [])
 
   // Select the live meeting note as soon as recording starts.
   useEffect(() => {
@@ -282,12 +322,13 @@ export default function NotesSurface({
 
   // Pick an initial note once the list is available.
   useEffect(() => {
+    if (browsingList) return
     if (selectedId || loading) return
     if (metas.length === 0) return
     const last = window.localStorage.getItem('covenant:last-note')
     const target = last && metas.some((meta) => meta.id === last) ? last : metas[0].id
     void loadNote(target)
-  }, [metas, selectedId, loading, loadNote])
+  }, [browsingList, metas, selectedId, loading, loadNote])
 
   const filteredMetas = useMemo(() => {
     const trimmed = query.trim().toLowerCase()
@@ -302,6 +343,10 @@ export default function NotesSurface({
     })
   }, [metas, query, filter])
 
+  // Counting words scans the whole document; don't redo it on every render
+  // (meeting ticks, selection changes, etc.).
+  const wordTotal = useMemo(() => wordCount(content), [content])
+
   const handleSelect = useCallback(
     (id: string): void => {
       if (id === selectedIdRef.current) return
@@ -309,6 +354,25 @@ export default function NotesSurface({
     },
     [flushSave, loadNote]
   )
+
+  const handleBackToList = useCallback(async (): Promise<void> => {
+    // Save before clearing the editor state, otherwise the pending debounce
+    // would be cancelled along with the draft.
+    await flushSave()
+    setBrowsingList(true)
+    setSelectedId(null)
+    selectedIdRef.current = null
+    setNote(null)
+    noteRef.current = null
+    setTitle('')
+    titleRef.current = ''
+    setContent('')
+    contentRef.current = ''
+    setDirty(false)
+    dirtyRef.current = false
+    setSelection('')
+    selectionRangeRef.current = { start: 0, end: 0 }
+  }, [flushSave])
 
   const handleNewNote = useCallback(async (): Promise<void> => {
     await flushSave()
@@ -353,10 +417,15 @@ export default function NotesSurface({
     const target = deleting
     if (!target) return
     setDeleting(null)
-    if (meeting.state.noteId === target.id) {
+    // Cancelling an active meeting already deletes the note, so don't delete it
+    // a second time (and don't fail if it is already gone).
+    const wasActiveMeeting = meeting.state.noteId === target.id
+    if (wasActiveMeeting) {
       await meeting.cancelMeeting()
     }
-    const next = (await window.api?.notes?.delete?.(target.id)) ?? []
+    const next = wasActiveMeeting
+      ? ((await window.api?.notes?.list?.()) ?? [])
+      : ((await window.api?.notes?.delete?.(target.id)) ?? [])
     setMetas(next)
     if (selectedIdRef.current === target.id) {
       setSelectedId(null)
@@ -377,20 +446,29 @@ export default function NotesSurface({
   const handleTogglePin = useCallback(async (): Promise<void> => {
     const current = noteRef.current
     if (!current) return
-    const updated = await window.api?.notes?.save?.({
-      id: current.id,
-      title: titleRef.current,
-      content: contentRef.current,
-      pinned: !current.pinned
-    })
-    if (updated) {
-      setNote(updated)
-      noteRef.current = updated
-      setDirty(false)
-      dirtyRef.current = false
-      await reloadMetas()
+    const id = current.id
+    const title = titleRef.current
+    const content = contentRef.current
+    const pinned = !current.pinned
+    try {
+      const updated = await window.api?.notes?.save?.({ id, title, content, pinned })
+      if (!updated) return
+      if (noteRef.current?.id === id) {
+        const latest = noteRef.current
+        if (latest) noteRef.current = { ...latest, pinned: updated.pinned }
+        setNote((previous) =>
+          previous && previous.id === id ? { ...previous, pinned: updated.pinned } : previous
+        )
+        // Only clear the dirty flag if the draft didn't change during the save.
+        if (titleRef.current === title && contentRef.current === content) {
+          setDirty(false)
+          dirtyRef.current = false
+        }
+      }
+    } catch {
+      // Ignore — the pin state stays unchanged.
     }
-  }, [reloadMetas])
+  }, [])
 
   const wrapSelection = useCallback(
     (before: string, after: string, placeholder: string): void => {
@@ -665,12 +743,7 @@ export default function NotesSurface({
                   {!isWide && (
                     <button
                       type="button"
-                      onClick={() => {
-                        setSelectedId(null)
-                        selectedIdRef.current = null
-                        setNote(null)
-                        noteRef.current = null
-                      }}
+                      onClick={() => void handleBackToList()}
                       className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-white/10 hover:text-neutral-200"
                       aria-label="Back to notes"
                     >
@@ -683,7 +756,7 @@ export default function NotesSurface({
                     {noteKindLabel(note)}
                   </span>
                   <span className="text-[11px] text-neutral-500">
-                    {formatRelativeTime(note.updatedAt)} · {wordCount(content)} words
+                    {formatRelativeTime(note.updatedAt)} · {wordTotal} words
                   </span>
                   <span className={`text-[11px] ${dirty ? 'text-amber-300' : 'text-neutral-500'}`}>
                     {saveLabel}
@@ -826,24 +899,14 @@ export default function NotesSurface({
                       <div className="chat-scrollbar mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto">
                         {note.meeting?.segments.length ? (
                           note.meeting.segments.map((segment) => (
-                            <div
-                              key={segment.index}
-                              className="rounded-lg border border-white/5 bg-white/[0.03] p-2.5"
-                            >
-                              <div className="mb-1.5 flex items-center justify-between text-[11px] text-neutral-400">
-                                <span>Part {segment.index + 1}</span>
-                                <span>{formatDuration(segment.durationMs)}</span>
-                              </div>
-                              <audio
-                                controls
-                                preload="metadata"
-                                className="h-8 w-full"
+                            <div key={segment.index} className="space-y-1.5">
+                              <NoteAudioPlayer
                                 src={`covenant-note://audio/${encodeURIComponent(note.id)}/${encodeURIComponent(segment.file)}`}
+                                durationMs={segment.durationMs}
+                                label={`Part ${segment.index + 1}`}
                               />
                               {segment.error && (
-                                <p className="mt-1 text-[10px] text-red-300">
-                                  {segment.error}
-                                </p>
+                                <p className="px-1 text-[10px] text-red-300">{segment.error}</p>
                               )}
                             </div>
                           ))
@@ -989,6 +1052,22 @@ interface MarkdownEditorProps {
   onWrap: (before: string, after: string, placeholder: string) => void
 }
 
+const TOOLBAR: Array<{
+  label: string
+  title: string
+  before: string
+  after: string
+  placeholder: string
+}> = [
+  { label: 'B', title: 'Bold', before: '**', after: '**', placeholder: 'bold text' },
+  { label: 'I', title: 'Italic', before: '_', after: '_', placeholder: 'italic text' },
+  { label: 'H', title: 'Heading', before: '## ', after: '', placeholder: 'Heading' },
+  { label: '•', title: 'Bullet list', before: '- ', after: '', placeholder: 'List item' },
+  { label: '1.', title: 'Numbered list', before: '1. ', after: '', placeholder: 'List item' },
+  { label: '<>', title: 'Inline code', before: '`', after: '`', placeholder: 'code' },
+  { label: '“”', title: 'Quote', before: '> ', after: '', placeholder: 'Quote' }
+]
+
 function MarkdownEditor({
   value,
   onChange,
@@ -996,15 +1075,12 @@ function MarkdownEditor({
   textareaRef,
   onWrap
 }: MarkdownEditorProps): JSX.Element {
-  const TOOLBAR: Array<{ label: string; title: string; before: string; after: string; placeholder: string }> = [
-    { label: 'B', title: 'Bold', before: '**', after: '**', placeholder: 'bold text' },
-    { label: 'I', title: 'Italic', before: '_', after: '_', placeholder: 'italic text' },
-    { label: 'H', title: 'Heading', before: '## ', after: '', placeholder: 'Heading' },
-    { label: '•', title: 'Bullet list', before: '- ', after: '', placeholder: 'List item' },
-    { label: '1.', title: 'Numbered list', before: '1. ', after: '', placeholder: 'List item' },
-    { label: '<>', title: 'Inline code', before: '`', after: '`', placeholder: 'code' },
-    { label: '“”', title: 'Quote', before: '> ', after: '', placeholder: 'Quote' }
-  ]
+  const reportSelection = (target: HTMLTextAreaElement): void => {
+    onSelectionChange(target.value.slice(target.selectionStart, target.selectionEnd), {
+      start: target.selectionStart,
+      end: target.selectionEnd
+    })
+  }
 
   return (
     <div className="mt-3 flex min-h-0 flex-1 flex-col">
@@ -1027,27 +1103,9 @@ function MarkdownEditor({
         ref={textareaRef}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        onSelect={(event) => {
-          const target = event.currentTarget
-          onSelectionChange(
-            target.value.slice(target.selectionStart, target.selectionEnd),
-            { start: target.selectionStart, end: target.selectionEnd }
-          )
-        }}
-        onKeyUp={(event) => {
-          const target = event.currentTarget
-          onSelectionChange(
-            target.value.slice(target.selectionStart, target.selectionEnd),
-            { start: target.selectionStart, end: target.selectionEnd }
-          )
-        }}
-        onClick={(event) => {
-          const target = event.currentTarget
-          onSelectionChange(
-            target.value.slice(target.selectionStart, target.selectionEnd),
-            { start: target.selectionStart, end: target.selectionEnd }
-          )
-        }}
+        onSelect={(event) => reportSelection(event.currentTarget)}
+        onKeyUp={(event) => reportSelection(event.currentTarget)}
+        onClick={(event) => reportSelection(event.currentTarget)}
         placeholder="Start writing… Markdown is supported."
         className="chat-scrollbar min-h-[220px] w-full flex-1 resize-none border-none bg-transparent font-sans text-sm leading-relaxed text-neutral-200 placeholder:text-neutral-500 focus:outline-none"
         spellCheck

@@ -51,12 +51,32 @@ const ACTION_INSTRUCTIONS: Record<Exclude<NoteAiAction, 'chat'>, string> = {
     'Create a clear Markdown outline for the following content. Return only the outline.'
 }
 
+/** Upper bounds for note AI context so long notes/transcripts stay affordable. */
+export const MAX_NOTE_AI_CONTENT_CHARS = 40_000
+export const MAX_NOTE_AI_TRANSCRIPT_CHARS = 60_000
+export const MAX_NOTE_AI_TARGET_CHARS = 40_000
+
+/**
+ * Keeps the beginning and end of a long text, which preserves both the note's
+ * opening context and its most recent content. The middle is replaced with a
+ * marker so the model knows content was omitted.
+ */
+export function truncateMiddle(text: string, maxChars: number): string {
+  if (maxChars <= 0 || text.length <= maxChars) return text
+  const marker = '\n\n…[truncated]…\n\n'
+  const budget = maxChars - marker.length
+  if (budget <= 0) return text.slice(0, maxChars)
+  const head = Math.ceil(budget * 0.6)
+  const tail = budget - head
+  return `${text.slice(0, head)}${marker}${text.slice(text.length - tail)}`
+}
+
 function noteContext(note: Note, noteContent: string, noteTitle: string): string {
   const title = noteTitle.trim() || note.title || 'Untitled note'
-  const content = noteContent.trim()
+  const content = truncateMiddle(noteContent.trim(), MAX_NOTE_AI_CONTENT_CHARS)
   const meetingTranscript = note.meeting?.transcript.trim() ?? ''
   const transcriptSection = meetingTranscript
-    ? `\n\nMeeting transcript:\n${meetingTranscript}`
+    ? `\n\nMeeting transcript:\n${truncateMiddle(meetingTranscript, MAX_NOTE_AI_TRANSCRIPT_CHARS)}`
     : ''
   return `Note title: ${title}\n\nNote content:\n${content || '(empty)'}${transcriptSection}`
 }
@@ -76,7 +96,8 @@ export function buildNoteAiInput(request: NoteAiRequest, note: Note): string {
   }
 
   const instruction = ACTION_INSTRUCTIONS[request.action]
-  const target = request.selection?.trim() || request.text?.trim()
+  const rawTarget = request.selection?.trim() || request.text?.trim()
+  const target = rawTarget ? truncateMiddle(rawTarget, MAX_NOTE_AI_TARGET_CHARS) : ''
   if (target) {
     return `${context}\n\n${instruction}\n\nText:\n${target}`
   }

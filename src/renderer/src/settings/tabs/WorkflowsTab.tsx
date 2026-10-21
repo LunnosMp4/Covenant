@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion, useAnimationControls, type Transition } from 'framer-motion'
 import { WINDOW_ENTER_TRANSITION, WINDOW_EXIT_TRANSITION } from '../../constants/motion'
-import AppFormModal from '../modals/AppFormModal'
 import ConfirmDeleteModal from '../../ui/ConfirmDeleteModal'
 import CustomSelect from '../../ui/CustomSelect'
 import McpServerFormModal from '../modals/McpServerFormModal'
@@ -29,14 +28,12 @@ import {
   type PasteManagerSettings
 } from '../../../../shared/paste/paste'
 import type { McpServer } from '../../../../shared/mcp/mcp'
-import type { LauncherApp } from '../../types/renderer'
 import type { Preprompt } from '../../types/renderer'
 import type { Workflow } from '../../types/renderer'
 import { getAppBadgeText } from '../../utils/helpers'
-import { formatTargetsSummary, normalizeLaunchTargets } from '../../utils/launcher/launcherTargets'
 import { MinimalistToggle, SectionCard } from '../primitives'
 import { ShortcutRecorder } from '../shortcutRecorder'
-import { getAppTargetsSummary, formatUpdateBytes, getUpdateStatusLabel } from '../helpers'
+import { formatUpdateBytes, getUpdateStatusLabel } from '../helpers'
 
 interface WorkflowsTabProps {
   workflows: Workflow[]

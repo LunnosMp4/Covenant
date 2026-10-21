@@ -78,7 +78,6 @@ export function normalizeButtonVisibility(raw: unknown): AppConfig['buttonVisibi
 
   const obj = raw as Record<string, unknown>
   return {
-    appLauncher: typeof obj.appLauncher === 'boolean' ? obj.appLauncher : DEFAULT_BUTTON_VISIBILITY.appLauncher,
     workflow: typeof obj.workflow === 'boolean' ? obj.workflow : DEFAULT_BUTTON_VISIBILITY.workflow,
     tasks: typeof obj.tasks === 'boolean' ? obj.tasks : DEFAULT_BUTTON_VISIBILITY.tasks,
     notes: typeof obj.notes === 'boolean' ? obj.notes : DEFAULT_BUTTON_VISIBILITY.notes,

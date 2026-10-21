@@ -107,8 +107,7 @@ An integrated coding agent powered by a **bundled OpenCode runtime** — no sepa
 
 ### App launcher
 - Fuzzy search across installed applications, warmed in the background for instant results.
-- Manual launcher entries with file picking and icon extraction, plus optional Windows system
-  apps.
+- Optional Windows system apps in the search results.
 
 ### Tasks and progress
 - Capture tasks and let the assistant evaluate difficulty, estimate effort, and categorize
@@ -223,10 +222,9 @@ Settings live in a dedicated window and are grouped into the following tabs:
 | Tab | Controls |
 | --- | --- |
 | General | API key, proxy, startup, updates, chat model, global shortcuts |
-| Appearance | Theme gradient, texture, command-bar buttons |
+| Appearance | Theme gradient, texture, command-bar buttons, application search |
 | Terminal | Default shell and font |
 | Code | OpenCode runtime, remote machines, models, permissions |
-| App Launcher | Manual entries and system-app visibility |
 | Workflows | Saved scripts and languages |
 | Instructions | Global instructions and reusable templates |
 | MCP Servers | Server connections, tools, and authentication |
@@ -248,7 +246,7 @@ domain logic isolated so they can be reused and unit tested.
   processes, grouped by domain.
 
 Runtime config (`AppConfig`) is persisted to `userData/config.json`. Larger app data —
-instructions, launcher entries, workflows, conversations, and clipboard history — is stored
+instructions, workflows, conversations, and clipboard history — is stored
 via `electron-store`. Secrets (such as SSH credentials) are kept in the OS keychain through
 Electron's `safeStorage`.
 

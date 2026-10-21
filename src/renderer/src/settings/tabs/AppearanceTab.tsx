@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion, useAnimationControls, type Transition } from 'framer-motion'
 import { WINDOW_ENTER_TRANSITION, WINDOW_EXIT_TRANSITION } from '../../constants/motion'
-import AppFormModal from '../modals/AppFormModal'
 import ConfirmDeleteModal from '../../ui/ConfirmDeleteModal'
 import CustomSelect from '../../ui/CustomSelect'
 import McpServerFormModal from '../modals/McpServerFormModal'
@@ -29,14 +28,12 @@ import {
   type PasteManagerSettings
 } from '../../../../shared/paste/paste'
 import type { McpServer } from '../../../../shared/mcp/mcp'
-import type { LauncherApp } from '../../types/renderer'
 import type { Preprompt } from '../../types/renderer'
 import type { Workflow } from '../../types/renderer'
 import { getAppBadgeText } from '../../utils/helpers'
-import { formatTargetsSummary, normalizeLaunchTargets } from '../../utils/launcher/launcherTargets'
 import { MinimalistToggle, SectionCard } from '../primitives'
 import { ShortcutRecorder } from '../shortcutRecorder'
-import { getAppTargetsSummary, formatUpdateBytes, getUpdateStatusLabel } from '../helpers'
+import { formatUpdateBytes, getUpdateStatusLabel } from '../helpers'
 
 interface AppearanceTabProps {
   selectedTheme: string
@@ -135,12 +132,6 @@ export default function AppearanceTab({
       >
         <div className="space-y-4">
           <MinimalistToggle
-            checked={buttonVisibility.appLauncher}
-            onChange={(checked) => onButtonVisibilityChange({ ...buttonVisibility, appLauncher: checked })}
-            label="App Launcher"
-            description="Show the App Launcher button to quickly open your favorite applications."
-          />
-          <MinimalistToggle
             checked={buttonVisibility.workflow}
             onChange={(checked) => onButtonVisibilityChange({ ...buttonVisibility, workflow: checked })}
             label="Workflows"
@@ -163,7 +154,7 @@ export default function AppearanceTab({
 
       {isWindows && (
         <SectionCard
-          title="App Launcher"
+          title="Application Search"
           description="Control which installed applications appear in the command bar search."
         >
           <MinimalistToggle

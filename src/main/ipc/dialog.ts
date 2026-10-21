@@ -1,33 +1,9 @@
-import { dialog, ipcMain, shell } from 'electron'
+import { ipcMain, shell } from 'electron'
 import { launchSavedApp } from '../features/appLauncher'
-
-const isMac = process.platform === 'darwin'
-const isWindows = process.platform === 'win32'
 
 const faviconCache = new Map<string, string>()
 
 export function registerDialogIpc(): void {
-  ipcMain.handle('select-file', async () => {
-    const fileFilters = isWindows
-      ? [{ name: 'Applications', extensions: ['exe'] }]
-      : isMac
-        ? [{ name: 'Applications', extensions: ['app'] }]
-        : [{ name: 'Applications', extensions: ['*'] }]
-
-    const result = await dialog.showOpenDialog({
-      title: 'Select an application',
-      properties: ['openFile'],
-      filters: fileFilters,
-      ...(isMac ? { treatPackageAsDirectory: false } : {})
-    })
-
-    if (result.canceled || result.filePaths.length === 0) {
-      return ''
-    }
-
-    return result.filePaths[0]
-  })
-
   ipcMain.handle('get-favicon', async (_event, rawUrl: unknown) => {
     const url = typeof rawUrl === 'string' ? rawUrl.trim() : ''
     if (!url) return ''

@@ -1,7 +1,6 @@
 import ElectronStore from 'electron-store'
 import type { ChatConversation } from '../../shared/chat/chat'
 import { DEFAULT_GAMIFICATION, type GamificationState } from '../../shared/tasks/gamification'
-import type { LauncherApp } from '../../shared/launcher/launcher-app'
 import type { Preprompt } from '../../shared/domain/preprompt'
 import type { Task } from '../../shared/tasks/task'
 import type { Workflow } from '../../shared/domain/workflow'
@@ -12,7 +11,6 @@ import type { NoteMeta } from '../../shared/notes/note'
 export interface AppStoreSchema {
   preprompts: Preprompt[]
   globalInstructions: string
-  apps: LauncherApp[]
   workflows: Workflow[]
   conversations: ChatConversation[]
   tasks: Task[]
@@ -32,7 +30,6 @@ export const appStore = new StoreClass<AppStoreSchema>({
   defaults: {
     preprompts: [],
     globalInstructions: '',
-    apps: [],
     workflows: [],
     conversations: [],
     tasks: [],
@@ -60,34 +57,6 @@ export const appStore = new StoreClass<AppStoreSchema>({
     globalInstructions: {
       type: 'string',
       default: ''
-    },
-    apps: {
-      type: 'array',
-      default: [],
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          id: { type: 'string' },
-          title: { type: 'string' },
-          path: { type: 'string' },
-          iconBase64: { type: 'string' },
-          arguments: { type: 'string' },
-          targets: {
-            type: 'array',
-            items: {
-              type: 'object',
-              additionalProperties: false,
-              properties: {
-                path: { type: 'string' },
-                arguments: { type: 'string' }
-              },
-              required: ['path', 'arguments']
-            }
-          }
-        },
-        required: ['id', 'title', 'path', 'iconBase64', 'arguments', 'targets']
-      }
     },
     workflows: {
       type: 'array',

@@ -18,9 +18,7 @@ const TRANSCRIPT_CHUNK_CHARS = 120_000
 const PARTIAL_SUMMARY_CHUNK_CHARS = 100_000
 
 function responseParams(config: AppConfig): Record<string, unknown> {
-  const params: Record<string, unknown> = {
-    instructions: buildMeetingRecapInstructions()
-  }
+  const params: Record<string, unknown> = {}
   if (modelDoesReasoning(config.chatModel)) {
     params.reasoning = {
       effort: config.reasoningEffort || DEFAULT_REASONING_EFFORT,
@@ -90,15 +88,17 @@ export async function generateMeetingRecap(
   const client = createOpenAIClient(apiKey, config.proxyUrl)
   const model = settings.summaryModel || config.chatModel
   const source = await summarizeChunks(client, model, config, transcript)
+  const customPrompt = settings.summaryPrompt.trim()
+  const startedAt = note.meeting?.startedAt ?? Date.now()
+  // Apply the user's custom instructions for chunked transcripts too, not just
+  // short ones, so the recap always follows their preferences.
   const prompt =
     source === transcript
-      ? settings.summaryPrompt.trim()
-        ? `${settings.summaryPrompt.trim()}\n\n${buildMeetingRecapPrompt(transcript, note.meeting?.startedAt ?? Date.now())}`
-        : buildMeetingRecapPrompt(transcript, note.meeting?.startedAt ?? Date.now())
-      : buildSynthesisPrompt(
+      ? `${customPrompt ? `${customPrompt}\n\n` : ''}${buildMeetingRecapPrompt(transcript, startedAt)}`
+      : `${customPrompt ? `${customPrompt}\n\n` : ''}${buildSynthesisPrompt(
           chunkTranscript(source, TRANSCRIPT_CHUNK_CHARS),
-          note.meeting?.startedAt ?? Date.now()
-        )
+          startedAt
+        )}`
 
   const recap = await createText(
     client,
@@ -121,28 +121,33 @@ function fallbackTitle(note: Note): string {
   return `Meeting — ${new Date(note.meeting?.startedAt ?? Date.now()).toLocaleDateString()}`
 }
 
+/** Notes currently being summarized, so a double trigger can't run twice. */
+const activeRecaps = new Set<string>()
+
 export async function summarizeMeeting(noteId: string): Promise<Note | null> {
   const note = await getNote(noteId)
   if (!note?.meeting) return null
+  if (activeRecaps.has(noteId)) return note
 
-  const config = readConfig()
-  const settings = config.notes
-
-  const summarizing = await updateNoteMeeting(noteId, (meeting) => ({
-    ...meeting,
-    status: 'summarizing',
-    error: undefined
-  }))
-  if (summarizing) {
-    sendToMain('notes:meeting-event', {
-      type: 'status',
-      noteId,
-      status: 'summarizing',
-      note: summarizing
-    })
-  }
-
+  activeRecaps.add(noteId)
   try {
+    const config = readConfig()
+    const settings = config.notes
+
+    const summarizing = await updateNoteMeeting(noteId, (meeting) => ({
+      ...meeting,
+      status: 'summarizing',
+      error: undefined
+    }))
+    if (summarizing) {
+      sendToMain('notes:meeting-event', {
+        type: 'status',
+        noteId,
+        status: 'summarizing',
+        note: summarizing
+      })
+    }
+
     const recap = await generateMeetingRecap(note, config, settings)
     const updated = await applyMeetingRecap(noteId, recap, fallbackTitle({ ...note, content: recap }))
     if (updated) {
@@ -165,5 +170,7 @@ export async function summarizeMeeting(noteId: string): Promise<Note | null> {
       })
     }
     return failed
+  } finally {
+    activeRecaps.delete(noteId)
   }
 }

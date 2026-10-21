@@ -2,8 +2,9 @@ import { promises as fs } from 'fs'
 import { join } from 'path'
 import type { NotesSettings } from '../../shared/config'
 import type { MeetingSegment, Note } from '../../shared/notes/note'
-import { MAX_MEETING_SEGMENT_BYTES } from '../../shared/notes/note'
+import { isValidNoteId, MAX_MEETING_SEGMENT_BYTES } from '../../shared/notes/note'
 import { formatMeetingTitle, mergeSegmentTranscripts } from '../../shared/notes/meeting'
+import { fixWebmDuration } from '../../shared/notes/webm'
 import { readConfig } from '../config/configStore'
 import {
   createNote,
@@ -147,7 +148,7 @@ export async function appendMeetingSegment(payload: {
       : 0
   const buffer = normalizeSegmentData(payload?.data)
 
-  if (!noteId || index < 0 || !buffer || buffer.length === 0) {
+  if (!isValidNoteId(noteId) || index < 0 || !buffer || buffer.length === 0) {
     return { success: false, error: 'Invalid audio segment.' }
   }
   if (buffer.length > MAX_MEETING_SEGMENT_BYTES) {
@@ -162,7 +163,10 @@ export async function appendMeetingSegment(payload: {
   const fileName = `segment-${String(index).padStart(4, '0')}.webm`
   const filePath = join(getNoteAudioDir(noteId), fileName)
   await fs.mkdir(getNoteAudioDir(noteId), { recursive: true })
-  await fs.writeFile(filePath, buffer)
+  // MediaRecorder WebM has no Duration element, which makes the file unseekable
+  // in Chromium. Add it now so saved segments can be scrubbed.
+  const seekable = fixWebmDuration(buffer, durationMs)
+  await fs.writeFile(filePath, seekable ? Buffer.from(seekable) : buffer)
 
   const updated = await updateNoteMeeting(noteId, (meeting) => {
     const existing = meeting.segments.filter((segment) => segment.index !== index)
@@ -194,7 +198,7 @@ export async function finishMeeting(
   durationMs?: number
 ): Promise<Note | null> {
   const id = typeof noteId === 'string' ? noteId.trim() : ''
-  if (!id) return null
+  if (!isValidNoteId(id)) return null
 
   const session = sessions.get(id)
   if (session) {
@@ -220,7 +224,9 @@ export async function finishMeeting(
   const totalDuration =
     typeof durationMs === 'number' && Number.isFinite(durationMs)
       ? Math.max(0, durationMs)
-      : Math.max(0, endedAt - note.meeting.startedAt)
+      : typeof note.meeting.endedAt === 'number'
+        ? Math.max(0, note.meeting.endedAt - note.meeting.startedAt)
+        : Math.max(0, endedAt - note.meeting.startedAt)
   const keepAudio = notesSettings().keepAudio
   const shouldDeleteAudio = !keepAudio && transcript.trim().length > 0
   if (shouldDeleteAudio) {
@@ -232,7 +238,9 @@ export async function finishMeeting(
   const updated = await updateNoteMeeting(id, (meeting) => ({
     ...meeting,
     status: transcript.trim() ? 'completed' : 'error',
-    endedAt,
+    // Keep the original end time when finalizing an existing meeting again
+    // (e.g. after retranscription).
+    endedAt: meeting.endedAt ?? endedAt,
     durationMs: totalDuration,
     transcript,
     segments: shouldDeleteAudio ? [] : meeting.segments,

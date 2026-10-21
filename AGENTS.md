@@ -21,7 +21,7 @@ CI runs typecheck, tests, and a build on Windows/macOS/Linux (`.github/workflows
 - `ipc/` — one module per domain (`window`, `config`, `usage`, `mcp`, `store`, `terminal`, `dialog`, `excalidraw`, `paste`, `chat`, `index`). `registerIpc()` registers every `ipcMain` handler.
 - `windows/` — `index.ts` owns all `BrowserWindow`/`Tray` state and window ops (create/show/hide/position/tray/shortcuts/paste protocol); `broadcast.ts` is the injected event bus so features can push to windows without importing window state.
 - `chat/` (as `openai/`) — `client`, `messages` (sanitize/build params), `streaming`, `completion`, `title`.
-- `features/` — domain CRUD/behavior: `preprompts`, `tasks`, `conversations`, `launcherApps`, `workflows`, `appLauncher`.
+- `features/` — domain CRUD/behavior: `preprompts`, `tasks`, `conversations`, `workflows`, `appLauncher`.
 - `store/appStore.ts` — electron-store instance + `AppStoreSchema`.
 - `config/configStore.ts` — `AppConfig`, `DEFAULT_CONFIG`, `normalizeConfig`, `readConfig`/`writeConfig`/`updateConfig`.
 - `mcp/` — `servers` (persistence) and `registry` (active tools + Excalidraw bridge). `proxy.ts` — proxy resolution/session mirroring.

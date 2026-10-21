@@ -24,16 +24,8 @@ import {
   type PasteManagerSettings
 } from '../../../shared/paste/paste'
 import type { McpServer } from '../../../shared/mcp/mcp'
-import type { LauncherApp } from '../types/renderer'
 import type { Preprompt } from '../types/renderer'
 import type { Workflow } from '../types/renderer'
-import { getAppBadgeText } from '../utils/helpers'
-import { formatTargetsSummary, normalizeLaunchTargets } from '../utils/launcher/launcherTargets'
-
-export function getAppTargetsSummary(app: LauncherApp): string {
-  const targets = normalizeLaunchTargets(app.targets, app.path, app.arguments)
-  return formatTargetsSummary(targets)
-}
 
 export function formatUpdateBytes(bytes?: number): string {
   if (!bytes || bytes <= 0) return '0 B'

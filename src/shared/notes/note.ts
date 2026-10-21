@@ -118,6 +118,12 @@ export const MAX_NOTE_TAGS = 20
 export const MAX_NOTE_TAG_LENGTH = 40
 export const MAX_MEETING_SEGMENT_BYTES = 24 * 1024 * 1024
 export const NOTE_PREVIEW_LENGTH = 150
+/** Note ids become folder names on disk and are part of a custom protocol URL. */
+export const NOTE_ID_PATTERN = /^[a-zA-Z0-9-]{1,80}$/
+
+export function isValidNoteId(value: unknown): value is string {
+  return typeof value === 'string' && NOTE_ID_PATTERN.test(value)
+}
 
 export const NOTE_KINDS: readonly NoteKind[] = ['note', 'meeting']
 export const MEETING_STATUSES: readonly MeetingStatus[] = [

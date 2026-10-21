@@ -4,7 +4,6 @@ import { DEFAULT_CODE_SETTINGS, type CodeSettings } from './code/code'
 import { normalizeCodeSettings } from './code/codeNormalizers'
 
 export interface ButtonVisibility {
-  appLauncher: boolean
   workflow: boolean
   tasks: boolean
   notes: boolean
@@ -57,7 +56,6 @@ export function normalizeTextureIntensity(value: unknown): number {
 }
 
 export const DEFAULT_BUTTON_VISIBILITY: ButtonVisibility = {
-  appLauncher: true,
   workflow: true,
   tasks: true,
   notes: true,

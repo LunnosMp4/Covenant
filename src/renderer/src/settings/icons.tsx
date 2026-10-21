@@ -24,11 +24,8 @@ import {
   type PasteManagerSettings
 } from '../../../shared/paste/paste'
 import type { McpServer } from '../../../shared/mcp/mcp'
-import type { LauncherApp } from '../types/renderer'
 import type { Preprompt } from '../types/renderer'
 import type { Workflow } from '../types/renderer'
-import { getAppBadgeText } from '../utils/helpers'
-import { formatTargetsSummary, normalizeLaunchTargets } from '../utils/launcher/launcherTargets'
 import type { SettingsTab } from './constants'
 
 export function SidebarGlyph({ tab }: { tab: SettingsTab }): JSX.Element {
@@ -49,17 +46,6 @@ export function SidebarGlyph({ tab }: { tab: SettingsTab }): JSX.Element {
         <circle cx="8.5" cy="7.5" r="1.5" fill="currentColor" />
         <circle cx="6.5" cy="12.5" r="1.5" fill="currentColor" />
         <path d="M12 2a10 10 0 0 0 0 20 2 2 0 0 0 2-2 2 2 0 0 0-.6-1.4 1.9 1.9 0 0 1 1.35-3.25H16a6 6 0 0 0 6-6 10 10 0 0 0-10-7.35Z" />
-      </svg>
-    )
-  }
-
-  if (tab === 'appLauncher') {
-    return (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
-        <rect x="3" y="3" width="7" height="7" rx="1.6" />
-        <rect x="14" y="3" width="7" height="7" rx="1.6" />
-        <rect x="3" y="14" width="7" height="7" rx="1.6" />
-        <rect x="14" y="14" width="7" height="7" rx="1.6" />
       </svg>
     )
   }

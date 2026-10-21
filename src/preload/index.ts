@@ -3,7 +3,6 @@ import type { AppConfig } from '../shared/config'
 import type { ButtonVisibility, NotesSettings, ReasoningEffort, ShortcutConfig } from '../shared/config'
 import type { McpServer } from '../shared/mcp/mcp'
 import type { ChatConversation, ChatRole, ChatStreamEvent, InputContent } from '../shared/chat/chat'
-import type { LauncherApp } from '../shared/launcher/launcher-app'
 import type { InstalledApp } from '../shared/launcher/launcher'
 import type { Preprompt } from '../shared/domain/preprompt'
 import type {
@@ -640,7 +639,15 @@ const api = {
   },
   voice: {
     transcribe: (audioBuffer: ArrayBuffer) =>
-      ipcRenderer.invoke('voice:transcribe', audioBuffer) as Promise<string>
+      ipcRenderer.invoke('voice:transcribe', audioBuffer) as Promise<string>,
+    setRecordingActive: (active: boolean) => ipcRenderer.send('voice:recording-active', active),
+    onStopRequest: (callback: () => void) => {
+      const listener = (): void => callback()
+      ipcRenderer.on('voice:stop-recording', listener)
+      return () => {
+        ipcRenderer.removeListener('voice:stop-recording', listener)
+      }
+    }
   },
   store: {
     getPreprompts: () => ipcRenderer.invoke('get-preprompts') as Promise<Preprompt[]>,
@@ -651,10 +658,6 @@ const api = {
     getGlobalInstructions: () => ipcRenderer.invoke('get-global-instructions') as Promise<string>,
     saveGlobalInstructions: (value: string) =>
       ipcRenderer.invoke('save-global-instructions', value) as Promise<string>,
-    getApps: () => ipcRenderer.invoke('get-apps') as Promise<LauncherApp[]>,
-    saveApp: (launcherApp: Partial<LauncherApp>) =>
-      ipcRenderer.invoke('save-app', launcherApp) as Promise<LauncherApp[]>,
-    deleteApp: (appId: string) => ipcRenderer.invoke('delete-app', appId) as Promise<LauncherApp[]>,
     getWorkflows: () => ipcRenderer.invoke('get-workflows') as Promise<Workflow[]>,
     saveWorkflow: (workflow: Partial<Workflow>) =>
       ipcRenderer.invoke('save-workflow', workflow) as Promise<Workflow[]>,
@@ -814,7 +817,6 @@ const api = {
       }
     }
   },
-  selectFile: () => ipcRenderer.invoke('select-file') as Promise<string>,
   getFavicon: (url: string) => ipcRenderer.invoke('get-favicon', url) as Promise<string>,
   installedApps: {
     list: () => ipcRenderer.invoke('get-installed-apps') as Promise<InstalledApp[]>,
