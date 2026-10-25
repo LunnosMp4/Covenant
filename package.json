@@ -16,7 +16,7 @@
     "test:watch": "vitest"
   },
   "build": {
-    "appId": "com.covenant.app",
+    "appId": "com.covenant.app",  
     "productName": "Covenant",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "files": [

@@ -1,10 +1,15 @@
-import { nativeImage, type NativeImage } from 'electron'
+import { nativeImage, nativeTheme, type NativeImage } from 'electron'
 import { existsSync } from 'fs'
 
 /**
  * Builds the tray icon at runtime so activity badges need no extra asset files.
  * Code activity is a colored dot in the bottom-right; an active meeting
  * recording adds a red mic badge in the top-right.
+ *
+ * Two artworks are supported: `light` (dark glyph, for a light menu bar) and
+ * `dark` (light glyph, for a dark menu bar). macOS picks one from the current
+ * appearance (Light/Dark/Auto) and re-renders on `nativeTheme` updates; every
+ * other platform always uses `light`, since the Windows tray has a fixed theme.
  *
  * The source PNG can be any size, so every state is normalized to a 16pt
  * (32px @2x) image. macOS draws a status-item image at its intrinsic size and
@@ -13,6 +18,7 @@ import { existsSync } from 'fs'
  */
 
 type Rgb = { r: number; g: number; b: number }
+export type TrayIconVariant = 'light' | 'dark'
 
 const SIZE = 16
 const SCALE = 2
@@ -30,21 +36,35 @@ const STATE_COLORS: Record<string, Rgb> = {
 
 const RECORDING_COLOR: Rgb = { r: 239, g: 68, b: 68 }
 
-let baseIconPath: string | null = null
+let baseIconPaths: Partial<Record<TrayIconVariant, string>> = {}
 const cache = new Map<string, NativeImage>()
 
-export function setTrayIconPath(path: string): void {
-  baseIconPath = existsSync(path) ? path : null
+export function setTrayIconPaths(paths: Partial<Record<TrayIconVariant, string>>): void {
+  const resolved: Partial<Record<TrayIconVariant, string>> = {}
+  for (const variant of ['light', 'dark'] as const) {
+    const path = paths[variant]
+    if (path && existsSync(path)) resolved[variant] = path
+  }
+  baseIconPaths = resolved
   cache.clear()
 }
 
-export function getTrayIconPath(): string | null {
-  return baseIconPath
+export function getTrayIconPaths(): Partial<Record<TrayIconVariant, string>> {
+  return { ...baseIconPaths }
+}
+
+/** macOS follows the menu bar appearance; other platforms keep the light art. */
+export function currentTrayIconVariant(): TrayIconVariant {
+  if (process.platform !== 'darwin') return 'light'
+  return nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
 }
 
 function baseIcon(): NativeImage | null {
-  if (!baseIconPath || !existsSync(baseIconPath)) return null
-  const image = nativeImage.createFromPath(baseIconPath)
+  const preferred = currentTrayIconVariant()
+  const fallback = preferred === 'dark' ? 'light' : 'dark'
+  const path = baseIconPaths[preferred] ?? baseIconPaths[fallback]
+  if (!path || !existsSync(path)) return null
+  const image = nativeImage.createFromPath(path)
   return image.isEmpty() ? null : image
 }
 
@@ -221,7 +241,8 @@ function compositeMicBadge(base: NativeImage): NativeImage {
 }
 
 export function buildTrayIcon(state: string, recording = false): NativeImage | null {
-  const cacheKey = `${state}:${recording ? 'recording' : 'idle'}`
+  const variant = currentTrayIconVariant()
+  const cacheKey = `${variant}:${state}:${recording ? 'recording' : 'idle'}`
   const cached = cache.get(cacheKey)
   if (cached) return cached
 

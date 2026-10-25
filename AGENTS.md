@@ -40,7 +40,7 @@ CI runs typecheck, tests, and a build on Windows/macOS/Linux (`.github/workflows
 ## Gotchas
 
 - OpenAI API key is main-process-only (loaded from `.env` via dotenv at `process.cwd()`). Never expose it to the renderer.
-- `src/main/assets` is copied to `out/main/assets` at build time by a custom vite plugin (`copyAssetsPlugin`) — apply `build` only. The tray/window icon is loaded from `out/main/assets/tray-icon.png`; adding assets requires a rebuild.
+- `src/main/assets` is copied to `out/main/assets` at build time by a custom vite plugin (`copyAssetsPlugin`) — apply `build` only. The tray icon is loaded from `out/main/assets/tray-icon-light.png` / `tray-icon-dark.png` (macOS picks per menu bar appearance; other platforms always use `light`); adding assets requires a rebuild.
 - `app.commandLine.appendSwitch('js-flags', '--expose_gc')` must stay at module top level of `src/main/index.ts`, before `app.whenReady()` (used to force GC on window hide).
 - Config (`AppConfig`) is persisted to `userData/config.json` via `readConfig`/`writeConfig`/`normalizeConfig` in `src/main/config/configStore.ts`. New settings must be added to `DEFAULT_CONFIG` and `normalizeConfig`; new app data must be added to the electron-store `schema`/`defaults` in `src/main/store/appStore.ts` (store name `preprompts`).
 - Renderer IPC payloads are untrusted: main normalizes/sanitizes everything (see the `normalize*` helpers). Follow that pattern for new handlers.

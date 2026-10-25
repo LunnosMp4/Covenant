@@ -4,6 +4,7 @@ import {
   desktopCapturer,
   globalShortcut,
   Menu,
+  nativeTheme,
   powerSaveBlocker,
   protocol,
   screen,
@@ -23,7 +24,7 @@ import { readConfig } from '../config/configStore'
 import { openLogsFolder } from '../logger'
 import { getPasteManager, isPasteBlurSuppressed } from '../paste/runtime'
 import { checkForUpdatesManually } from '../updater'
-import { buildTrayIcon, setTrayIconPath } from './trayIcon'
+import { buildTrayIcon, setTrayIconPaths } from './trayIcon'
 
 const isMac = process.platform === 'darwin'
 const isWindows = process.platform === 'win32'
@@ -47,6 +48,8 @@ let mainWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let trayShortcutDisplay = 'Disabled'
+// Registered once: createTray() is intentionally re-entrant (Windows ghost icons).
+let trayAppearanceListenerAttached = false
 let codeActivity: CodeActivitySummary | null = null
 let isVisible = false
 let isPinned = false
@@ -140,13 +143,26 @@ function loadRendererWindow(
   targetWindow.loadFile(rendererEntryFile)
 }
 
+/**
+ * Resolve an asset bundled under `src/main/assets`. Built apps read the copy in
+ * `out/main/assets`; dev runs fall back to the source folder because
+ * `copyAssetsPlugin` only applies to `build`.
+ */
+function resolveTrayAsset(fileName: string): string | null {
+  const compiledPath = join(__dirname, 'assets', fileName)
+  if (existsSync(compiledPath)) return compiledPath
+
+  const sourcePath = join(__dirname, '..', '..', 'src', 'main', 'assets', fileName)
+  return existsSync(sourcePath) ? sourcePath : null
+}
+
 export function createWindow(): void {
   const layout = getMainWindowLayout()
 
   mainWindow = new BrowserWindow({
     width: layout.width,
     height: layout.height,
-    icon: join(__dirname, 'assets', 'tray-icon.png'),
+    icon: resolveTrayAsset('tray-icon-light.png') ?? undefined,
     x: layout.x,
     y: layout.y,
     show: false,
@@ -818,38 +834,37 @@ export function createTray(): void {
       tray = null
     }
 
-    // Try to find and load tray icon
-    let trayIconPath: string | null = null
+    // macOS gets one artwork per menu bar appearance; everything else uses the
+    // light one (the Windows tray theme is fixed).
+    const lightIconPath = resolveTrayAsset('tray-icon-light.png')
+    const darkIconPath = resolveTrayAsset('tray-icon-dark.png')
 
-    // Primary path: compiled assets
-    const compiledPngPath = join(__dirname, 'assets', 'tray-icon.png')
-    if (existsSync(compiledPngPath)) {
-      trayIconPath = compiledPngPath
-    }
-
-    // Fallback: source assets (development)
-    if (!trayIconPath) {
-      const srcPngPath = join(__dirname, '..', '..', 'src', 'main', 'assets', 'tray-icon.png')
-      if (existsSync(srcPngPath)) {
-        trayIconPath = srcPngPath
-      }
-    }
-
-    if (!trayIconPath) {
-      console.warn('Tray icon not found at:', compiledPngPath)
+    if (!lightIconPath && !darkIconPath) {
+      console.warn('Tray icon not found in:', join(__dirname, 'assets'))
       return
     }
 
-    setTrayIconPath(trayIconPath)
+    setTrayIconPaths({
+      light: lightIconPath ?? undefined,
+      dark: darkIconPath ?? undefined
+    })
 
     // Tooltip — registerShortcuts() refreshes it with the live shortcut.
     const config = readConfig()
     trayShortcutDisplay = getShortcutDisplay(config.shortcuts?.openApp ?? DEFAULT_SHORTCUTS.openApp)
 
     const initialIcon = buildTrayIcon('idle', isMeetingRecording)
-    tray = initialIcon && !initialIcon.isEmpty() ? new Tray(initialIcon) : new Tray(trayIconPath)
+    const fallbackIconPath = lightIconPath ?? darkIconPath!
+    tray = initialIcon && !initialIcon.isEmpty() ? new Tray(initialIcon) : new Tray(fallbackIconPath)
 
     refreshTray()
+
+    // macOS flips the menu bar between light and dark with Appearance/Auto;
+    // rebuild so the matching artwork is used.
+    if (isMac && !trayAppearanceListenerAttached) {
+      nativeTheme.on('updated', refreshTray)
+      trayAppearanceListenerAttached = true
+    }
 
     // Left-click toggles visibility.
     tray.on('click', () => {
@@ -868,6 +883,11 @@ export function destroyTray(): void {
   if (tray) {
     tray.destroy()
     tray = null
+  }
+
+  if (trayAppearanceListenerAttached) {
+    nativeTheme.removeListener('updated', refreshTray)
+    trayAppearanceListenerAttached = false
   }
 }
 
