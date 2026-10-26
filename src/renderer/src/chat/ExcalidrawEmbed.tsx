@@ -109,7 +109,7 @@ export function ExcalidrawEmbed({ checkpointId, serverId }: ExcalidrawEmbedProps
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="my-3 overflow-hidden rounded-xl border border-white/10 bg-neutral-900/80 shadow-2xl backdrop-blur-md"
+      className="surface-shadow my-3 overflow-hidden rounded-xl border border-white/10 bg-neutral-900"
     >
       <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-neutral-950/40 px-3 py-2 text-xs text-neutral-300">
         <div className="flex min-w-0 items-center gap-2">
@@ -146,7 +146,7 @@ export function ExcalidrawEmbed({ checkpointId, serverId }: ExcalidrawEmbedProps
             type="button"
             onClick={handleOpenExternal}
             disabled={!iframeSrc}
-            className="rounded px-2 py-1 text-[11px] text-sky-400 transition hover:bg-sky-500/10 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded px-2 py-1 text-[11px] text-[color:var(--chat-accent)] transition hover:bg-[color:var(--chat-accent-soft)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             Open Browser ↗
           </button>

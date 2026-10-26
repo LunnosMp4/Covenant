@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { McpAuth, McpServer } from '../../../../shared/mcp/mcp'
 import { PresetLogo, type BrandKind } from '../../ui/brands'
 import { ChevronDownIcon, ChevronUpIcon, MoreIcon } from '../../ui/icons'
+import ToggleSwitch from '../../ui/ToggleSwitch'
 
 const RECOMMENDED_COLLAPSED_KEY = 'covenant.mcp.recommendedCollapsed'
 
@@ -104,7 +105,8 @@ function formatRelativeTime(timestamp: number): string {
 const CONNECTION_LABELS: Record<ConnectionState, { label: string; className: string }> = {
   connected: {
     label: 'Connected',
-    className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+    className:
+      'border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] text-[color:var(--chat-accent)]'
   },
   error: {
     label: 'Error',
@@ -149,7 +151,7 @@ function ToolRow({
   const isDescriptionLong = description.length > TOOL_DESCRIPTION_PREVIEW_LENGTH
 
   return (
-    <label className="flex items-start justify-between gap-4 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2">
+    <div className="flex items-start justify-between gap-4 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2">
       <span className="min-w-0">
         <span className="block break-all text-sm text-neutral-100">{tool.name}</span>
         {description ? (
@@ -177,17 +179,20 @@ function ToolRow({
       </span>
 
       <span className="flex flex-shrink-0 items-center gap-2">
-        <span className="text-[11px] uppercase tracking-[0.08em] text-neutral-500">
+        <span
+          className={`text-[11px] uppercase tracking-[0.08em] ${
+            tool.enabled ? 'text-[color:var(--chat-accent)]' : 'text-neutral-500'
+          }`}
+        >
           {tool.enabled ? 'Enabled' : 'Disabled'}
         </span>
-        <input
-          type="checkbox"
+        <ToggleSwitch
           checked={tool.enabled}
-          onChange={(event) => onToggleTool(server, tool.name, event.target.checked)}
-          className="h-4 w-4 rounded border-neutral-700 bg-neutral-950 text-neutral-100"
+          onChange={(enabled) => onToggleTool(server, tool.name, enabled)}
+          ariaLabel={`${tool.enabled ? 'Disable' : 'Enable'} ${tool.name}`}
         />
       </span>
-    </label>
+    </div>
   )
 }
 
@@ -239,7 +244,7 @@ function McpServerCard({
               </span>
             ) : null}
             <h3 className="text-sm font-semibold text-neutral-100">{server.name}</h3>
-            <span className={`rounded-full border px-2 py-0.5 text-[11px] uppercase tracking-[0.08em] ${server.active ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-neutral-700 bg-neutral-950 text-neutral-400'}`}>
+            <span className={`rounded-full border px-2 py-0.5 text-[11px] uppercase tracking-[0.08em] ${server.active ? 'border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] text-[color:var(--chat-accent)]' : 'border-neutral-700 bg-neutral-950 text-neutral-400'}`}>
               {server.active ? 'Active' : 'Inactive'}
             </span>
             <span className={`rounded-full border px-2 py-0.5 text-[11px] uppercase tracking-[0.08em] ${connectionMeta.className}`}>
@@ -271,24 +276,11 @@ function McpServerCard({
             {isExpanded ? 'Collapse' : 'Expand'}
           </button>
 
-          <button
-            type="button"
-            role="switch"
-            aria-checked={server.active}
-            onClick={() => onToggleActive(server, !server.active)}
-            className={`flex items-center gap-2 rounded-full border px-2.5 py-1.5 text-xs transition-colors ${
-              server.active
-                ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
-                : 'border-neutral-700 text-neutral-400 hover:border-neutral-600 hover:text-neutral-200'
-            }`}
-          >
-            <span className={`relative inline-flex h-4 w-7 rounded-full transition-colors ${server.active ? 'bg-emerald-500/70' : 'bg-neutral-700'}`}>
-              <span
-                className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${server.active ? 'translate-x-3.5' : 'translate-x-0.5'}`}
-              />
-            </span>
-            {server.active ? 'Active' : 'Inactive'}
-          </button>
+          <ToggleSwitch
+            checked={server.active}
+            onChange={(next) => onToggleActive(server, next)}
+            ariaLabel={server.active ? `Deactivate ${server.name}` : `Activate ${server.name}`}
+          />
 
           <div className="relative">
             <button
@@ -302,7 +294,7 @@ function McpServerCard({
             {isMenuOpen ? (
               <>
                 <div className="fixed inset-0 z-20" onClick={() => setIsMenuOpen(false)} />
-                <div className="absolute right-0 top-full z-30 mt-1 w-44 rounded-xl border border-neutral-700 bg-neutral-900 p-1 shadow-[0_16px_40px_rgba(0,0,0,0.5)]">
+                <div className="surface-shadow absolute right-0 top-full z-30 mt-1 w-44 rounded-xl border border-neutral-700 bg-neutral-900 p-1">
                   <button
                     type="button"
                     onClick={() => {
@@ -453,7 +445,7 @@ function PresetCard({
         <span className="text-sm font-medium text-neutral-100">{preset.name}</span>
       </span>
       <span className="text-xs leading-relaxed text-neutral-500">{preset.description}</span>
-      <span className="text-xs font-medium text-emerald-300 opacity-0 transition-opacity group-hover:opacity-100">
+      <span className="text-xs font-medium text-[color:var(--chat-accent)] opacity-0 transition-opacity group-hover:opacity-100">
         + Add server
       </span>
     </button>

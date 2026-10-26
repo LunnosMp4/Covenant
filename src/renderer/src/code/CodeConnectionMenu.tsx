@@ -65,7 +65,7 @@ export default function CodeConnectionMenu({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-10 z-30 w-72 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/95 shadow-xl shadow-black/50">
+        <div className="surface-shadow absolute left-0 top-10 z-30 w-72 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/95">
           <div className="max-h-72 overflow-y-auto p-1 chat-scrollbar">
             <div className="flex items-center justify-between px-2 pb-1 pt-2">
               <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">

@@ -183,7 +183,7 @@ function SpendChart({ daily }: { daily: UsageCostPoint[] }): JSX.Element {
 
       {activePoint ? (
         <div
-          className="pointer-events-none absolute -translate-x-1/2 rounded-lg border border-neutral-700 bg-neutral-950/95 px-2.5 py-1.5 text-center shadow-lg"
+          className="surface-shadow pointer-events-none absolute -translate-x-1/2 rounded-lg border border-neutral-700 bg-neutral-950/95 px-2.5 py-1.5 text-center"
           style={{ left: `${((hover! + 0.5) / daily.length) * 100}%`, top: 0 }}
         >
           <p className="text-[10px] uppercase tracking-[0.08em] text-neutral-500">

@@ -91,7 +91,7 @@ export default function CustomSelect({
       </button>
 
       {open && !disabled && (
-        <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900 shadow-xl shadow-black/40">
+        <div className="surface-shadow absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900">
           <div className="max-h-48 overflow-y-auto py-1 scrollbar-hidden">
             {options.map((option) => {
               const isActive = option.value === value

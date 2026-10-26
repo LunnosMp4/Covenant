@@ -6,6 +6,7 @@ import {
   MIN_PASTE_ITEMS,
   type PasteManagerSettings
 } from '../../../shared/paste/paste'
+import ToggleSwitch from '../ui/ToggleSwitch'
 
 interface PasteSettingsTabProps {
   settings: PasteManagerSettings
@@ -53,21 +54,7 @@ function ToggleRow({
         <p className="text-sm text-neutral-200">{label}</p>
         <p className="mt-0.5 text-xs text-neutral-500">{description}</p>
       </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        onClick={() => onChange(!checked)}
-        className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full border transition-colors ${
-          checked ? 'border-emerald-400/60 bg-emerald-400/30' : 'border-white/15 bg-white/5'
-        }`}
-      >
-        <span
-          className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white transition-all ${
-            checked ? 'left-[18px]' : 'left-0.5'
-          }`}
-        />
-      </button>
+      <ToggleSwitch checked={checked} onChange={onChange} ariaLabel={label} />
     </div>
   )
 }
@@ -133,7 +120,7 @@ export default function PasteSettingsTab({
               const value = Number(event.target.value)
               if (Number.isFinite(value)) onChange({ maxItems: value })
             }}
-            className="w-28 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-right text-sm text-neutral-100 focus:border-emerald-400/50"
+            className="w-28 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-right text-sm text-neutral-100 focus:border-[color:var(--chat-accent)]"
           />
         </div>
 
@@ -147,7 +134,7 @@ export default function PasteSettingsTab({
             onChange={(event) =>
               onChange({ maxAgeDays: event.target.value === '' ? null : Number(event.target.value) })
             }
-            className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-neutral-100 focus:border-emerald-400/50"
+            className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-neutral-100 focus:border-[color:var(--chat-accent)]"
           >
             {AGE_OPTIONS.map((option) => (
               <option key={option.label} value={option.value ?? ''} className="bg-neutral-900">

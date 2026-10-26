@@ -207,7 +207,7 @@ export default function CodePanel({
             onClick={onTogglePin}
             className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors ${
               isPinned
-                ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-400 hover:border-emerald-500/50 hover:bg-emerald-500/25'
+                ? 'border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] text-[color:var(--chat-accent)]'
                 : 'border-white/10 text-neutral-400 hover:border-white/20 hover:bg-white/10 hover:text-neutral-200'
             }`}
             aria-label={isPinned ? 'Unpin window' : 'Pin window'}

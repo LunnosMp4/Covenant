@@ -312,7 +312,7 @@ export default function NoteAIPanel({
               <button
                 type="button"
                 onClick={() => onInsert(result)}
-                className="rounded-md border border-emerald-400/30 bg-emerald-500/15 px-2 py-1 text-[11px] text-emerald-200 transition-colors hover:bg-emerald-500/25"
+                className="rounded-md border border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] px-2 py-1 text-[11px] text-[color:var(--chat-accent)] transition-colors hover:bg-[color:var(--chat-accent-strong)]"
               >
                 Insert
               </button>
@@ -355,7 +355,7 @@ export default function NoteAIPanel({
             }}
             rows={1}
             placeholder="Ask about this note…"
-            className="chat-scrollbar max-h-28 min-h-[36px] flex-1 resize-none rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-2 text-xs text-neutral-100 placeholder:text-neutral-500 focus:border-emerald-400/50"
+            className="chat-scrollbar max-h-28 min-h-[36px] flex-1 resize-none rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-2 text-xs text-neutral-100 placeholder:text-neutral-500 focus:border-[color:var(--chat-accent)]"
           />
           <button
             type="button"

@@ -189,7 +189,7 @@ export default function TasksPopup({
             }
           }}
           placeholder="Add a task…"
-          className="min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-emerald-400/50 focus:outline-none"
+          className="min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-[color:var(--chat-accent)] focus:outline-none"
           aria-label="New task"
         />
         <button
@@ -219,7 +219,7 @@ export default function TasksPopup({
                 draggedId === task.id
                   ? 'opacity-40'
                   : dragOverId === task.id
-                    ? 'bg-emerald-400/10'
+                    ? 'bg-[color:var(--chat-accent-soft)]'
                     : 'hover:bg-white/5'
               }`}
             >
@@ -323,15 +323,15 @@ export default function TasksPopup({
             className="pointer-events-none absolute inset-x-0 bottom-1 z-10 flex justify-center"
           >
             <div
-              className="flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1 text-[11px] font-medium shadow-lg shadow-black/40"
+              className="surface-shadow flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1 text-[11px] font-medium"
               style={{
                 borderColor: rgba(levelColor, 0.35),
-                backgroundColor: 'rgba(12, 12, 12, 0.95)',
+                backgroundColor: 'rgb(var(--n-950) / 0.95)',
                 color: rgba(levelColor, 0.95)
               }}
             >
               {xpToast.levelUp && (
-                <span style={{ color: '#ffffff' }}>Level {xpToast.newLevel}</span>
+                <span style={{ color: 'rgb(var(--n-50))' }}>Level {xpToast.newLevel}</span>
               )}
               <span>+{xpToast.xpGained} XP</span>
               {xpToast.streakBonusApplied && xpToast.streakDays > 0 && (

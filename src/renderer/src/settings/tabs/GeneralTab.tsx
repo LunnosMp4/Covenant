@@ -213,7 +213,7 @@ export default function GeneralTab({
                 <button
                   type="button"
                   onClick={onInstallUpdate}
-                  className="flex-shrink-0 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-emerald-950 transition-colors hover:bg-emerald-400"
+                  className="flex-shrink-0 rounded-lg bg-[color:var(--chat-accent)] px-3 py-1.5 text-xs font-semibold text-[color:var(--chat-on-accent)] transition-opacity hover:opacity-90"
                 >
                   {updateStatus.state === 'downloaded' ? 'Restart & install' : 'Download'}
                 </button>

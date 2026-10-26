@@ -6,11 +6,29 @@
   box-sizing: border-box;
 }
 
+:root {
+  background: transparent !important;
+}
+
+/*
+ * Theme tokens. `:root` doubles as the dark fallback so a nested
+ * `[data-theme='dark']` scope (the terminal) can opt back into dark values
+ * without inheriting light-mode tokens from the document.
+ */
 :root,
 [data-theme='dark'] {
-  background: transparent !important;
+  color-scheme: dark;
   /* `white` utilities resolve here; flips to near-black in light mode. */
   --ui-fg: 255 255 255;
+  /* Text colour for strong danger surfaces. */
+  --on-danger: 255 255 255;
+  /* Fallback accent for nested dark scopes (e.g. the terminal) and first paint.
+     The active theme overrides these on the document root. */
+  --chat-accent: #e6e6e3;
+  --chat-accent-soft: rgba(230, 230, 227, 0.12);
+  --chat-accent-strong: rgba(230, 230, 227, 0.26);
+  --chat-on-accent: #151515;
+
   /* Neutral scale (dark): matches Tailwind's default palette. */
   --n-50: 250 250 250;
   --n-100: 245 245 245;
@@ -23,11 +41,57 @@
   --n-800: 38 38 38;
   --n-900: 23 23 23;
   --n-950: 10 10 10;
+
+  /* Semantic ramps (dark). `emerald`/`amber`/`red` map here. */
+  --success-50: 236 253 245;
+  --success-100: 209 250 229;
+  --success-200: 167 243 208;
+  --success-300: 110 231 183;
+  --success-400: 52 211 153;
+  --success-500: 16 185 129;
+  --success-600: 5 150 105;
+  --success-700: 4 120 87;
+  --success-800: 6 95 70;
+  --success-900: 6 78 59;
+  --success-950: 2 44 34;
+
+  --warning-50: 255 251 235;
+  --warning-100: 254 243 199;
+  --warning-200: 253 230 138;
+  --warning-300: 252 211 77;
+  --warning-400: 251 191 36;
+  --warning-500: 245 158 11;
+  --warning-600: 217 119 6;
+  --warning-700: 180 83 9;
+  --warning-800: 146 64 14;
+  --warning-900: 120 53 15;
+  --warning-950: 69 26 3;
+
+  --danger-50: 254 242 242;
+  --danger-100: 254 226 226;
+  --danger-200: 254 202 202;
+  --danger-300: 252 165 165;
+  --danger-400: 248 113 113;
+  --danger-500: 239 68 68;
+  --danger-600: 220 38 38;
+  --danger-700: 185 28 28;
+  --danger-800: 153 27 27;
+  --danger-900: 127 29 29;
+  --danger-950: 69 10 10;
+
+  --surface-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.28);
+  --modal-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.65), 0 4px 12px rgba(0, 0, 0, 0.35);
 }
 
 [data-theme='light'] {
-  background: transparent !important;
+  color-scheme: light;
   --ui-fg: 17 17 17;
+  --on-danger: 255 255 255;
+  --chat-accent: #1f1f1f;
+  --chat-accent-soft: rgba(31, 31, 31, 0.06);
+  --chat-accent-strong: rgba(31, 31, 31, 0.16);
+  --chat-on-accent: #ffffff;
+
   /* Neutral scale (light): reversed, so surface/text semantics are preserved. */
   --n-50: 10 10 10;
   --n-100: 23 23 23;
@@ -40,6 +104,46 @@
   --n-800: 229 229 229;
   --n-900: 245 245 245;
   --n-950: 250 250 250;
+
+  /* Semantic ramps (light): reversed so text shades stay legible on paper. */
+  --success-50: 6 78 59;
+  --success-100: 6 95 70;
+  --success-200: 4 120 87;
+  --success-300: 4 120 87;
+  --success-400: 5 150 105;
+  --success-500: 16 185 129;
+  --success-600: 52 211 153;
+  --success-700: 110 231 183;
+  --success-800: 167 243 208;
+  --success-900: 209 250 229;
+  --success-950: 236 253 245;
+
+  --warning-50: 120 53 15;
+  --warning-100: 146 64 14;
+  --warning-200: 180 83 9;
+  --warning-300: 180 83 9;
+  --warning-400: 217 119 6;
+  --warning-500: 245 158 11;
+  --warning-600: 251 191 36;
+  --warning-700: 252 211 77;
+  --warning-800: 253 230 138;
+  --warning-900: 254 243 199;
+  --warning-950: 255 251 235;
+
+  --danger-50: 127 29 29;
+  --danger-100: 153 27 27;
+  --danger-200: 185 28 28;
+  --danger-300: 185 28 28;
+  --danger-400: 220 38 38;
+  --danger-500: 239 68 68;
+  --danger-600: 248 113 113;
+  --danger-700: 252 165 165;
+  --danger-800: 254 202 202;
+  --danger-900: 254 226 226;
+  --danger-950: 254 242 242;
+
+  --surface-shadow: 0 12px 32px -14px rgba(35, 30, 25, 0.18), 0 2px 6px rgba(35, 30, 25, 0.06);
+  --modal-shadow: 0 24px 64px -18px rgba(35, 30, 25, 0.22), 0 4px 12px rgba(35, 30, 25, 0.08);
 }
 
 html,
@@ -95,11 +199,210 @@ body[data-window='settings'] [contenteditable='true'] {
 .notes-selectable textarea,
 .notes-selectable input,
 .notes-selectable [contenteditable='true'],
+.notes-selectable .cm-editor,
+.notes-selectable .cm-content,
 .notes-selectable pre,
 .notes-selectable .chat-markdown,
 .notes-selectable .chat-markdown * {
   -webkit-user-select: text;
   user-select: text;
+}
+
+/*
+ * Live-preview Markdown editor (CodeMirror). The document stays raw Markdown;
+ * `.cm-mdl-*` styles what the decoration layer exposes so notes read like a
+ * rendered page, MarkText-style.
+ */
+.cm-notes-host {
+  position: relative;
+  display: flex;
+  flex: 1 1 0%;
+  min-height: 220px;
+  overflow: hidden;
+}
+
+.cm-notes-host .cm-editor {
+  flex: 1 1 auto;
+  height: 100%;
+  font-family: inherit;
+}
+
+.cm-notes-host .cm-scroller {
+  padding-right: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--chat-scroll-thumb) transparent;
+}
+
+.cm-notes-host .cm-scroller::-webkit-scrollbar {
+  width: 8px;
+}
+
+.cm-notes-host .cm-scroller::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cm-notes-host .cm-scroller::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--chat-scroll-thumb);
+}
+
+.cm-notes-host .cm-scroller::-webkit-scrollbar-thumb:hover {
+  background: var(--chat-scroll-thumb-hover);
+}
+
+/* Block styling ------------------------------------------------------- */
+.cm-mdl-h1,
+.cm-mdl-h2,
+.cm-mdl-h3,
+.cm-mdl-h4,
+.cm-mdl-h5,
+.cm-mdl-h6 {
+  font-weight: 600;
+  color: rgb(var(--n-100));
+}
+
+.cm-mdl-h1 {
+  font-size: 22px;
+  line-height: 1.32;
+  padding-top: 10px;
+  padding-bottom: 2px;
+}
+
+.cm-mdl-h2 {
+  font-size: 19px;
+  line-height: 1.36;
+  padding-top: 12px;
+  padding-bottom: 1px;
+}
+
+.cm-mdl-h3 {
+  font-size: 16px;
+  line-height: 1.4;
+  padding-top: 10px;
+}
+
+.cm-mdl-h4 {
+  font-size: 14px;
+  padding-top: 8px;
+}
+
+.cm-mdl-h5,
+.cm-mdl-h6 {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding-top: 8px;
+  color: rgb(var(--n-300));
+}
+
+.cm-mdl-quote {
+  border-left: 2px solid rgb(var(--n-50) / 0.18);
+  padding-left: 12px;
+  color: rgb(var(--n-300));
+}
+
+.cm-mdl-codeblock {
+  background: rgb(var(--n-950) / 0.55);
+  border-left: 1px solid rgb(var(--n-50) / 0.08);
+  border-right: 1px solid rgb(var(--n-50) / 0.08);
+  padding-left: 12px;
+  padding-right: 12px;
+  font-family: 'Cascadia Mono', 'Fira Code', 'SFMono-Regular', monospace;
+  font-size: 12.5px;
+  color: rgb(var(--n-200));
+}
+
+.cm-mdl-code-open {
+  border-top: 1px solid rgb(var(--n-50) / 0.08);
+  border-radius: 10px 10px 0 0;
+  padding-top: 6px;
+}
+
+.cm-mdl-code-close {
+  border-bottom: 1px solid rgb(var(--n-50) / 0.08);
+  border-radius: 0 0 10px 10px;
+  padding-bottom: 6px;
+}
+
+.cm-mdl-code-lang {
+  font-family: 'Cascadia Mono', 'Fira Code', 'SFMono-Regular', monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(var(--n-50) / 0.35);
+}
+
+.cm-mdl-hr-line {
+  padding: 7px 0;
+}
+
+.cm-mdl-hr {
+  display: inline-block;
+  width: 100%;
+  height: 1px;
+  vertical-align: middle;
+  background: rgb(var(--n-50) / 0.18);
+}
+
+/* Inline styling ------------------------------------------------------ */
+.cm-mdl-strong {
+  font-weight: 700;
+  color: rgb(var(--n-50));
+}
+
+.cm-mdl-em {
+  font-style: italic;
+}
+
+.cm-mdl-strike {
+  text-decoration: line-through;
+  opacity: 0.65;
+}
+
+.cm-mdl-code {
+  padding: 1px 4px;
+  border-radius: 5px;
+  background: rgb(var(--n-950) / 0.55);
+  font-family: 'Cascadia Mono', 'Fira Code', 'SFMono-Regular', monospace;
+  font-size: 12.5px;
+}
+
+.cm-mdl-link {
+  color: var(--chat-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cm-mdl-image {
+  color: rgb(var(--n-300));
+  font-style: italic;
+}
+
+.cm-mdl-markup {
+  color: rgb(var(--n-50) / 0.3);
+  font-weight: 400;
+  font-style: normal;
+  text-decoration: none;
+}
+
+.cm-mdl-listnumber {
+  color: rgb(var(--n-50) / 0.55);
+  font-variant-numeric: tabular-nums;
+}
+
+.cm-mdl-bullet {
+  display: inline-block;
+  width: 1.15em;
+  color: rgb(var(--n-50) / 0.55);
+}
+
+.cm-mdl-checkbox {
+  width: 13px;
+  height: 13px;
+  margin: 0 0.5em 0 0.05em;
+  vertical-align: -2px;
+  accent-color: var(--chat-accent);
+  cursor: pointer;
 }
 
 /* Custom scrollbar styling for xterm */
@@ -144,13 +447,19 @@ body[data-window='settings'] [contenteditable='true'] {
   height: 0;
 }
 
-.chat-surface {
-  backdrop-filter: blur(36px);
+/* Mode-aware elevation. Replaces shadow-black/* which stays heavy on light
+   surfaces and cannot follow the theme. */
+.surface-shadow {
+  box-shadow: var(--surface-shadow);
+}
+
+.modal-shadow {
+  box-shadow: var(--modal-shadow);
 }
 
 ::highlight(chat-search) {
-  background-color: var(--chat-accent, rgba(245, 158, 11, 0.55));
-  color: var(--chat-on-accent, #111111);
+  background-color: var(--chat-accent);
+  color: var(--chat-on-accent);
 }
 
 .chat-message {
@@ -159,8 +468,8 @@ body[data-window='settings'] [contenteditable='true'] {
 }
 
 .chat-message--user {
-  background: var(--chat-accent-soft);
-  border-color: var(--chat-accent-strong);
+  background: var(--chat-user-bg);
+  border-color: var(--chat-user-border);
   color: var(--chat-user-text);
 }
 
@@ -370,7 +679,7 @@ body[data-window='settings'] [contenteditable='true'] {
 }
 
 .chat-thinking-tool-icon--error {
-  color: #f87171;
+  color: rgb(var(--danger-400));
 }
 
 .chat-thinking-tool-content {
@@ -399,7 +708,7 @@ body[data-window='settings'] [contenteditable='true'] {
 }
 
 .chat-thinking-tool-result--error {
-  color: #f87171;
+  color: rgb(var(--danger-400));
 }
 
 .chat-sources-wrapper {
@@ -433,7 +742,7 @@ body[data-window='settings'] [contenteditable='true'] {
   padding: 0 5px;
   font-size: 10px;
   font-weight: 600;
-  color: var(--chat-on-accent, #111111);
+  color: var(--chat-on-accent);
   background: var(--chat-accent);
   border-radius: 999px;
 }
@@ -667,13 +976,13 @@ body[data-window='settings'] [contenteditable='true'] {
 }
 
 .chat-code-block-btn-sent {
-  color: #34d399;
-  border-color: rgba(52, 211, 153, 0.3);
+  color: rgb(var(--success-400));
+  border-color: rgb(var(--success-400) / 0.3);
 }
 
 .chat-code-block-btn-sent:hover {
-  color: #34d399;
-  border-color: rgba(52, 211, 153, 0.4);
+  color: rgb(var(--success-400));
+  border-color: rgb(var(--success-400) / 0.4);
 }
 
 .chat-code-block-wrapper .chat-code-block {
@@ -740,83 +1049,10 @@ body[data-window='settings'] [contenteditable='true'] {
   mix-blend-mode: normal;
 }
 
-/* ── Semantic label/tag/icon colors on light surfaces ──
-   Dark themes use light shades (e.g. text-emerald-300) which vanish on
-   light backgrounds, so shift them to darker shades when in light mode. */
-[data-theme='light'] .text-emerald-50 {
-  color: #065f46;
-}
-[data-theme='light'] .text-emerald-50\/65 {
-  color: rgb(6 95 70 / 0.85);
-}
-[data-theme='light'] .text-emerald-100 {
-  color: #065f46;
-}
-[data-theme='light'] .text-emerald-200 {
-  color: #065f46;
-}
-[data-theme='light'] .text-emerald-300 {
-  color: #047857;
-}
-[data-theme='light'] .text-emerald-400 {
-  color: #059669;
-}
-[data-theme='light'] .text-red-100 {
-  color: #991b1b;
-}
-[data-theme='light'] .text-red-200 {
-  color: #991b1b;
-}
-[data-theme='light'] .text-red-300 {
-  color: #b91c1c;
-}
-[data-theme='light'] .text-red-400 {
-  color: #dc2626;
-}
-[data-theme='light'] .text-amber-100 {
-  color: #92400e;
-}
-[data-theme='light'] .text-amber-200 {
-  color: #b45309;
-}
-[data-theme='light'] .text-amber-300 {
-  color: #b45309;
-}
-[data-theme='light'] .text-amber-400 {
-  color: #d97706;
-}
-[data-theme='light'] .text-rose-100 {
-  color: #be123c;
-}
-[data-theme='light'] .hover\:text-red-300:hover {
-  color: #b91c1c;
-}
-
 /* ── Terminal chrome scope ──
-   The terminal panel keeps a dark surface even in light themes (so shell/prompt
-   ANSI colors stay readable). Force the dark palette within it so all the
-   neutral/white utilities on its buttons, tabs and labels render light-on-dark
-   instead of inheriting the light theme's flipped values. */
-.terminal-surface {
-  --ui-fg: 255 255 255;
-  --n-50: 250 250 250;
-  --n-100: 245 245 245;
-  --n-200: 229 229 229;
-  --n-300: 212 212 212;
-  --n-400: 163 163 163;
-  --n-500: 115 115 115;
-  --n-600: 82 82 82;
-  --n-700: 64 64 64;
-  --n-800: 38 38 38;
-  --n-900: 23 23 23;
-  --n-950: 10 10 10;
-}
-
-/* The light-theme override for .text-emerald-400 would darken the pinned
-   button icon against the dark terminal surface; restore the dark-theme shade. */
-[data-theme='light'] .terminal-surface .text-emerald-400 {
-  color: #34d399;
-}
+   The terminal panel keeps a dark surface even in light themes so shell/prompt
+   ANSI colors stay readable. TerminalView sets `data-theme="dark"` on the
+   panel, which re-applies the dark neutral and semantic ramps inside it. */
 
 /* ── Covenant Code: tool activity ── */
 .code-tool-list {
@@ -870,7 +1106,7 @@ body[data-window='settings'] [contenteditable='true'] {
 }
 
 .code-tool-kind-icon--error {
-  color: #f87171;
+  color: rgb(var(--danger-400));
 }
 
 .code-tool-label {
@@ -901,12 +1137,12 @@ body[data-window='settings'] [contenteditable='true'] {
 }
 
 .code-tool-state--error {
-  color: #f87171;
+  color: rgb(var(--danger-400));
   opacity: 1;
 }
 
 .code-tool--error .code-tool-label {
-  color: #f87171;
+  color: rgb(var(--danger-400));
 }
 
 .code-tool-details {
@@ -940,10 +1176,10 @@ body[data-window='settings'] [contenteditable='true'] {
 
 .code-tool-error {
   padding: 6px 8px;
-  border: 1px solid rgba(248, 113, 113, 0.25);
+  border: 1px solid rgb(var(--danger-400) / 0.25);
   border-radius: 8px;
-  background: rgba(248, 113, 113, 0.08);
-  color: #f87171;
+  background: rgb(var(--danger-400) / 0.08);
+  color: rgb(var(--danger-400));
   font-size: 11px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -1005,19 +1241,19 @@ body[data-window='settings'] [contenteditable='true'] {
 }
 
 .code-diff-line--add {
-  background: rgba(52, 211, 153, 0.1);
+  background: rgb(var(--success-500) / 0.1);
 }
 
 .code-diff-line--add .code-diff-gutter {
-  color: #34d399;
+  color: rgb(var(--success-400));
 }
 
 .code-diff-line--del {
-  background: rgba(248, 113, 113, 0.1);
+  background: rgb(var(--danger-500) / 0.1);
 }
 
 .code-diff-line--del .code-diff-gutter {
-  color: #f87171;
+  color: rgb(var(--danger-400));
 }
 
 .code-diff-line--hunk {

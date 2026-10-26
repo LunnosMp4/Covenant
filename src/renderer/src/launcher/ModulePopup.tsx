@@ -51,7 +51,7 @@ interface ModulePopupProps {
   themeGradient: string
   selectedSettingsItemId?: string | null
   onClearSelectedSettingsItem?: () => void
-  isAppVisible?: boolean
+
   chatModel?: string
   onSelectChatModel?: (model: string) => void
   onOpenFullSettings?: () => void
@@ -204,26 +204,20 @@ function SettingsPopup({
                   key={item.id}
                   initial={{ opacity: 0.95, scale: 0.995 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="relative overflow-hidden rounded-xl border border-emerald-400/70 bg-emerald-400/10 p-3 text-sm text-emerald-50 shadow-[0_0_0_1px_rgba(16,185,129,0.18)]"
+                  className="relative overflow-hidden rounded-xl border border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] p-3 text-sm text-neutral-100"
                 >
-                  <motion.div
-                    aria-hidden
-                    className="pointer-events-none absolute inset-y-0 left-[-30%] w-[30%] bg-gradient-to-r from-transparent via-emerald-200/20 to-transparent"
-                    animate={{ x: ['0%', '420%'] }}
-                    transition={{ duration: 2.8, repeat: Number.POSITIVE_INFINITY, ease: 'linear' }}
-                  />
                   <div className="relative flex items-center gap-3">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-300/25 bg-emerald-300/10 text-xs font-semibold uppercase tracking-[0.08em] text-emerald-50">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--chat-accent)]">
                       <ItemIcon icon={item.icon} />
                     </span>
                     <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate font-medium text-emerald-50">{item.title}</span>
-                      {item.subtitle && <span className="mt-0.5 truncate text-xs text-emerald-50/65">{item.subtitle}</span>}
+                      <span className="truncate font-medium text-neutral-100">{item.title}</span>
+                      {item.subtitle && <span className="mt-0.5 truncate text-xs text-neutral-400">{item.subtitle}</span>}
                     </span>
                     <button
                       type="button"
                       onClick={onClearSelectedItem}
-                      className="shrink-0 rounded-lg border border-emerald-300/20 bg-emerald-300/10 p-1.5 text-emerald-50 transition-colors hover:bg-emerald-300/20 hover:text-white"
+                      className="shrink-0 rounded-lg border border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] p-1.5 text-[color:var(--chat-accent)] transition-colors hover:bg-[color:var(--chat-accent-strong)]"
                       aria-label="Remove selected instruction"
                     >
                       <CloseIcon />
@@ -334,7 +328,6 @@ export default function ModulePopup({
   themeGradient,
   selectedSettingsItemId = null,
   onClearSelectedSettingsItem,
-  isAppVisible = true,
   chatModel = DEFAULT_CHAT_MODEL,
   onSelectChatModel,
   onOpenFullSettings,
@@ -377,8 +370,7 @@ export default function ModulePopup({
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95, y: 10 }}
       transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-      className={`absolute bottom-full ${anchorClass} z-30 mb-3 ${popupWidthClass} rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} p-3 shadow-xl shadow-black/40 backdrop-blur-xl texture-surface`}
-      style={{ WebkitBackdropFilter: 'blur(30px)', backdropFilter: 'blur(30px)' }}
+      className={`absolute bottom-full ${anchorClass} z-30 mb-3 ${popupWidthClass} rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} p-3 surface-shadow texture-surface`}
     >
       <p className="px-2 pb-2 text-xs uppercase tracking-[0.12em] text-neutral-500">{MODULE_LABELS[activePopup]}</p>
 
@@ -420,7 +412,6 @@ export default function ModulePopup({
               workflowLogsOpenById={workflowLogsOpenById}
               onRunWorkflow={onSelectItem}
               onToggleLogs={(workflowId) => onToggleWorkflowLogs?.(workflowId)}
-              isAppVisible={isAppVisible}
             />
           ) : (
             items.map((item) => (

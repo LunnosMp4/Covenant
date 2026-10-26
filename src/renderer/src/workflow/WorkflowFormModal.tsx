@@ -117,7 +117,7 @@ export default function WorkflowFormModal({
 
   return (
     <ModalOverlay onClose={onCancel} contentClassName="max-w-3xl h-[540px]">
-      <div className="rounded-2xl border border-neutral-800 bg-neutral-900/95 p-5 shadow-[0_22px_60px_rgba(0,0,0,0.55)]">
+      <div className="modal-shadow rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
         <h3 className="text-lg font-semibold text-neutral-100">
           {initialData ? 'Edit Workflow' : 'Add Workflow'}
         </h3>
@@ -182,9 +182,9 @@ export default function WorkflowFormModal({
           </div>
         ) : null}
 
-        <div className="mt-4 overflow-hidden rounded-xl border border-neutral-700 bg-[#1e1e1e]">
+        <div className="mt-4 overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900">
           <div className="flex max-h-[360px] min-h-[280px] overflow-auto">
-            <div className="select-none border-r border-neutral-800/80 bg-[#252526] px-3 py-3 text-right font-mono text-xs leading-6 text-neutral-500">
+            <div className="select-none border-r border-neutral-800/80 bg-neutral-800 px-3 py-3 text-right font-mono text-xs leading-6 text-neutral-500">
               {lineNumbers.map((lineNumber) => (
                 <div key={lineNumber}>{lineNumber}</div>
               ))}
@@ -197,7 +197,7 @@ export default function WorkflowFormModal({
               padding={12}
               className="min-w-full w-max shrink-0 font-mono text-sm leading-6 text-neutral-100 focus:outline-none"
               style={{
-                background: '#1e1e1e',
+                background: 'rgb(var(--n-900))',
                 minHeight: editorHeight,
                 overflow: 'visible',
                 whiteSpace: 'pre'

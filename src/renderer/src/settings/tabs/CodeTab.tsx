@@ -182,13 +182,15 @@ export default function CodeTab({
               <div
                 key={connection.id}
                 className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2 ${
-                  isActive ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-neutral-800 bg-neutral-950/50'
+                  isActive
+                    ? 'border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)]'
+                    : 'border-neutral-800 bg-neutral-950/50'
                 }`}
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-neutral-100">
                     {connection.name}
-                    {isActive && <span className="ml-2 text-[11px] text-emerald-400">Active</span>}
+                    {isActive && <span className="ml-2 text-[11px] text-[color:var(--chat-accent)]">Active</span>}
                   </p>
                   <p className="truncate text-xs text-neutral-500">
                     {connection.kind === 'local'
@@ -262,7 +264,7 @@ export default function CodeTab({
               type="button"
               onClick={() => void handleSaveKey()}
               disabled={authBusy || !apiKey.trim()}
-              className="rounded-md bg-emerald-600 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-40"
+              className="rounded-md bg-[color:var(--chat-accent)] px-3 py-2 text-xs font-medium text-[color:var(--chat-on-accent)] transition-opacity hover:opacity-90 disabled:opacity-40"
             >
               Save
             </button>

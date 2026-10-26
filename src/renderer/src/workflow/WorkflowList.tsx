@@ -9,8 +9,6 @@ interface WorkflowListProps {
   workflowLogsOpenById: Record<string, boolean>
   onRunWorkflow: (item: PopupItem) => void
   onToggleLogs: (workflowId: string) => void
-  /** When false the CPU-intensive shimmer animation is suspended. */
-  isAppVisible?: boolean
 }
 
 function StatusSpinner(): JSX.Element {
@@ -61,15 +59,15 @@ const statusAnimation = {
 
 function getStatusContainerClass(status: WorkflowExecutionState['status']): string {
   if (status === 'running') {
-    return 'border-amber-400/60 bg-amber-500/12 text-amber-100'
+    return 'border-amber-400/50 bg-amber-500/10 text-amber-200'
   }
 
   if (status === 'success') {
-    return 'border-emerald-400/70 bg-emerald-500/14 text-emerald-100'
+    return 'border-emerald-400/50 bg-emerald-500/10 text-emerald-200'
   }
 
   if (status === 'error') {
-    return 'border-rose-500/80 bg-rose-500/16 text-rose-100'
+    return 'border-red-500/50 bg-red-500/10 text-red-200'
   }
 
   return 'border-white/10 bg-white/[0.03] text-neutral-200'
@@ -87,8 +85,7 @@ export default function WorkflowList({
   workflowExecutionById,
   workflowLogsOpenById,
   onRunWorkflow,
-  onToggleLogs,
-  isAppVisible = true
+  onToggleLogs
 }: WorkflowListProps): JSX.Element {
   return (
     <div className="space-y-2">
@@ -106,28 +103,12 @@ export default function WorkflowList({
               animate={workflowState.status}
               className={`relative overflow-hidden rounded-xl border ${containerClass}`}
             >
-              {workflowState.status === 'running' ? (
-                <motion.span
-                  aria-hidden
-                  className="pointer-events-none absolute inset-0 bg-gradient-to-r from-transparent via-amber-300/25 to-transparent"
-                  initial={{ x: '-120%' }}
-                  // Pause the infinite shimmer when the app is hidden to
-                  // eliminate background CPU/GPU work from the animation loop.
-                  animate={isAppVisible ? { x: '120%' } : false}
-                  transition={{
-                    duration: 1.1,
-                    repeat: Infinity,
-                    ease: 'linear'
-                  }}
-                />
-              ) : null}
-
               <button
                 type="button"
                 onClick={() => onRunWorkflow(item)}
                 className="relative z-10 flex w-full items-center gap-3 p-3 text-left text-sm transition-colors duration-150 hover:bg-white/5"
               >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-neutral-950/20 text-xs font-semibold uppercase tracking-[0.08em] text-amber-100">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-neutral-950/20 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-300">
                   <WorkflowIcon />
                 </span>
 

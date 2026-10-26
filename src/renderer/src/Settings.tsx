@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion, useAnimationControls, type Transition } from 'framer-motion'
 import { WINDOW_ENTER_TRANSITION, WINDOW_EXIT_TRANSITION } from './constants/motion'
 import ConfirmDeleteModal from './ui/ConfirmDeleteModal'
@@ -15,10 +15,9 @@ import {
 } from './constants/terminalFonts'
 import {
   DEFAULT_THEME_GRADIENT,
-  THEME_OPTIONS,
-  getThemeMode,
   normalizeThemeGradient
 } from './constants/theme'
+import { applyThemeToDocument } from './utils/themeDom'
 import type { AppConfig, ButtonVisibility, NotesSettings, ReasoningEffort, ShortcutConfig } from '../../shared/config'
 import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_NOTES_SETTINGS, DEFAULT_REASONING_EFFORT, DEFAULT_SHORTCUTS, DEFAULT_TEXTURE_INTENSITY, MAX_TEXTURE_INTENSITY, REASONING_EFFORT_OPTIONS, TEXTURE_MAX_OPACITY, modelSupportsExtendedParams, modelSupportsWebSearch, normalizeNotesSettings } from '../../shared/config'
 import type { UpdateStatus } from '../../shared/system/update'
@@ -253,8 +252,8 @@ export default function Settings(): JSX.Element {
     })
   }, [])
 
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', getThemeMode(selectedTheme))
+  useLayoutEffect(() => {
+    applyThemeToDocument(selectedTheme)
   }, [selectedTheme])
 
   useEffect(() => {
@@ -954,7 +953,7 @@ const handleMinimizeWindow = (): void => {
       <div className={`relative h-full overflow-hidden rounded-xl border border-neutral-800/85 bg-gradient-to-br ${selectedTheme} texture-surface`}>
         <div className="relative h-10 w-full">
           <div className="absolute inset-0 border-b border-neutral-800/80 bg-neutral-900/40" style={dragRegionStyle}>
-            <div className={`flex h-full items-center text-xs uppercase tracking-[0.1em] text-neutral-500 ${isMac ? 'pl-[76px] pr-4' : 'px-4'}`}>
+            <div className={`flex h-full items-center text-xs text-neutral-500 ${isMac ? 'pl-[76px] pr-4' : 'px-4'}`}>
               <span>Covenant Settings</span>
             </div>
           </div>
@@ -987,7 +986,7 @@ const handleMinimizeWindow = (): void => {
             <nav className="space-y-5 pt-2">
               {SETTINGS_NAV_GROUPS.map((group) => (
                 <div key={group.label}>
-                  <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">
+                  <p className="px-3 pb-2 text-[11px] font-medium text-neutral-500">
                     {group.label}
                   </p>
                   <div className="space-y-1">
@@ -1010,7 +1009,9 @@ const handleMinimizeWindow = (): void => {
                             <SidebarGlyph tab={item.id} />
                           </span>
                           <span className="flex-1">{item.label}</span>
-                          {isActive ? <span className="h-1.5 w-1.5 rounded-full bg-neutral-300" /> : null}
+                          {isActive ? (
+                            <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--chat-accent)]" />
+                          ) : null}
                         </button>
                       )
                     })}
@@ -1022,7 +1023,7 @@ const handleMinimizeWindow = (): void => {
 
           <main className="flex-1 overflow-y-auto p-8">
             <header className="mb-6">
-              <p className="text-xs uppercase tracking-[0.1em] text-neutral-500">Preferences</p>
+              <p className="text-xs text-neutral-500">Preferences</p>
               <h2 className="mt-2 text-2xl font-semibold text-neutral-100">{pageTitle}</h2>
             </header>
 

@@ -26,7 +26,7 @@ export default function PrepromptFormModal({
 
   return (
     <ModalOverlay onClose={onCancel}>
-      <div className="rounded-2xl border border-neutral-800 bg-neutral-900/95 p-5 shadow-[0_22px_60px_rgba(0,0,0,0.55)]">
+      <div className="modal-shadow rounded-2xl border border-neutral-800 bg-neutral-900/95 p-5">
         <h3 className="text-lg font-semibold text-neutral-100">{isEditMode ? 'Edit Instruction' : 'Add Instruction'}</h3>
 
         <div className="mt-4 space-y-4">

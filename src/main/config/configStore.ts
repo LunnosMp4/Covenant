@@ -22,13 +22,17 @@ import {
   normalizeUsageProjectId
 } from '../../shared/config'
 import { DEFAULT_PASTE_SETTINGS, normalizePasteManagerSettings } from '../../shared/paste/paste'
+import {
+  DEFAULT_THEME_GRADIENT,
+  normalizeThemeGradient
+} from '../../shared/theme/theme'
 import { normalizeStoredMcpServers } from '../services/mcpNormalizers'
 
 export const DEFAULT_CONFIG: AppConfig = {
   apiKey: '',
   adminApiKey: '',
   usageProjectId: '',
-  themeGradient: 'from-neutral-900/95 to-[#1c0f03]',
+  themeGradient: DEFAULT_THEME_GRADIENT,
   proxyUrl: '',
   launchOnStartup: true,
   terminalFont: 'Cascadia Mono, Consolas, "Courier New", monospace',
@@ -90,10 +94,7 @@ export function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined
     apiKey: typeof rawConfig?.apiKey === 'string' ? rawConfig.apiKey : DEFAULT_CONFIG.apiKey,
     adminApiKey: normalizeAdminApiKey(rawConfig?.adminApiKey),
     usageProjectId: normalizeUsageProjectId(rawConfig?.usageProjectId),
-    themeGradient:
-      typeof rawConfig?.themeGradient === 'string' && rawConfig.themeGradient.trim()
-        ? rawConfig.themeGradient
-        : DEFAULT_CONFIG.themeGradient,
+    themeGradient: normalizeThemeGradient(rawConfig?.themeGradient),
     proxyUrl:
       typeof rawConfig?.proxyUrl === 'string' && rawConfig.proxyUrl.trim()
         ? rawConfig.proxyUrl.trim()

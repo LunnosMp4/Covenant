@@ -59,7 +59,7 @@ export default function PasteDetail({
             {pasteTypeLabel(meta.type)}
           </span>
           {meta.pinned && (
-            <span className="rounded-md border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[11px] text-amber-200">
+            <span className="rounded-md border border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] px-2 py-0.5 text-[11px] text-[color:var(--chat-accent)]">
               Pinned
             </span>
           )}
@@ -83,7 +83,7 @@ export default function PasteDetail({
         ) : meta.type === 'link' ? (
           <div className="space-y-2 paste-selectable">
             {meta.linkTitle && <p className="text-base font-medium text-neutral-100">{meta.linkTitle}</p>}
-            <p className="break-all text-sm text-emerald-300">{meta.linkUrl ?? text}</p>
+            <p className="break-all text-sm text-[color:var(--chat-accent)]">{meta.linkUrl ?? text}</p>
             {text && meta.linkUrl && text !== meta.linkUrl && (
               <pre className="chat-scrollbar mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-white/5 bg-neutral-500/10 p-3 text-xs text-neutral-300">
                 {text}

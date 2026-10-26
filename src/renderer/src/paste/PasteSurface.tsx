@@ -239,7 +239,7 @@ export default function PasteSurface({
             onClick={onTogglePin}
             className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors ${
               isPinned
-                ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-400 hover:border-emerald-500/50 hover:bg-emerald-500/25'
+                ? 'border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] text-[color:var(--chat-accent)]'
                 : 'border-white/10 text-neutral-400 hover:border-white/20 hover:bg-white/10 hover:text-neutral-200'
             }`}
             aria-label={isPinned ? 'Unpin window' : 'Pin window'}
@@ -248,7 +248,7 @@ export default function PasteSurface({
             <WindowPinIcon active={isPinned} />
           </button>
           <div className="min-w-0">
-            <p className="text-[11px] uppercase tracking-[0.24em] text-neutral-500">Clipboard</p>
+            <p className="text-[11px] font-medium text-neutral-500">Clipboard</p>
             <p className="truncate text-sm font-medium text-neutral-200">
               Paste Manager
               <span className="ml-2 text-[11px] font-normal text-neutral-500">
@@ -289,7 +289,7 @@ export default function PasteSurface({
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Search clipboard history…"
-                  className="w-full rounded-lg border border-white/10 bg-white/[0.04] py-2 pl-9 pr-3 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-emerald-400/50"
+                  className="w-full rounded-lg border border-white/10 bg-white/[0.04] py-2 pl-9 pr-3 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-[color:var(--chat-accent)]"
                   aria-label="Search clipboard history"
                 />
               </div>
@@ -327,7 +327,7 @@ export default function PasteSurface({
                       onClick={() => setSelectedId(item.id)}
                       onDoubleClick={() => void handleCopy(item.id)}
                       className={`mb-1 flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${
-                        activeItem ? 'bg-emerald-400/10 ring-1 ring-emerald-400/30' : 'hover:bg-white/5'
+                        activeItem ? 'bg-white/[0.06] ring-1 ring-white/10' : 'hover:bg-white/5'
                       }`}
                     >
                       <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md border border-white/10 bg-white/[0.04] text-neutral-300">
@@ -347,7 +347,7 @@ export default function PasteSurface({
                           className="mt-0.5 flex items-center gap-1 text-[11px] text-neutral-500"
                           title={formatAbsoluteTime(item.createdAt)}
                         >
-                          {item.pinned && <PinIcon filled className="text-amber-300" />}
+                          {item.pinned && <PinIcon filled className="text-[color:var(--chat-accent)]" />}
                           {formatRelativeTime(item.createdAt)}
                         </span>
                       </span>

@@ -59,8 +59,7 @@ export default function LauncherResults({
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.98, y: 10 }}
       transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
-      className={`absolute inset-x-0 bottom-full z-40 mb-3 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} p-2 shadow-xl shadow-black/50 texture-surface`}
-      style={{ WebkitBackdropFilter: 'blur(40px)', backdropFilter: 'blur(40px)' }}
+      className={`absolute inset-x-0 bottom-full z-40 mb-3 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} p-2 surface-shadow texture-surface`}
     >
       <div className="space-y-0.5">
         {items.map((item, index) => {
@@ -75,7 +74,7 @@ export default function LauncherResults({
               aria-selected={isSelected}
               className={`group relative flex w-full items-center gap-3 overflow-hidden rounded-xl py-2 pl-3.5 pr-3 text-left text-sm transition-all duration-150 ${
                 isSelected
-                  ? 'bg-[var(--chat-accent-soft)] text-neutral-50 ring-1 ring-inset ring-[var(--chat-accent-strong)]'
+                  ? 'bg-white/[0.06] text-neutral-50 ring-1 ring-inset ring-white/10'
                   : 'text-neutral-500 hover:bg-white/[0.04] hover:text-neutral-300'
               }`}
             >
@@ -106,7 +105,7 @@ export default function LauncherResults({
                 aria-hidden
                 className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[10px] font-medium tracking-[0.08em] transition-opacity duration-150 ${
                   isSelected
-                    ? 'border-[var(--chat-accent-strong)] bg-[var(--chat-accent-soft)] text-[var(--chat-accent)] opacity-100'
+                    ? 'border-white/20 bg-white/10 text-neutral-300 opacity-100'
                     : 'opacity-0'
                 }`}
               >

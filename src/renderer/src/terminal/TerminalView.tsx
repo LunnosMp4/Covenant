@@ -102,7 +102,7 @@ const TERMINAL_OPTIONS = {
   theme: {
     background: '#00000000',
     foreground: '#e6e6e6',
-    cursor: '#fb923c',
+    cursor: '#e6e6e6',
     selectionBackground: '#f8fafc33'
   }
 } as const
@@ -468,6 +468,7 @@ function TerminalView({
 
   return (
     <div
+      data-theme="dark"
       className={`terminal-surface h-full w-full flex flex-col overflow-hidden rounded-xl border transition-[background] duration-200 ${
         isLight ? 'border-white/15' : 'border-white/10 bg-neutral-950/30'
       }`}
@@ -481,7 +482,7 @@ function TerminalView({
             onClick={onTogglePin}
             className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
               isPinned
-                ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-400 hover:border-emerald-500/50 hover:bg-emerald-500/25'
+                ? 'border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] text-[color:var(--chat-accent)]'
                 : 'border-white/10 text-neutral-400 hover:border-white/20 hover:bg-white/10 hover:text-neutral-200'
             }`}
             aria-label={isPinned ? 'Unpin window' : 'Pin window'}
@@ -492,7 +493,7 @@ function TerminalView({
           <span className="text-neutral-400 shrink-0">
             <TerminalIcon />
           </span>
-          <p className="text-[11px] uppercase tracking-[0.24em] text-neutral-500 truncate">
+          <p className="truncate text-[11px] font-medium text-neutral-500">
             {activeTab?.shell || 'Terminal'}
           </p>
         </div>

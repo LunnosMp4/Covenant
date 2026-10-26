@@ -47,7 +47,7 @@ export const DEFAULT_LAUNCHER_SHOW_SYSTEM_APPS = false
 export const DEFAULT_TEXTURE_INTENSITY = 0
 export const MAX_TEXTURE_INTENSITY = 100
 // Slider value 100 maps to this effective overlay opacity (keeps the effect subtle).
-export const TEXTURE_MAX_OPACITY = 0.6
+export const TEXTURE_MAX_OPACITY = 0.22
 
 export function normalizeTextureIntensity(value: unknown): number {
   const numeric = typeof value === 'number' ? value : Number(value)

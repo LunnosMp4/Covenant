@@ -185,7 +185,15 @@ export function createWindow(): void {
     }
   })
 
-  // Keep the full window transparent. Renderer-level styling handles the frosted bar.
+  // The native window stays transparent only so the rounded bar can float with
+  // a CSS shadow and the reserved margins can stay click-through. Every visible
+  // app surface is rendered opaque in the renderer.
+  //
+  // We intentionally don't use vibrancy (macOS) or backgroundMaterial
+  // (Windows 11): both apply to the whole native window, and this window is
+  // oversized to hold the expanded surfaces and popups. They would paint a
+  // large rectangular material instead of a rounded bar. Windows 10 has no
+  // supported acrylic/Mica equivalent anyway.
   if (isWindows) {
     try {
       mainWindow.setBackgroundMaterial('none')
@@ -197,7 +205,6 @@ export function createWindow(): void {
     mainWindow.setBackgroundColor('rgba(0, 0, 0, 0)')
   }
 
-  // macOS: Don't use vibrancy as it overrides transparency. Use backgroundColor instead.
   if (isMac) {
     mainWindow.setBackgroundColor('rgba(0, 0, 0, 0)')
   }

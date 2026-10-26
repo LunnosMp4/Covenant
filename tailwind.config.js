@@ -1,25 +1,32 @@
 /** @type {import('tailwindcss').Config} */
 const withOpacity = (variable) => `rgb(var(${variable}) / <alpha-value>)`
 
+const ramp = (prefix) => {
+  const shades = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950]
+  return Object.fromEntries(shades.map((shade) => [shade, withOpacity(`--${prefix}-${shade}`)]))
+}
+
 module.exports = {
-  content: ['./src/renderer/index.html', './src/renderer/src/**/*.{ts,tsx}'],
+  content: [
+    './src/renderer/index.html',
+    './src/renderer/src/**/*.{ts,tsx}',
+    // Theme presets live in shared code so the main process can migrate them.
+    './src/shared/**/*.{ts,tsx}'
+  ],
   theme: {
     extend: {
       colors: {
+        // Flips between dark and light so hairline/white utilities follow the mode.
         white: withOpacity('--ui-fg'),
-        neutral: {
-          50: withOpacity('--n-50'),
-          100: withOpacity('--n-100'),
-          200: withOpacity('--n-200'),
-          300: withOpacity('--n-300'),
-          400: withOpacity('--n-400'),
-          500: withOpacity('--n-500'),
-          600: withOpacity('--n-600'),
-          700: withOpacity('--n-700'),
-          800: withOpacity('--n-800'),
-          900: withOpacity('--n-900'),
-          950: withOpacity('--n-950')
-        }
+        neutral: ramp('n'),
+        // Mode-aware semantic ramps. Keep the hue aliases for existing call sites;
+        // new code should prefer the semantic names.
+        success: ramp('success'),
+        warning: ramp('warning'),
+        danger: ramp('danger'),
+        emerald: ramp('success'),
+        amber: ramp('warning'),
+        red: ramp('danger')
       }
     }
   },

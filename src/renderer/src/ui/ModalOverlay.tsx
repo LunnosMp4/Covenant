@@ -61,8 +61,8 @@ export default function ModalOverlay({
 
   const scoped = contained && bounds !== null
   const backdropClass = scoped
-    ? 'bg-black/45 backdrop-blur-sm rounded-2xl overflow-hidden'
-    : 'inset-0 bg-black/60 backdrop-blur-sm'
+    ? 'bg-black/45 rounded-2xl overflow-hidden'
+    : 'inset-0 bg-black/60'
 
   // Render into document.body so `position: fixed` is relative to the window,
   // not to a transformed (framer-motion) ancestor — otherwise tall modals

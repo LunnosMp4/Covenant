@@ -11,6 +11,7 @@ import {
   normalizeTextureIntensity
 } from '../../shared/config'
 import { DEFAULT_CONFIG, normalizeTerminalFont, readConfig, updateConfig } from '../config/configStore'
+import { normalizeThemeGradient } from '../../shared/theme/theme'
 import { getTerminalFonts } from '../fontManager'
 import { clearInstalledAppsCache, warmInstalledAppsCache } from '../installedApps'
 import { configureMcpProxy } from '../services/mcpClient'
@@ -73,10 +74,7 @@ export function registerConfigIpc(): void {
   })
 
   ipcMain.on('update-theme', (_event, gradientClass: string) => {
-    const nextTheme =
-      typeof gradientClass === 'string' && gradientClass.trim()
-        ? gradientClass.trim()
-        : DEFAULT_CONFIG.themeGradient
+    const nextTheme = normalizeThemeGradient(gradientClass)
 
     updateConfig({ themeGradient: nextTheme })
     broadcast('theme-updated', nextTheme)

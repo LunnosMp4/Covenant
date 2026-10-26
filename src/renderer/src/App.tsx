@@ -38,10 +38,11 @@ import {
 import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from './constants/terminalFonts'
 import {
   DEFAULT_THEME_GRADIENT,
+  getThemeCssVars,
   getThemeMode,
-  getThemePalette,
   normalizeThemeGradient
 } from './constants/theme'
+import { applyThemeToDocument } from './utils/themeDom'
 import type { ButtonVisibility, ReasoningEffort } from '../../shared/config'
 import {
   DEFAULT_CHAT_MODEL,
@@ -2362,36 +2363,16 @@ export default function App(): JSX.Element {
   }, [mode, chatMessages, isLoading])
 
 
-  const themePalette = useMemo(() => getThemePalette(themeGradient), [themeGradient])
   const themeStyles = useMemo<CSSProperties>(
-    () => ({
-      '--chat-accent': themePalette.accent,
-      '--chat-accent-soft': themePalette.accentSoft,
-      '--chat-accent-strong': themePalette.accentStrong,
-      '--chat-on-accent': themePalette.onAccent,
-      '--chat-user-text': themePalette.userText,
-      '--chat-assistant-text': themePalette.assistantText,
-      '--chat-assistant-bg': themePalette.assistantBg,
-      '--chat-assistant-border': themePalette.assistantBorder,
-      '--chat-scroll-thumb': themePalette.scrollbarThumb,
-      '--chat-scroll-thumb-hover': themePalette.scrollbarThumbHover,
-      '--chat-meta-text': themePalette.metaText
-    } as CSSProperties),
-    [themePalette]
+    () => getThemeCssVars(themeGradient) as CSSProperties,
+    [themeGradient]
   )
 
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', getThemeMode(themeGradient))
+  // Apply to the document root so portaled modals (which render into
+  // document.body) inherit the same accent, chat and neutral tokens.
+  useLayoutEffect(() => {
+    applyThemeToDocument(themeGradient)
   }, [themeGradient])
-
-  // Expose the theme CSS variables on the root so portaled modals (which render
-  // into document.body) still inherit the accent colors.
-  useEffect(() => {
-    const root = document.documentElement
-    for (const [key, value] of Object.entries(themeStyles as Record<string, string>)) {
-      root.style.setProperty(key, value)
-    }
-  }, [themeStyles])
 
   useEffect(() => {
     document.documentElement.style.setProperty(
@@ -2447,7 +2428,7 @@ export default function App(): JSX.Element {
         updateStatus.state === 'downloading' ||
         updateStatus.state === 'downloaded') ? (
         <div className="pointer-events-none absolute inset-x-0 top-0 z-50 flex justify-center px-4 pt-3">
-          <div className="pointer-events-auto flex w-[750px] max-w-full items-center gap-3 rounded-2xl border border-white/10 bg-neutral-900/95 px-4 py-3 shadow-xl shadow-black/40">
+          <div className="modal-shadow pointer-events-auto flex w-[750px] max-w-full items-center gap-3 rounded-2xl border border-white/10 bg-neutral-900 px-4 py-3">
             <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-amber-400/15 text-amber-300">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                 <path d="M12 3v12" />
@@ -2480,7 +2461,7 @@ export default function App(): JSX.Element {
               <button
                 type="button"
                 onClick={() => window.api?.config.installUpdate?.()}
-                className="flex-shrink-0 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-emerald-950 transition-colors hover:bg-emerald-400"
+                className="flex-shrink-0 rounded-lg bg-[color:var(--chat-accent)] px-3 py-1.5 text-xs font-semibold text-[color:var(--chat-on-accent)] transition-opacity hover:opacity-90"
               >
                 {updateStatus.state === 'downloaded' ? 'Restart & install' : 'Download'}
               </button>
@@ -2529,7 +2510,7 @@ export default function App(): JSX.Element {
                 <MeasuredPanel
                   key="surface-panel"
                   contentClassName={isFullSurface ? 'p-2' : 'p-4'}
-                  className={`relative ${isFullSurface ? '' : 'mb-2'} rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} chat-surface command-surface texture-surface pointer-events-auto`}
+                  className={`relative ${isFullSurface ? '' : 'mb-2'} rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} command-surface texture-surface ${isFullSurface ? '' : 'surface-shadow'} pointer-events-auto`}
                   width={isWide ? wideWidth : 750}
                 >
                   {isChatOpen ? (
@@ -2541,7 +2522,7 @@ export default function App(): JSX.Element {
                         onClick={handleTogglePin}
                         className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
                           isPinned
-                            ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-400 hover:border-emerald-500/50 hover:bg-emerald-500/25'
+                            ? 'border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] text-[color:var(--chat-accent)]'
                             : 'border-white/10 text-neutral-400 hover:border-white/20 hover:bg-white/10 hover:text-neutral-200'
                         }`}
                         aria-label={isPinned ? 'Unpin window' : 'Pin window'}
@@ -2550,7 +2531,7 @@ export default function App(): JSX.Element {
                         <PinIcon active={isPinned} />
                       </button>
                       <div>
-                        <p className="text-[11px] uppercase tracking-[0.24em] text-neutral-500">Conversation</p>
+                        <p className="text-[11px] font-medium text-neutral-500">Conversation</p>
                         <p className="text-sm font-medium text-neutral-200">
                           {activeConversation?.title ?? DEFAULT_CONVERSATION_TITLE}
                         </p>
@@ -2844,11 +2825,7 @@ export default function App(): JSX.Element {
             {!isFullSurface && (
             <motion.div
               ref={barRef}
-              className={`relative flex items-center w-[750px] max-w-full rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10 transition-opacity duration-100 texture-surface opacity-100 pointer-events-auto`}
-              style={{
-                WebkitBackdropFilter: 'blur(40px)',
-                backdropFilter: 'blur(40px)'
-              }}
+              className={`surface-shadow relative flex items-center w-[750px] max-w-full rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10 transition-opacity duration-100 texture-surface opacity-100 pointer-events-auto`}
             >
             <AnimatePresence>
               {launcherVisible && (
@@ -2869,7 +2846,6 @@ export default function App(): JSX.Element {
                   activePopup={activePopup}
                   popupRef={popupRef}
                   themeGradient={themeGradient}
-                  isAppVisible={isAppVisible}
                   selectedSettingsItemId={selectedSystemPrompt?.id}
                   onClearSelectedSettingsItem={clearCurrentSystemPrompt}
                   workflowItems={workflows.map((item) => ({
@@ -2938,8 +2914,7 @@ export default function App(): JSX.Element {
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95, y: 10 }}
                   transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-                  className="texture-surface absolute bottom-full right-0 z-30 mb-3 w-[280px] rounded-2xl border border-white/10 bg-gradient-to-br from-neutral-900 to-neutral-950 p-3 shadow-xl shadow-black/40"
-                  style={{ WebkitBackdropFilter: 'blur(30px)', backdropFilter: 'blur(30px)' }}
+                  className={`texture-surface surface-shadow absolute bottom-full right-0 z-30 mb-3 w-[280px] rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} p-3`}
                 >
                   <p className="px-2 pb-2 text-xs uppercase tracking-[0.12em] text-neutral-500">
                     Attachments ({attachedImages.length})
@@ -3078,7 +3053,7 @@ export default function App(): JSX.Element {
                   voiceState === 'error'
                     ? 'bg-red-500/60 border-red-400/50 text-red-200'
                     : voiceState === 'recording'
-                      ? 'bg-red-500/80 border-red-400/50 text-white animate-pulse'
+                      ? 'bg-red-500/80 border-red-400/50 text-[color:var(--on-danger)] animate-pulse'
                       : voiceState === 'transcribing'
                         ? 'bg-neutral-700/60 border-white/[0.08] text-neutral-300 animate-pulse'
                         : 'bg-neutral-700/60 hover:bg-neutral-600/80 border-white/[0.08] text-neutral-300 hover:text-white'
@@ -3125,7 +3100,7 @@ export default function App(): JSX.Element {
                 >
                   <div className="relative">
                     <ImageIcon />
-                    <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-500 text-[8px] font-bold text-white leading-none">
+                    <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[color:var(--chat-accent)] text-[8px] font-bold leading-none text-[color:var(--chat-on-accent)]">
                       {attachedImages.length}
                     </span>
                   </div>
@@ -3217,11 +3192,7 @@ export default function App(): JSX.Element {
             initial={false}
             animate={{ width: isWide ? wideWidth : 750 }}
             transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
-            style={{
-              pointerEvents: mode === 'terminal' && visible ? 'auto' : 'none',
-              WebkitBackdropFilter: 'blur(40px)',
-              backdropFilter: 'blur(40px)'
-            }}
+            style={{ pointerEvents: mode === 'terminal' && visible ? 'auto' : 'none' }}
           >
             <div className="flex h-full min-h-0 w-full">
               <div className="min-h-0 flex-1">
@@ -3242,7 +3213,7 @@ export default function App(): JSX.Element {
               {isExpanded && isWide && (
                 <div className="terminal-rail ml-2 flex h-full w-[30%] min-w-[300px] max-w-[420px] shrink-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-neutral-950/30">
                   <div className="flex items-center justify-between border-b border-white/5 px-3 py-2">
-                    <span className="text-[11px] uppercase tracking-[0.24em] text-neutral-500">
+                    <span className="text-[11px] font-medium text-neutral-500">
                       Assistant
                     </span>
                     <span className="truncate text-[11px] text-neutral-500">this terminal</span>

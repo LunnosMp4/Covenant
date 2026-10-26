@@ -27,6 +27,7 @@ import type { McpServer } from '../../../shared/mcp/mcp'
 import type { Preprompt } from '../types/renderer'
 import type { Workflow } from '../types/renderer'
 import { getAppBadgeText } from '../utils/helpers'
+import ToggleSwitch from '../ui/ToggleSwitch'
 
 export function MinimalistToggle({
   checked,
@@ -49,24 +50,12 @@ export function MinimalistToggle({
           <p className={`mt-1 text-xs ${disabled ? 'text-neutral-700' : 'text-neutral-400'}`}>{description}</p>
         ) : null}
       </div>
-      <button
-        type="button"
+      <ToggleSwitch
+        checked={checked}
+        onChange={onChange}
         disabled={disabled}
-        onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full border transition-all ${
-          checked
-            ? 'border-emerald-400/60 bg-emerald-400/30 shadow-lg shadow-emerald-500/20'
-            : 'border-neutral-700 bg-neutral-800'
-        } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
-        role="switch"
-        aria-checked={checked}
-      >
-        <span
-          className={`inline-block h-6 w-6 transform rounded-full bg-neutral-100 transition-transform ${
-            checked ? 'translate-x-5' : 'translate-x-0.5'
-          } shadow-sm`}
-        />
-      </button>
+        ariaLabel={label}
+      />
     </div>
   )
 }

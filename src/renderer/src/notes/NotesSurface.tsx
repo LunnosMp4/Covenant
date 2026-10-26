@@ -5,17 +5,19 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
-  type RefObject
+  type MouseEvent as ReactMouseEvent
 } from 'react'
 import type { NotesSettings } from '../../../shared/config'
 import type { Note, NoteMeta } from '../../../shared/notes/note'
-import { AssistantMarkdown } from '../chat/AssistantMarkdown'
 import ConfirmDeleteModal from '../ui/ConfirmDeleteModal'
 import ExpandButton from '../ui/ExpandButton'
 import { PinIcon as WindowPinIcon, MeetingIcon, SpinnerIcon } from '../ui/icons'
 import { CopyIcon, SparklesIcon, TrashIcon } from '../paste/PasteIcons'
 import { formatRelativeTime } from '../utils/paste/pasteFormat'
+import LiveMarkdownEditor, {
+  type NotesEditorHandle,
+  type NotesEditorMode
+} from './editor/LiveMarkdownEditor'
 import NoteAIPanel from './NoteAIPanel'
 import NoteAudioPlayer from './NoteAudioPlayer'
 import NoteList, { type NoteFilter } from './NoteList'
@@ -64,7 +66,9 @@ export default function NotesSurface({
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<NoteFilter>('all')
-  const [preview, setPreview] = useState(false)
+  const [editorMode, setEditorMode] = useState<NotesEditorMode>(() =>
+    window.localStorage.getItem('covenant:notes-editor-mode') === 'source' ? 'source' : 'live'
+  )
   const [aiOpen, setAiOpen] = useState(false)
   const [selection, setSelection] = useState('')
   const [notesSettings, setNotesSettings] = useState<NotesSettings | null>(null)
@@ -85,7 +89,7 @@ export default function NotesSurface({
   const flushSaveRef = useRef<() => Promise<void>>(() => Promise.resolve())
   const loadRequestRef = useRef(0)
   const titleInputRef = useRef<HTMLInputElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const editorRef = useRef<NotesEditorHandle>(null)
   const selectionRangeRef = useRef<{ start: number; end: number }>({ start: 0, end: 0 })
 
   useEffect(() => {
@@ -312,7 +316,7 @@ export default function NotesSurface({
     void reloadMetas()
     const timer = window.setTimeout(() => {
       if (selectedIdRef.current) {
-        textareaRef.current?.focus()
+        editorRef.current?.focus()
       } else {
         titleInputRef.current?.focus()
       }
@@ -470,68 +474,37 @@ export default function NotesSurface({
     }
   }, [])
 
-  const wrapSelection = useCallback(
-    (before: string, after: string, placeholder: string): void => {
-      const textarea = textareaRef.current
-      if (!textarea) return
-      const start = textarea.selectionStart
-      const end = textarea.selectionEnd
-      const selected = content.slice(start, end) || placeholder
-      const next = `${content.slice(0, start)}${before}${selected}${after}${content.slice(end)}`
-      setContent(next)
-      contentRef.current = next
-      setDirty(true)
-      dirtyRef.current = true
-      window.requestAnimationFrame(() => {
-        textarea.focus()
-        textarea.setSelectionRange(start + before.length, start + before.length + selected.length)
-      })
-    },
-    [content]
-  )
+  const insertText = useCallback((text: string): void => {
+    const editor = editorRef.current
+    if (editor) {
+      editor.insertText(text)
+      return
+    }
+    // Editor not mounted (e.g. a meeting's transcript tab): append instead.
+    const current = contentRef.current
+    const next = `${current}${current.trim() ? '\n\n' : ''}${text}`
+    setContent(next)
+    contentRef.current = next
+    setDirty(true)
+    dirtyRef.current = true
+  }, [])
 
-  const insertText = useCallback(
-    (text: string): void => {
-      const textarea = textareaRef.current
-      if (!textarea) {
-        const next = `${content}${content.trim() ? '\n\n' : ''}${text}`
-        setContent(next)
-        contentRef.current = next
-        setDirty(true)
-        dirtyRef.current = true
-        return
-      }
-      const start = textarea.selectionStart
-      const end = textarea.selectionEnd
-      const next = `${content.slice(0, start)}${text}${content.slice(end)}`
-      setContent(next)
-      contentRef.current = next
-      setDirty(true)
-      dirtyRef.current = true
-      window.requestAnimationFrame(() => {
-        textarea.focus()
-        textarea.setSelectionRange(start + text.length, start + text.length)
-      })
-    },
-    [content]
-  )
-
-  const replaceSelection = useCallback(
-    (text: string): void => {
-      const range = selectionRangeRef.current
-      const next = `${content.slice(0, range.start)}${text}${content.slice(range.end)}`
-      setContent(next)
-      contentRef.current = next
-      setDirty(true)
-      dirtyRef.current = true
+  const replaceSelection = useCallback((text: string): void => {
+    const editor = editorRef.current
+    if (editor) {
+      editor.replaceRange(selectionRangeRef.current, text)
       setSelection('')
-      window.requestAnimationFrame(() => {
-        textareaRef.current?.focus()
-        textareaRef.current?.setSelectionRange(range.start + text.length, range.start + text.length)
-      })
-    },
-    [content]
-  )
+      return
+    }
+    const range = selectionRangeRef.current
+    const current = contentRef.current
+    const next = `${current.slice(0, range.start)}${text}${current.slice(range.end)}`
+    setContent(next)
+    contentRef.current = next
+    setDirty(true)
+    dirtyRef.current = true
+    setSelection('')
+  }, [])
 
   const handleSummarize = useCallback((): void => {
     if (!note) return
@@ -552,8 +525,27 @@ export default function NotesSurface({
     })
   }, [note, reloadMetas])
 
+  const toggleEditorMode = useCallback((): void => {
+    setEditorMode((current) => {
+      const next: NotesEditorMode = current === 'live' ? 'source' : 'live'
+      window.localStorage.setItem('covenant:notes-editor-mode', next)
+      return next
+    })
+  }, [])
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
+      // Same shortcut as MarkText's source-code mode.
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.altKey &&
+        !event.shiftKey &&
+        (event.key === 's' || event.key === 'S')
+      ) {
+        event.preventDefault()
+        toggleEditorMode()
+        return
+      }
       if (event.key !== 'Escape') return
       if (deleting) {
         event.preventDefault()
@@ -565,17 +557,12 @@ export default function NotesSurface({
         setAiOpen(false)
         return
       }
-      if (preview) {
-        event.preventDefault()
-        setPreview(false)
-        return
-      }
       event.preventDefault()
       window.api?.window.hideWindow()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [aiOpen, preview, deleting])
+  }, [aiOpen, deleting, toggleEditorMode])
 
   const saveLabel =
     saveState === 'saving' ? 'Saving…' : saveState === 'saved' || !dirty ? 'Saved' : 'Unsaved'
@@ -605,7 +592,7 @@ export default function NotesSurface({
             onClick={onTogglePin}
             className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors ${
               isPinned
-                ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-400 hover:border-emerald-500/50 hover:bg-emerald-500/25'
+                ? 'border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] text-[color:var(--chat-accent)]'
                 : 'border-white/10 text-neutral-400 hover:border-white/20 hover:bg-white/10 hover:text-neutral-200'
             }`}
             aria-label={isPinned ? 'Unpin window' : 'Pin window'}
@@ -614,7 +601,7 @@ export default function NotesSurface({
             <WindowPinIcon active={isPinned} />
           </button>
           <div className="min-w-0">
-            <p className="text-[11px] uppercase tracking-[0.24em] text-neutral-500">Notes</p>
+            <p className="text-[11px] font-medium text-neutral-500">Notes</p>
             <p className="truncate text-sm font-medium text-neutral-200">
               Notes &amp; Meetings
               <span className="ml-2 text-[11px] font-normal text-neutral-500">
@@ -653,7 +640,7 @@ export default function NotesSurface({
                 title={aiAvailable ? 'Toggle note AI' : 'Open a note or switch to Recap to use AI'}
                 className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                   aiOpen && aiAvailable
-                    ? 'border-emerald-400/30 bg-emerald-500/15 text-emerald-200'
+                    ? 'border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] text-[color:var(--chat-accent)]'
                     : 'border-white/10 text-neutral-300 hover:bg-white/10 hover:text-white'
                 }`}
                 aria-pressed={aiOpen}
@@ -768,7 +755,7 @@ export default function NotesSurface({
                     onClick={() => void handleTogglePin()}
                     className={`flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] transition-colors ${
                       note.pinned
-                        ? 'border-amber-400/30 bg-amber-400/10 text-amber-200'
+                        ? 'border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] text-[color:var(--chat-accent)]'
                         : 'border-white/10 text-neutral-400 hover:bg-white/10 hover:text-neutral-200'
                     }`}
                   >
@@ -776,15 +763,20 @@ export default function NotesSurface({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setPreview((value) => !value)}
-                    className={`flex h-7 items-center rounded-md border px-2 text-[11px] transition-colors ${
-                      preview
+                    onClick={toggleEditorMode}
+                    title={
+                      editorMode === 'live'
+                        ? 'View Markdown source (Ctrl/Cmd+Alt+S)'
+                        : 'Back to live preview (Ctrl/Cmd+Alt+S)'
+                    }
+                    className={`flex h-7 items-center rounded-md border px-2 font-mono text-[11px] transition-colors ${
+                      editorMode === 'source'
                         ? 'border-white/20 bg-white/10 text-neutral-100'
                         : 'border-white/10 text-neutral-400 hover:bg-white/10 hover:text-neutral-200'
                     }`}
-                    aria-pressed={preview}
+                    aria-pressed={editorMode === 'source'}
                   >
-                    Preview
+                    {editorMode === 'live' ? '</>' : 'Aa'}
                   </button>
                   <button
                     type="button"
@@ -914,13 +906,11 @@ export default function NotesSurface({
                           <p className="text-xs text-neutral-500">No audio segments saved.</p>
                         )}
                       </div>
-                    ) : preview ? (
-                      <div className="chat-scrollbar mt-3 min-h-0 flex-1 overflow-y-auto pb-6 text-neutral-200">
-                        <AssistantMarkdown content={content || '*Nothing here yet.*'} />
-                      </div>
                     ) : (
-                      <MarkdownEditor
+                      <LiveMarkdownEditor
+                        ref={editorRef}
                         value={content}
+                        mode={editorMode}
                         onChange={(next) => {
                           setContent(next)
                           contentRef.current = next
@@ -931,18 +921,14 @@ export default function NotesSurface({
                           setSelection(next)
                           selectionRangeRef.current = range
                         }}
-                        textareaRef={textareaRef}
-                        onWrap={wrapSelection}
                       />
                     )}
                   </>
-                ) : preview ? (
-                  <div className="chat-scrollbar mt-3 min-h-0 flex-1 overflow-y-auto pb-6 text-neutral-200">
-                    <AssistantMarkdown content={content || '*Nothing here yet.*'} />
-                  </div>
                 ) : (
-                  <MarkdownEditor
+                  <LiveMarkdownEditor
+                    ref={editorRef}
                     value={content}
+                    mode={editorMode}
                     onChange={(next) => {
                       setContent(next)
                       contentRef.current = next
@@ -953,8 +939,6 @@ export default function NotesSurface({
                       setSelection(next)
                       selectionRangeRef.current = range
                     }}
-                    textareaRef={textareaRef}
-                    onWrap={wrapSelection}
                   />
                 )}
               </div>
@@ -1027,7 +1011,7 @@ function MeetingWorkBanner({
       : null
 
   return (
-    <div className="mt-3 shrink-0 rounded-lg border border-emerald-400/20 bg-neutral-950/80 px-3 py-2 backdrop-blur">
+    <div className="mt-3 shrink-0 rounded-lg border border-[color:var(--chat-accent-strong)] bg-neutral-950/80 px-3 py-2">
       <div className="flex items-center gap-2 text-[11px] text-neutral-200">
         <SpinnerIcon />
         <span>{label}</span>
@@ -1035,81 +1019,11 @@ function MeetingWorkBanner({
       {progress !== null && (
         <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
           <div
-            className="h-full rounded-full bg-emerald-400 transition-all duration-300"
+            className="h-full rounded-full bg-[color:var(--chat-accent)] transition-all duration-300"
             style={{ width: `${Math.round(progress * 100)}%` }}
           />
         </div>
       )}
-    </div>
-  )
-}
-
-interface MarkdownEditorProps {
-  value: string
-  onChange: (value: string) => void
-  onSelectionChange: (selection: string, range: { start: number; end: number }) => void
-  textareaRef: RefObject<HTMLTextAreaElement>
-  onWrap: (before: string, after: string, placeholder: string) => void
-}
-
-const TOOLBAR: Array<{
-  label: string
-  title: string
-  before: string
-  after: string
-  placeholder: string
-}> = [
-  { label: 'B', title: 'Bold', before: '**', after: '**', placeholder: 'bold text' },
-  { label: 'I', title: 'Italic', before: '_', after: '_', placeholder: 'italic text' },
-  { label: 'H', title: 'Heading', before: '## ', after: '', placeholder: 'Heading' },
-  { label: '•', title: 'Bullet list', before: '- ', after: '', placeholder: 'List item' },
-  { label: '1.', title: 'Numbered list', before: '1. ', after: '', placeholder: 'List item' },
-  { label: '<>', title: 'Inline code', before: '`', after: '`', placeholder: 'code' },
-  { label: '“”', title: 'Quote', before: '> ', after: '', placeholder: 'Quote' }
-]
-
-function MarkdownEditor({
-  value,
-  onChange,
-  onSelectionChange,
-  textareaRef,
-  onWrap
-}: MarkdownEditorProps): JSX.Element {
-  const reportSelection = (target: HTMLTextAreaElement): void => {
-    onSelectionChange(target.value.slice(target.selectionStart, target.selectionEnd), {
-      start: target.selectionStart,
-      end: target.selectionEnd
-    })
-  }
-
-  return (
-    <div className="mt-3 flex min-h-0 flex-1 flex-col">
-      <div className="mb-1.5 flex flex-wrap items-center gap-0.5">
-        {TOOLBAR.map((item) => (
-          <button
-            key={item.title}
-            type="button"
-            title={item.title}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => onWrap(item.before, item.after, item.placeholder)}
-            className="flex h-6 min-w-6 items-center justify-center rounded px-1.5 text-[11px] text-neutral-500 transition-colors hover:bg-white/10 hover:text-neutral-200"
-          >
-            {item.label}
-          </button>
-        ))}
-        <span className="ml-auto text-[10px] text-neutral-500">Markdown</span>
-      </div>
-      <textarea
-        ref={textareaRef}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        onSelect={(event) => reportSelection(event.currentTarget)}
-        onKeyUp={(event) => reportSelection(event.currentTarget)}
-        onClick={(event) => reportSelection(event.currentTarget)}
-        placeholder="Start writing… Markdown is supported."
-        className="chat-scrollbar min-h-[220px] w-full flex-1 resize-none border-none bg-transparent font-sans text-sm leading-relaxed text-neutral-200 placeholder:text-neutral-500 focus:outline-none"
-        spellCheck
-      />
     </div>
   )
 }

@@ -63,7 +63,7 @@ export default function CodeModelMenu({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-10 z-30 w-72 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/95 shadow-xl shadow-black/50">
+        <div className="surface-shadow absolute right-0 top-10 z-30 w-72 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/95">
           <div className="flex gap-1 border-b border-white/5 p-1.5">
             {(['models', 'effort'] as Tab[]).map((value) => (
               <button

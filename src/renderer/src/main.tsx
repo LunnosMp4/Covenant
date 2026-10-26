@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import Settings from './Settings'
 import './assets/index.css'
-import 'prismjs/themes/prism-tomorrow.css'
+import './assets/code-theme.css'
 
 function getWindowKind(): 'settings' | 'main' {
   const normalizedHash = window.location.hash.toLowerCase()

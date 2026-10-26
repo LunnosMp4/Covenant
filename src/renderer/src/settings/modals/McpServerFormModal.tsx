@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import ModalOverlay from '../../ui/ModalOverlay'
+import ToggleSwitch from '../../ui/ToggleSwitch'
 import type { McpAuth, McpHeader, McpServer } from '../../../../shared/mcp/mcp'
 
 interface McpServerFormModalProps {
@@ -203,7 +204,7 @@ export default function McpServerFormModal({
 
   return (
     <ModalOverlay onClose={onCancel} contentClassName="max-w-2xl h-[640px]">
-      <div className="flex h-full max-h-[640px] flex-col rounded-2xl border border-neutral-800 bg-neutral-900/95 p-5 shadow-[0_22px_60px_rgba(0,0,0,0.55)]">
+      <div className="modal-shadow flex h-full max-h-[640px] flex-col rounded-2xl border border-neutral-800 bg-neutral-900/95 p-5">
         <h3 className="text-lg font-semibold text-neutral-100">
           {isEditMode ? 'Edit MCP Server' : 'Add MCP Server'}
         </h3>
@@ -279,45 +280,33 @@ export default function McpServerFormModal({
             </div>
 
             <div className="rounded-xl border border-neutral-800 bg-neutral-950/70 p-3">
-              <label className="flex cursor-pointer items-center justify-between gap-3">
+              <div className="flex items-center justify-between gap-3">
                 <span>
                   <span className="block text-xs font-medium uppercase tracking-[0.08em] text-neutral-400">Active</span>
                   <span className="mt-1 block text-xs text-neutral-500">Active servers can contribute tools to chat.</span>
                 </span>
-                <span className={`relative inline-flex h-7 w-12 flex-shrink-0 rounded-full border transition-all ${active ? 'border-emerald-500/40 bg-emerald-500/20' : 'border-neutral-700 bg-neutral-800'}`}>
-                  <input
-                    type="checkbox"
-                    checked={active}
-                    onChange={(event) => setActive(event.target.checked)}
-                    className="peer absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                  />
-                  <span className={`pointer-events-none inline-block h-6 w-6 translate-x-0.5 rounded-full bg-neutral-100 transition-transform ${active ? 'translate-x-5' : ''}`} />
-                </span>
-              </label>
+                <ToggleSwitch checked={active} onChange={setActive} ariaLabel="Active" />
+              </div>
             </div>
           </div>
 
           <div className="rounded-xl border border-neutral-800 bg-neutral-950/70 p-3">
-            <label className="flex cursor-pointer items-center justify-between gap-3">
+            <div className="flex items-center justify-between gap-3">
               <span>
                 <span className="block text-xs font-medium uppercase tracking-[0.08em] text-neutral-400">Auto-append /mcp</span>
                 <span className="mt-1 block text-xs text-neutral-500">
                   Streamable HTTP MCP endpoints usually live at /mcp. Disable if your URL is the full endpoint path.
                 </span>
               </span>
-              <span className={`relative inline-flex h-7 w-12 flex-shrink-0 rounded-full border transition-all ${appendMcpSuffix ? 'border-emerald-500/40 bg-emerald-500/20' : 'border-neutral-700 bg-neutral-800'}`}>
-                <input
-                  type="checkbox"
-                  checked={appendMcpSuffix}
-                  onChange={(event) => {
-                    setAppendMcpSuffix(event.target.checked)
-                    setTestResult(undefined)
-                  }}
-                  className="peer absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                />
-                <span className={`pointer-events-none inline-block h-6 w-6 translate-x-0.5 rounded-full bg-neutral-100 transition-transform ${appendMcpSuffix ? 'translate-x-5' : ''}`} />
-              </span>
-            </label>
+              <ToggleSwitch
+                checked={appendMcpSuffix}
+                onChange={(checked) => {
+                  setAppendMcpSuffix(checked)
+                  setTestResult(undefined)
+                }}
+                ariaLabel="Auto-append /mcp"
+              />
+            </div>
           </div>
 
           {isAccessToken ? (

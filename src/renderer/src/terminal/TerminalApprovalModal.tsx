@@ -16,7 +16,7 @@ export default function TerminalApprovalModal({
   return (
     // No onClose: a command request must be answered explicitly.
     <ModalOverlay contentClassName="max-w-md" contained>
-      <div className="w-full rounded-2xl border border-white/10 bg-neutral-900/85 p-4 shadow-[0_24px_60px_-12px_rgba(0,0,0,0.65)] backdrop-blur-xl">
+      <div className="modal-shadow w-full rounded-2xl border border-white/10 bg-neutral-900 p-4">
         <h3 className="text-sm font-semibold text-neutral-100">Run this command?</h3>
         <p className="mt-1 text-[13px] leading-relaxed text-neutral-400">
           The assistant wants to run a command in{' '}
@@ -56,7 +56,7 @@ export default function TerminalApprovalModal({
           <button
             type="button"
             onClick={() => onReply('once')}
-            className={`${BUTTON} border-white/15 font-semibold shadow-lg shadow-black/25 hover:brightness-110`}
+            className={`${BUTTON} border-white/15 font-semibold shadow-sm hover:brightness-110`}
             style={{ background: 'var(--chat-accent)', color: 'var(--chat-on-accent)' }}
           >
             Allow once

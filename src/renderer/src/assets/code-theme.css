@@ -1,0 +1,124 @@
+/*
+ * Mode-aware syntax highlighting.
+ *
+ * Replaces prism-tomorrow.css so code blocks follow the app theme instead of
+ * staying permanently dark. Terminal ANSI colours are intentionally separate.
+ */
+
+:root,
+[data-theme='dark'] {
+  --code-fg: #d4d4d4;
+  --code-comment: #8b949e;
+  --code-punctuation: #c9ccd1;
+  --code-tag: #e58e8e;
+  --code-function: #8fb4e0;
+  --code-number: #e0b080;
+  --code-keyword: #c792ea;
+  --code-string: #a6d189;
+  --code-operator: #c9ccd1;
+  --code-property: #e0b080;
+  --code-inserted: #34d399;
+  --code-deleted: #f87171;
+}
+
+[data-theme='light'] {
+  --code-fg: #24292f;
+  --code-comment: #6e7781;
+  --code-punctuation: #4b5563;
+  --code-tag: #b42318;
+  --code-function: #1d4ed8;
+  --code-number: #9a3412;
+  --code-keyword: #6d28d9;
+  --code-string: #047857;
+  --code-operator: #374151;
+  --code-property: #9a3412;
+  --code-inserted: #047857;
+  --code-deleted: #b91c1c;
+}
+
+code[class*='language-'],
+pre[class*='language-'] {
+  color: var(--code-fg);
+  background: none;
+  text-shadow: none;
+  font-family: 'Cascadia Mono', 'Fira Code', 'SFMono-Regular', monospace;
+  text-align: left;
+  white-space: pre;
+  word-spacing: normal;
+  word-break: normal;
+  word-wrap: normal;
+  line-height: 1.5;
+  tab-size: 4;
+  hyphens: none;
+}
+
+.token.comment,
+.token.block-comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: var(--code-comment);
+}
+
+.token.punctuation {
+  color: var(--code-punctuation);
+}
+
+.token.tag,
+.token.attr-name,
+.token.namespace,
+.token.deleted {
+  color: var(--code-tag);
+}
+
+.token.function-name,
+.token.function {
+  color: var(--code-function);
+}
+
+.token.boolean,
+.token.number {
+  color: var(--code-number);
+}
+
+.token.property,
+.token.class-name,
+.token.constant,
+.token.symbol {
+  color: var(--code-property);
+}
+
+.token.selector,
+.token.attr-value,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted {
+  color: var(--code-string);
+}
+
+.token.operator,
+.token.entity,
+.token.url {
+  color: var(--code-operator);
+}
+
+.token.atrule,
+.token.keyword {
+  color: var(--code-keyword);
+}
+
+.token.regex,
+.token.important,
+.token.variable {
+  color: var(--code-number);
+}
+
+.token.important,
+.token.bold {
+  font-weight: 600;
+}
+
+.token.italic {
+  font-style: italic;
+}

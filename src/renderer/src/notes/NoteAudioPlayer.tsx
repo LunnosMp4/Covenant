@@ -191,8 +191,8 @@ export default function NoteAudioPlayer({
           aria-label={playing ? 'Pause audio' : 'Play audio'}
           className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
             playing
-              ? 'border-emerald-400/40 bg-emerald-500/20 text-emerald-200'
-              : 'border-white/10 bg-white/[0.04] text-neutral-300 hover:border-emerald-400/40 hover:bg-emerald-500/15 hover:text-emerald-200'
+              ? 'border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] text-[color:var(--chat-accent)]'
+              : 'border-white/10 bg-white/[0.04] text-neutral-300 hover:border-[color:var(--chat-accent-strong)] hover:bg-[color:var(--chat-accent-soft)] hover:text-[color:var(--chat-accent)]'
           }`}
         >
           {playing ? <PauseIcon /> : <PlayIcon />}
@@ -236,16 +236,16 @@ export default function NoteAudioPlayer({
               scrubbingRef.current = false
             }}
             onKeyDown={handleTrackKeyDown}
-            className="group relative flex h-4 w-full cursor-pointer touch-none items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/40"
+            className="group relative flex h-4 w-full cursor-pointer touch-none items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--chat-accent-strong)]"
           >
             <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
               <div
-                className="h-full rounded-full bg-emerald-400/80 group-hover:bg-emerald-400"
+                className="h-full rounded-full bg-[color:var(--chat-accent)] opacity-80 group-hover:opacity-100"
                 style={{ width: `${progress * 100}%` }}
               />
             </div>
             <span
-              className="pointer-events-none absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-emerald-300 shadow-[0_0_0_3px_rgba(52,211,153,0.15)]"
+              className="pointer-events-none absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-[color:var(--chat-accent)] shadow-[0_0_0_3px_var(--chat-accent-soft)]"
               style={{ left: `calc(${progress * 100}% - 5px)` }}
             />
           </div>

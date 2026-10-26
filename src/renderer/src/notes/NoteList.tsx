@@ -88,7 +88,7 @@ export default function NoteList({
             title={aiEnabled ? 'Toggle note AI' : 'Open a note or switch to Recap to use AI'}
             className={`flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg border text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
               aiOpen && aiEnabled
-                ? 'border-emerald-400/30 bg-emerald-500/15 text-emerald-200'
+                ? 'border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] text-[color:var(--chat-accent)]'
                 : 'border-white/10 bg-white/[0.04] text-neutral-200 hover:border-white/20 hover:bg-white/10'
             }`}
           >
@@ -106,7 +106,7 @@ export default function NoteList({
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
             placeholder="Search notes…"
-            className="w-full rounded-lg border border-white/10 bg-white/[0.04] py-2 pl-9 pr-3 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-emerald-400/50"
+            className="w-full rounded-lg border border-white/10 bg-white/[0.04] py-2 pl-9 pr-3 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-[color:var(--chat-accent)]"
             aria-label="Search notes"
           />
         </div>
@@ -146,11 +146,11 @@ export default function NoteList({
                 type="button"
                 onClick={() => onSelect(meta.id)}
                 className={`mb-1 flex w-full flex-col gap-1 rounded-lg px-2.5 py-2 text-left transition-colors ${
-                  active ? 'bg-emerald-400/10 ring-1 ring-emerald-400/30' : 'hover:bg-white/5'
+                  active ? 'bg-white/[0.06] ring-1 ring-white/10' : 'hover:bg-white/5'
                 }`}
               >
                 <span className="flex min-w-0 items-center gap-1.5">
-                  {meta.pinned && <PinIcon filled className="shrink-0 text-amber-300" />}
+                  {meta.pinned && <PinIcon filled className="shrink-0 text-[color:var(--chat-accent)]" />}
                   <span className="truncate text-sm text-neutral-200">{meta.title}</span>
                   {meta.kind === 'meeting' && (
                     <span

@@ -343,7 +343,7 @@ export default function CodeQuestionCard({
           <button
             type="button"
             disabled={!canSubmit}
-            className="rounded-lg px-3 py-1.5 text-xs font-medium shadow-lg shadow-black/20 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-lg px-3 py-1.5 text-xs font-medium shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             style={{ background: 'var(--chat-accent)', color: 'var(--chat-on-accent)' }}
             onClick={handleSubmit}
           >
