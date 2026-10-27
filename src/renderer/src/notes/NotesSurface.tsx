@@ -12,12 +12,9 @@ import type { Note, NoteMeta } from '../../../shared/notes/note'
 import ConfirmDeleteModal from '../ui/ConfirmDeleteModal'
 import ExpandButton from '../ui/ExpandButton'
 import { PinIcon as WindowPinIcon, MeetingIcon, SpinnerIcon } from '../ui/icons'
-import { CopyIcon, SparklesIcon, TrashIcon } from '../paste/PasteIcons'
+import { CopyIcon, SparklesIcon } from '../paste/PasteIcons'
 import { formatRelativeTime } from '../utils/paste/pasteFormat'
-import LiveMarkdownEditor, {
-  type NotesEditorHandle,
-  type NotesEditorMode
-} from './editor/LiveMarkdownEditor'
+import LiveMarkdownEditor, { type NotesEditorHandle } from './editor/LiveMarkdownEditor'
 import NoteAIPanel from './NoteAIPanel'
 import NoteAudioPlayer from './NoteAudioPlayer'
 import NoteList, { type NoteFilter } from './NoteList'
@@ -36,14 +33,8 @@ interface NotesSurfaceProps {
   meeting: MeetingRecorderApi
 }
 
-type SaveState = 'idle' | 'saving' | 'saved'
-
 function wordCount(text: string): number {
   return text.trim() ? text.trim().split(/\s+/).length : 0
-}
-
-function noteKindLabel(note: Note): string {
-  return note.kind === 'meeting' ? 'Meeting' : 'Note'
 }
 
 export default function NotesSurface({
@@ -63,12 +54,8 @@ export default function NotesSurface({
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [dirty, setDirty] = useState(false)
-  const [saveState, setSaveState] = useState<SaveState>('idle')
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<NoteFilter>('all')
-  const [editorMode, setEditorMode] = useState<NotesEditorMode>(() =>
-    window.localStorage.getItem('covenant:notes-editor-mode') === 'source' ? 'source' : 'live'
-  )
   const [aiOpen, setAiOpen] = useState(false)
   const [selection, setSelection] = useState('')
   const [notesSettings, setNotesSettings] = useState<NotesSettings | null>(null)
@@ -90,7 +77,6 @@ export default function NotesSurface({
   const loadRequestRef = useRef(0)
   const titleInputRef = useRef<HTMLInputElement>(null)
   const editorRef = useRef<NotesEditorHandle>(null)
-  const selectionRangeRef = useRef<{ start: number; end: number }>({ start: 0, end: 0 })
 
   useEffect(() => {
     noteRef.current = note
@@ -153,9 +139,7 @@ export default function NotesSurface({
         contentRef.current = next.content
         setDirty(false)
         dirtyRef.current = false
-        setSaveState('idle')
         if (!options?.keepSelection) setSelection('')
-        selectionRangeRef.current = { start: 0, end: 0 }
         window.localStorage.setItem('covenant:last-note', next.id)
         if (next.kind === 'meeting') {
           setMeetingTab(
@@ -190,11 +174,9 @@ export default function NotesSurface({
       const id = current.id
       const title = titleRef.current
       const content = contentRef.current
-      setSaveState('saving')
       try {
         const updated = await window.api?.notes?.save?.({ id, title, content })
         if (!updated) {
-          setSaveState('idle')
           return
         }
         if (noteRef.current?.id === id) {
@@ -212,14 +194,9 @@ export default function NotesSurface({
           if (titleRef.current === title && contentRef.current === content) {
             setDirty(false)
             dirtyRef.current = false
-            setSaveState('saved')
-          } else {
-            // A newer edit slipped in: stay dirty and let the debounce save it.
-            setSaveState('idle')
           }
         }
       } catch {
-        setSaveState('idle')
         // Retry if the write failed while there is still unsaved work.
         if (dirtyRef.current && !saveTimerRef.current) {
           saveTimerRef.current = setTimeout(() => {
@@ -375,7 +352,6 @@ export default function NotesSurface({
     setDirty(false)
     dirtyRef.current = false
     setSelection('')
-    selectionRangeRef.current = { start: 0, end: 0 }
   }, [flushSave])
 
   const handleNewNote = useCallback(async (): Promise<void> => {
@@ -447,32 +423,39 @@ export default function NotesSurface({
     }
   }, [deleting, loadNote, meeting])
 
-  const handleTogglePin = useCallback(async (): Promise<void> => {
-    const current = noteRef.current
-    if (!current) return
-    const id = current.id
-    const title = titleRef.current
-    const content = contentRef.current
-    const pinned = !current.pinned
-    try {
-      const updated = await window.api?.notes?.save?.({ id, title, content, pinned })
-      if (!updated) return
-      if (noteRef.current?.id === id) {
-        const latest = noteRef.current
-        if (latest) noteRef.current = { ...latest, pinned: updated.pinned }
-        setNote((previous) =>
-          previous && previous.id === id ? { ...previous, pinned: updated.pinned } : previous
-        )
-        // Only clear the dirty flag if the draft didn't change during the save.
-        if (titleRef.current === title && contentRef.current === content) {
-          setDirty(false)
-          dirtyRef.current = false
+  const handleTogglePin = useCallback(
+    async (id?: string): Promise<void> => {
+      const targetId = id ?? noteRef.current?.id
+      if (!targetId) return
+      const selected = noteRef.current?.id === targetId
+      const current = noteRef.current
+      const meta = metas.find((entry) => entry.id === targetId)
+      const pinned = selected && current ? !current.pinned : !(meta?.pinned ?? false)
+      const title = selected ? titleRef.current : undefined
+      const content = selected ? contentRef.current : undefined
+      try {
+        const updated = await window.api?.notes?.save?.({ id: targetId, title, content, pinned })
+        if (!updated) return
+        if (selected && noteRef.current?.id === targetId) {
+          const latest = noteRef.current
+          if (latest) noteRef.current = { ...latest, pinned: updated.pinned }
+          setNote((previous) =>
+            previous && previous.id === targetId
+              ? { ...previous, pinned: updated.pinned }
+              : previous
+          )
+          // Only clear the dirty flag if the draft didn't change during the save.
+          if (titleRef.current === title && contentRef.current === content) {
+            setDirty(false)
+            dirtyRef.current = false
+          }
         }
+      } catch {
+        // Ignore — the pin state stays unchanged.
       }
-    } catch {
-      // Ignore — the pin state stays unchanged.
-    }
-  }, [])
+    },
+    [metas]
+  )
 
   const insertText = useCallback((text: string): void => {
     const editor = editorRef.current
@@ -487,23 +470,6 @@ export default function NotesSurface({
     contentRef.current = next
     setDirty(true)
     dirtyRef.current = true
-  }, [])
-
-  const replaceSelection = useCallback((text: string): void => {
-    const editor = editorRef.current
-    if (editor) {
-      editor.replaceRange(selectionRangeRef.current, text)
-      setSelection('')
-      return
-    }
-    const range = selectionRangeRef.current
-    const current = contentRef.current
-    const next = `${current.slice(0, range.start)}${text}${current.slice(range.end)}`
-    setContent(next)
-    contentRef.current = next
-    setDirty(true)
-    dirtyRef.current = true
-    setSelection('')
   }, [])
 
   const handleSummarize = useCallback((): void => {
@@ -525,27 +491,8 @@ export default function NotesSurface({
     })
   }, [note, reloadMetas])
 
-  const toggleEditorMode = useCallback((): void => {
-    setEditorMode((current) => {
-      const next: NotesEditorMode = current === 'live' ? 'source' : 'live'
-      window.localStorage.setItem('covenant:notes-editor-mode', next)
-      return next
-    })
-  }, [])
-
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      // Same shortcut as MarkText's source-code mode.
-      if (
-        (event.metaKey || event.ctrlKey) &&
-        event.altKey &&
-        !event.shiftKey &&
-        (event.key === 's' || event.key === 'S')
-      ) {
-        event.preventDefault()
-        toggleEditorMode()
-        return
-      }
       if (event.key !== 'Escape') return
       if (deleting) {
         event.preventDefault()
@@ -562,10 +509,8 @@ export default function NotesSurface({
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [aiOpen, deleting, toggleEditorMode])
+  }, [aiOpen, deleting])
 
-  const saveLabel =
-    saveState === 'saving' ? 'Saving…' : saveState === 'saved' || !dirty ? 'Saved' : 'Unsaved'
   const activeMeeting = note && meeting.state.noteId === note.id ? meeting.state : null
   const isMeetingNote = note?.kind === 'meeting'
   const showSidebar = isWide || !note
@@ -601,13 +546,7 @@ export default function NotesSurface({
             <WindowPinIcon active={isPinned} />
           </button>
           <div className="min-w-0">
-            <p className="text-[11px] font-medium text-neutral-500">Notes</p>
-            <p className="truncate text-sm font-medium text-neutral-200">
-              Notes &amp; Meetings
-              <span className="ml-2 text-[11px] font-normal text-neutral-500">
-                {metas.length} note{metas.length === 1 ? '' : 's'}
-              </span>
-            </p>
+            <p className="truncate text-sm font-medium text-neutral-200">Notes</p>
           </div>
         </div>
 
@@ -681,12 +620,15 @@ export default function NotesSurface({
             isRecording={meeting.isRecording}
             aiOpen={aiOpen && aiAvailable}
             aiEnabled={aiAvailable}
+            showActions={isWide}
             onQueryChange={setQuery}
             onFilterChange={setFilter}
             onSelect={handleSelect}
             onNewNote={() => void handleNewNote()}
             onNewMeeting={() => void handleNewMeeting()}
             onToggleAi={() => setAiOpen((open) => !open)}
+            onTogglePin={(id) => void handleTogglePin(id)}
+            onDelete={setDeleting}
           />
         )}
 
@@ -725,70 +667,6 @@ export default function NotesSurface({
             </div>
           ) : (
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="flex items-center justify-between gap-2 border-b border-white/5 px-4 py-2.5">
-                <div className="flex min-w-0 items-center gap-2">
-                  {!isWide && (
-                    <button
-                      type="button"
-                      onClick={() => void handleBackToList()}
-                      className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-white/10 hover:text-neutral-200"
-                      aria-label="Back to notes"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                        <path d="m15 18-6-6 6-6" />
-                      </svg>
-                    </button>
-                  )}
-                  <span className="rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-neutral-400">
-                    {noteKindLabel(note)}
-                  </span>
-                  <span className="text-[11px] text-neutral-500">
-                    {formatRelativeTime(note.updatedAt)} · {wordTotal} words
-                  </span>
-                  <span className={`text-[11px] ${dirty ? 'text-amber-300' : 'text-neutral-500'}`}>
-                    {saveLabel}
-                  </span>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => void handleTogglePin()}
-                    className={`flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] transition-colors ${
-                      note.pinned
-                        ? 'border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] text-[color:var(--chat-accent)]'
-                        : 'border-white/10 text-neutral-400 hover:bg-white/10 hover:text-neutral-200'
-                    }`}
-                  >
-                    {note.pinned ? 'Pinned' : 'Pin'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={toggleEditorMode}
-                    title={
-                      editorMode === 'live'
-                        ? 'View Markdown source (Ctrl/Cmd+Alt+S)'
-                        : 'Back to live preview (Ctrl/Cmd+Alt+S)'
-                    }
-                    className={`flex h-7 items-center rounded-md border px-2 font-mono text-[11px] transition-colors ${
-                      editorMode === 'source'
-                        ? 'border-white/20 bg-white/10 text-neutral-100'
-                        : 'border-white/10 text-neutral-400 hover:bg-white/10 hover:text-neutral-200'
-                    }`}
-                    aria-pressed={editorMode === 'source'}
-                  >
-                    {editorMode === 'live' ? '</>' : 'Aa'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDeleting(metas.find((meta) => meta.id === note.id) ?? null)}
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-red-500/15 hover:text-red-300"
-                    aria-label="Delete note"
-                  >
-                    <TrashIcon />
-                  </button>
-                </div>
-              </div>
-
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-3">
                 {isMeetingNote && (
                   <div className="shrink-0">
@@ -801,19 +679,37 @@ export default function NotesSurface({
                   </div>
                 )}
 
-                <input
-                  ref={titleInputRef}
-                  value={title}
-                  onChange={(event) => {
-                    setTitle(event.target.value)
-                    titleRef.current = event.target.value
-                    setDirty(true)
-                    dirtyRef.current = true
-                  }}
-                  placeholder="Untitled note"
-                  className="mt-3 w-full shrink-0 border-none bg-transparent text-xl font-semibold text-neutral-100 placeholder:text-neutral-500 focus:outline-none"
-                  aria-label="Note title"
-                />
+                <div className="mt-3 flex shrink-0 items-center gap-2">
+                  {!isWide && (
+                    <button
+                      type="button"
+                      onClick={() => void handleBackToList()}
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-white/10 hover:text-neutral-200"
+                      aria-label="Back to notes"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="m15 18-6-6 6-6" />
+                      </svg>
+                    </button>
+                  )}
+                  <input
+                    ref={titleInputRef}
+                    value={title}
+                    onChange={(event) => {
+                      setTitle(event.target.value)
+                      titleRef.current = event.target.value
+                      setDirty(true)
+                      dirtyRef.current = true
+                    }}
+                    placeholder="Untitled note"
+                    className="min-w-0 flex-1 border-none bg-transparent text-xl font-semibold text-neutral-100 placeholder:text-neutral-500 focus:outline-none"
+                    aria-label="Note title"
+                  />
+                  <span className="shrink-0 text-[11px] text-neutral-500">
+                    {formatRelativeTime(note.updatedAt)} · {wordTotal}{' '}
+                    {wordTotal === 1 ? 'word' : 'words'}
+                  </span>
+                </div>
 
                 {isMeetingNote ? (
                   <>
@@ -910,17 +806,14 @@ export default function NotesSurface({
                       <LiveMarkdownEditor
                         ref={editorRef}
                         value={content}
-                        mode={editorMode}
+                        mode="live"
                         onChange={(next) => {
                           setContent(next)
                           contentRef.current = next
                           setDirty(true)
                           dirtyRef.current = true
                         }}
-                        onSelectionChange={(next, range) => {
-                          setSelection(next)
-                          selectionRangeRef.current = range
-                        }}
+                        onSelectionChange={(next) => setSelection(next)}
                       />
                     )}
                   </>
@@ -928,17 +821,14 @@ export default function NotesSurface({
                   <LiveMarkdownEditor
                     ref={editorRef}
                     value={content}
-                    mode={editorMode}
+                    mode="live"
                     onChange={(next) => {
                       setContent(next)
                       contentRef.current = next
                       setDirty(true)
                       dirtyRef.current = true
                     }}
-                    onSelectionChange={(next, range) => {
-                      setSelection(next)
-                      selectionRangeRef.current = range
-                    }}
+                    onSelectionChange={(next) => setSelection(next)}
                   />
                 )}
               </div>
@@ -956,10 +846,6 @@ export default function NotesSurface({
             onClose={() => setAiOpen(false)}
             onInsert={(text) => {
               insertText(text)
-              setAiOpen(false)
-            }}
-            onReplace={(text) => {
-              replaceSelection(text)
               setAiOpen(false)
             }}
           />

@@ -92,7 +92,11 @@ export function buildNoteAiInput(request: NoteAiRequest, note: Note): string {
       .map((message) => `${message.role === 'assistant' ? 'Assistant' : 'User'}: ${message.content}`)
       .join('\n\n')
     const question = request.text?.trim() || 'Help me with this note.'
-    return `${context}\n\nConversation so far:\n${history || '(new conversation)'}\n\nUser: ${question}`
+    const selected = request.selection?.trim()
+    const selectionSection = selected
+      ? `\n\nSelected text:\n${truncateMiddle(selected, MAX_NOTE_AI_TARGET_CHARS)}`
+      : ''
+    return `${context}\n\nConversation so far:\n${history || '(new conversation)'}\n\nUser: ${question}${selectionSection}`
   }
 
   const instruction = ACTION_INSTRUCTIONS[request.action]

@@ -245,9 +245,6 @@ const LiveMarkdownEditor = forwardRef<NotesEditorHandle, LiveMarkdownEditorProps
               {item.label}
             </button>
           ))}
-          <span className="ml-auto text-[10px] text-neutral-500">
-            {mode === 'live' ? 'Live preview' : 'Markdown source'}
-          </span>
         </div>
         <div ref={hostRef} className="cm-notes-host" />
       </div>

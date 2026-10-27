@@ -1,7 +1,7 @@
 import type { NoteMeta } from '../../../shared/notes/note'
 import { formatDuration } from '../../../shared/notes/meeting'
 import { formatRelativeTime } from '../utils/paste/pasteFormat'
-import { PinIcon, SearchIcon, SparklesIcon } from '../paste/PasteIcons'
+import { PinIcon, SearchIcon, SparklesIcon, TrashIcon } from '../paste/PasteIcons'
 import { MeetingIcon } from '../ui/icons'
 
 export type NoteFilter = 'all' | 'note' | 'meeting'
@@ -20,12 +20,15 @@ interface NoteListProps {
   isRecording: boolean
   aiOpen: boolean
   aiEnabled: boolean
+  showActions: boolean
   onQueryChange: (value: string) => void
   onFilterChange: (filter: NoteFilter) => void
   onSelect: (id: string) => void
   onNewNote: () => void
   onNewMeeting: () => void
   onToggleAi: () => void
+  onTogglePin: (id: string) => void
+  onDelete: (meta: NoteMeta) => void
 }
 
 function meetingStatusLabel(meta: NoteMeta): string | null {
@@ -51,12 +54,15 @@ export default function NoteList({
   isRecording,
   aiOpen,
   aiEnabled,
+  showActions,
   onQueryChange,
   onFilterChange,
   onSelect,
   onNewNote,
   onNewMeeting,
-  onToggleAi
+  onToggleAi,
+  onTogglePin,
+  onDelete
 }: NoteListProps): JSX.Element {
   return (
     <aside className="flex w-[290px] shrink-0 flex-col border-r border-white/5">
@@ -141,49 +147,85 @@ export default function NoteList({
             const active = meta.id === selectedId
             const status = meetingStatusLabel(meta)
             return (
-              <button
+              <div
                 key={meta.id}
-                type="button"
-                onClick={() => onSelect(meta.id)}
-                className={`mb-1 flex w-full flex-col gap-1 rounded-lg px-2.5 py-2 text-left transition-colors ${
+                className={`group relative mb-1 rounded-lg transition-colors ${
                   active ? 'bg-white/[0.06] ring-1 ring-white/10' : 'hover:bg-white/5'
                 }`}
               >
-                <span className="flex min-w-0 items-center gap-1.5">
-                  {meta.pinned && <PinIcon filled className="shrink-0 text-[color:var(--chat-accent)]" />}
-                  <span className="truncate text-sm text-neutral-200">{meta.title}</span>
-                  {meta.kind === 'meeting' && (
-                    <span
-                      className="shrink-0 rounded border border-white/10 p-1 text-neutral-400"
-                      title="Meeting"
-                    >
-                      <MeetingIcon />
-                    </span>
-                  )}
-                </span>
-                <span className="line-clamp-2 text-[11px] leading-snug text-neutral-500">
-                  {meta.preview || 'Empty note'}
-                </span>
-                <span className="flex items-center justify-between gap-2 text-[10px] text-neutral-500">
-                  <span className="flex items-center gap-1.5">
-                    {formatRelativeTime(meta.updatedAt)}
-                    {meta.meetingDurationMs ? ` · ${formatDuration(meta.meetingDurationMs)}` : ''}
+                <button
+                  type="button"
+                  onClick={() => onSelect(meta.id)}
+                  className={`flex w-full flex-col gap-1 rounded-lg px-2.5 py-2 text-left ${
+                    showActions ? 'pr-16' : ''
+                  }`}
+                >
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    {meta.pinned && <PinIcon filled className="shrink-0 text-[color:var(--chat-accent)]" />}
+                    <span className="truncate text-sm text-neutral-200">{meta.title}</span>
+                    {meta.kind === 'meeting' && (
+                      <span
+                        className="shrink-0 rounded border border-white/10 p-1 text-neutral-400"
+                        title="Meeting"
+                      >
+                        <MeetingIcon />
+                      </span>
+                    )}
                   </span>
-                  {status && (
-                    <span
-                      className={`shrink-0 rounded px-1 py-0.5 ${
-                        meta.meetingStatus === 'recording'
-                          ? 'bg-red-500/15 text-red-300'
-                          : meta.meetingStatus === 'error'
-                            ? 'bg-amber-500/15 text-amber-300'
-                            : 'bg-white/5 text-neutral-400'
+                  <span className="line-clamp-2 text-[11px] leading-snug text-neutral-500">
+                    {meta.preview || 'Empty note'}
+                  </span>
+                  <span className="flex items-center justify-between gap-2 text-[10px] text-neutral-500">
+                    <span className="flex items-center gap-1.5">
+                      {formatRelativeTime(meta.updatedAt)}
+                      {meta.meetingDurationMs ? ` · ${formatDuration(meta.meetingDurationMs)}` : ''}
+                    </span>
+                    {status && (
+                      <span
+                        className={`shrink-0 rounded px-1 py-0.5 ${
+                          meta.meetingStatus === 'recording'
+                            ? 'bg-red-500/15 text-red-300'
+                            : meta.meetingStatus === 'error'
+                              ? 'bg-amber-500/15 text-amber-300'
+                              : 'bg-white/5 text-neutral-400'
+                        }`}
+                      >
+                        {status}
+                      </span>
+                    )}
+                  </span>
+                </button>
+                {showActions && (
+                  <div
+                    className={`absolute right-1 top-1 flex items-center gap-0.5 transition-opacity ${
+                      active ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => onTogglePin(meta.id)}
+                      title={meta.pinned ? 'Unpin note' : 'Pin note'}
+                      aria-label={meta.pinned ? 'Unpin note' : 'Pin note'}
+                      className={`flex h-6 w-6 items-center justify-center rounded-md transition-colors hover:bg-white/10 ${
+                        meta.pinned
+                          ? 'text-[color:var(--chat-accent)]'
+                          : 'text-neutral-500 hover:text-neutral-200'
                       }`}
                     >
-                      {status}
-                    </span>
-                  )}
-                </span>
-              </button>
+                      <PinIcon filled={meta.pinned} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDelete(meta)}
+                      title="Delete note"
+                      aria-label={`Delete ${meta.title}`}
+                      className="flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-red-500/15 hover:text-red-300"
+                    >
+                      <TrashIcon />
+                    </button>
+                  </div>
+                )}
+              </div>
             )
           })
         )}
