@@ -15,7 +15,7 @@ import {
   sortNoteMetas,
   toNoteMeta
 } from '../../shared/notes/note'
-import { appStore } from '../store/appStore'
+import { getNotesIndex, setNotesIndex } from '../store/notesIndexStore'
 import { sendToMain } from '../windows/broadcast'
 
 const notesDir = (): string => join(app.getPath('userData'), 'notes')
@@ -86,9 +86,9 @@ async function readNoteFile(noteId: string): Promise<Note | null> {
 }
 
 function upsertMeta(note: Note): NoteMeta[] {
-  const current = appStore.get('notes', [])
+  const current = getNotesIndex()
   const next = sortNoteMetas([toNoteMeta(note), ...current.filter((meta) => meta.id !== note.id)])
-  appStore.set('notes', next)
+  setNotesIndex(next)
   return next
 }
 
@@ -112,7 +112,7 @@ async function persistNote(note: Note): Promise<Note> {
 }
 
 export function getNoteMetas(): NoteMeta[] {
-  return sortNoteMetas(appStore.get('notes', []))
+  return sortNoteMetas(getNotesIndex())
 }
 
 export async function getNote(noteId: string): Promise<Note | null> {
@@ -180,7 +180,7 @@ export async function deleteNote(noteId: string): Promise<NoteMeta[]> {
   })
 
   const next = getNoteMetas().filter((meta) => meta.id !== id)
-  appStore.set('notes', next)
+  setNotesIndex(next)
   emitChanged(next)
   return next
 }

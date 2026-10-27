@@ -109,22 +109,51 @@ export function scoreMatch(query: string, target: string): number {
 export function scoreLauncherItem(query: string, item: LauncherItem): number {
   const normalizedQuery = normalizeText(query)
   if (!normalizedQuery) return 0
+  return scoreLauncherItemNormalized(normalizedQuery, item)
+}
+
+/**
+ * Derived, per-item search data.
+ *
+ * `rankLauncherItems` runs on every keystroke over the whole installed-app list,
+ * so normalizing each title/path (NFD + regex + lowercase) on every pass was
+ * pure repeated work. Items are stable objects between scans, which lets us
+ * cache their normalized forms in a WeakMap and drop the per-keystroke cost to
+ * the matching itself.
+ */
+interface LauncherItemDerived {
+  normalizedTitle: string
+  normalizedExecutable: string | null
+  aliases: string[]
+}
+
+const launcherItemDerived = new WeakMap<LauncherItem, LauncherItemDerived>()
+
+function getLauncherItemDerived(item: LauncherItem): LauncherItemDerived {
+  const cached = launcherItemDerived.get(item)
+  if (cached) return cached
 
   const normalizedTitle = normalizeText(item.title)
-  let best = scoreMatch(normalizedQuery, normalizedTitle)
+  const executable = item.app?.path ? normalizeText(basenameWithoutExtension(item.app.path)) : ''
+  const derived: LauncherItemDerived = {
+    normalizedTitle,
+    normalizedExecutable: executable && executable !== normalizedTitle ? executable : null,
+    aliases: APP_ALIASES[normalizedTitle] ?? []
+  }
+  launcherItemDerived.set(item, derived)
+  return derived
+}
 
-  if (item.app?.path) {
-    const executable = normalizeText(basenameWithoutExtension(item.app.path))
-    if (executable && executable !== normalizedTitle) {
-      best = Math.max(best, scoreMatch(normalizedQuery, executable) * 0.95)
-    }
+function scoreLauncherItemNormalized(normalizedQuery: string, item: LauncherItem): number {
+  const derived = getLauncherItemDerived(item)
+  let best = scoreMatch(normalizedQuery, derived.normalizedTitle)
+
+  if (derived.normalizedExecutable) {
+    best = Math.max(best, scoreMatch(normalizedQuery, derived.normalizedExecutable) * 0.95)
   }
 
-  const aliases = APP_ALIASES[normalizedTitle]
-  if (aliases) {
-    for (const alias of aliases) {
-      best = Math.max(best, scoreMatch(normalizedQuery, alias) * 0.9)
-    }
+  for (const alias of derived.aliases) {
+    best = Math.max(best, scoreMatch(normalizedQuery, alias) * 0.9)
   }
 
   return best
@@ -135,12 +164,12 @@ export function rankLauncherItems(
   items: LauncherItem[],
   limit = 8
 ): LauncherItem[] {
-  const trimmedQuery = query.trim()
-  if (!trimmedQuery) return []
+  const normalizedQuery = normalizeText(query)
+  if (!normalizedQuery) return []
 
   const scored: Array<{ item: LauncherItem; score: number }> = []
   for (const item of items) {
-    const score = scoreLauncherItem(trimmedQuery, item)
+    const score = scoreLauncherItemNormalized(normalizedQuery, item)
     if (score >= MIN_MATCH_SCORE) {
       scored.push({ item, score })
     }

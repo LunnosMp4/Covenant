@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { AppConfig } from '../../shared/config'
 import {
@@ -139,6 +139,28 @@ export function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined
   }
 }
 
+/**
+ * Process-local cache of the config file.
+ *
+ * `readConfig()` used to re-read, normalize and *rewrite* the config file on
+ * every call. The clipboard watcher alone calls it every 400ms, which turned
+ * into a constant synchronous read+write loop on the main process. The cache
+ * keeps reads cheap and only hits the disk when the file actually changed
+ * (detected through its mtime), so external edits are still picked up.
+ */
+let cachedConfig: AppConfig | null = null
+let cachedConfigMtimeMs: number | null = null
+/** Tracks whether the on-disk file was normalised once in this process. */
+let configFileAligned = false
+
+function readConfigMtimeMs(configPath: string): number | null {
+  try {
+    return statSync(configPath).mtimeMs
+  } catch {
+    return null
+  }
+}
+
 export function writeConfig(config: AppConfig): void {
   const configPath = getConfigPath()
   const userDataDirectory = app.getPath('userData')
@@ -148,14 +170,22 @@ export function writeConfig(config: AppConfig): void {
   }
 
   writeFileSync(configPath, JSON.stringify(config, null, 2), { encoding: 'utf-8' })
+  cachedConfig = config
+  cachedConfigMtimeMs = readConfigMtimeMs(configPath)
 }
 
 export function readConfig(): AppConfig {
   const configPath = getConfigPath()
 
   try {
+    const mtimeMs = readConfigMtimeMs(configPath)
+    if (cachedConfig && mtimeMs !== null && mtimeMs === cachedConfigMtimeMs) {
+      return cachedConfig
+    }
+
     if (!existsSync(configPath)) {
       writeConfig(DEFAULT_CONFIG)
+      configFileAligned = true
       return DEFAULT_CONFIG
     }
 
@@ -163,8 +193,16 @@ export function readConfig(): AppConfig {
     const parsed = JSON.parse(rawFile) as Partial<AppConfig>
     const normalized = normalizeConfig(parsed)
 
-    // Keep file schema aligned when new defaults are introduced.
-    writeConfig(normalized)
+    cachedConfig = normalized
+    cachedConfigMtimeMs = mtimeMs
+
+    // Keep the file schema aligned when new defaults are introduced, but only
+    // once per process instead of on every read.
+    if (!configFileAligned) {
+      configFileAligned = true
+      writeConfig(normalized)
+    }
+
     return normalized
   } catch {
     writeConfig(DEFAULT_CONFIG)

@@ -306,7 +306,13 @@ export async function runStreamingChat(
     }
 
     const continuation: Array<Record<string, unknown>> = [...sanitizeResponseOutputForInput(output)]
-    for (const call of functionCalls) {
+
+    // Builtin (terminal) tools are stateful and must keep their original order,
+    // so they stay sequential. MCP tools are independent HTTP calls and are
+    // dispatched concurrently to avoid paying the sum of every roundtrip.
+    const outputs = new Array<Record<string, unknown> | null>(functionCalls.length).fill(null)
+
+    const calls = functionCalls.map((call, index) => {
       const mcpEntry = toolRegistry.find((e) => e.qualifiedName === call.name)
       const builtin = builtinTools.find((handler) => handler.name === call.name)
       const toolType = builtin ? 'terminal' : 'mcp'
@@ -322,12 +328,18 @@ export async function runStreamingChat(
         status: 'running'
       })
 
+      return { call, index, mcpEntry, builtin, toolType, serverName }
+    })
+
+    const runToolCall = async (entry: (typeof calls)[number]): Promise<void> => {
+      const { call, index, mcpEntry, builtin, toolType, serverName } = entry
+
       if (!mcpEntry && !builtin) {
-        continuation.push({
+        outputs[index] = {
           type: 'function_call_output',
           call_id: call.call_id,
           output: `Tool ${call.name} is unavailable.`
-        })
+        }
         ctx.sendStreamEvent({
           id: ctx.streamId,
           type: 'tool-result',
@@ -337,7 +349,7 @@ export async function runStreamingChat(
           status: 'error',
           content: 'Tool unavailable.'
         })
-        continue
+        return
       }
 
       try {
@@ -346,7 +358,7 @@ export async function runStreamingChat(
           : await callMcpTool(mcpEntry!.server, mcpEntry!.tool, call.arguments, {
               signal: ctx.signal
             })
-        continuation.push({ type: 'function_call_output', call_id: call.call_id, output: result.content })
+        outputs[index] = { type: 'function_call_output', call_id: call.call_id, output: result.content }
         ctx.sendStreamEvent({
           id: ctx.streamId,
           type: 'tool-result',
@@ -359,7 +371,11 @@ export async function runStreamingChat(
         })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Tool call failed.'
-        continuation.push({ type: 'function_call_output', call_id: call.call_id, output: `Error: ${message}` })
+        outputs[index] = {
+          type: 'function_call_output',
+          call_id: call.call_id,
+          output: `Error: ${message}`
+        }
         ctx.sendStreamEvent({
           id: ctx.streamId,
           type: 'tool-result',
@@ -371,8 +387,24 @@ export async function runStreamingChat(
           content: message
         })
       }
+    }
 
-      if (ctx.signal.aborted) break
+    const sequentialCalls = calls.filter((entry) => entry.builtin)
+    const parallelCalls = calls.filter((entry) => !entry.builtin)
+
+    if (sequentialCalls.length > 0) {
+      // A terminal tool is in play: keep the original strict ordering so its
+      // commands and their side effects interleave exactly as before.
+      for (const entry of calls) {
+        if (ctx.signal.aborted) break
+        await runToolCall(entry)
+      }
+    } else if (parallelCalls.length > 0) {
+      await Promise.all(parallelCalls.map((entry) => runToolCall(entry)))
+    }
+
+    for (const output of outputs) {
+      if (output) continuation.push(output)
     }
 
     if (ctx.signal.aborted) {

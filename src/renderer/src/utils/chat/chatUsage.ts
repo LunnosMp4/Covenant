@@ -2,17 +2,22 @@ import type { ChatMessage } from '../../../../shared/chat/chat'
 import { CHAT_MODEL_OPTIONS } from '../../../../shared/config'
 import { CHAT_MODEL_PRICING } from '../../../../shared/system/usage'
 
+// Intl formatters are expensive to construct and were previously rebuilt for
+// every message on every render (including each streamed token).
+const TOKEN_COUNT_FORMATTER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
+const CURRENCY_FORMATTER = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 4,
+  maximumFractionDigits: 4
+})
+
 export function formatTokenCount(tokens: number): string {
-  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(tokens)
+  return TOKEN_COUNT_FORMATTER.format(tokens)
 }
 
 export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 4,
-    maximumFractionDigits: 4
-  }).format(amount)
+  return CURRENCY_FORMATTER.format(amount)
 }
 
 export function formatConversationTimestamp(timestamp: number): string {

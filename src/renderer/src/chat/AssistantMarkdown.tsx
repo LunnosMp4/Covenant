@@ -1,4 +1,4 @@
-import { Children, useState, type HTMLAttributes } from 'react'
+import { Children, memo, useState, type HTMLAttributes } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -201,42 +201,56 @@ export function CodeBlock({
   )
 }
 
-export function AssistantMarkdown({ content }: { content: string }): JSX.Element {
+const MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkMath]
+const MARKDOWN_REHYPE_PLUGINS = [rehypeKatex]
+
+const MARKDOWN_COMPONENTS = {
+  a({ href, children, ...props }: HTMLAttributes<HTMLAnchorElement> & { href?: string }) {
+    const safeHref = typeof href === 'string' ? href : undefined
+    return (
+      <a href={safeHref} target="_blank" rel="noreferrer" {...props}>
+        {children}
+      </a>
+    )
+  },
+  pre({ children, ...props }: HTMLAttributes<HTMLPreElement>) {
+    const childArr = Children.toArray(children)
+    const codeEl = childArr[0] as { props?: { className?: string; children?: unknown } } | undefined
+    const className = codeEl?.props?.className ?? ''
+    const rawCode = codeEl?.props?.children != null ? String(codeEl.props.children).replace(/\n$/, '') : ''
+    const match = /language-(\w+)/.exec(className)
+    const language = match?.[1]
+
+    return <CodeBlock language={language} code={rawCode} {...props} />
+  },
+  code({ className, children, ...props }: HTMLAttributes<HTMLElement>) {
+    return (
+      <code className={className || 'chat-code-inline'} {...props}>
+        {children}
+      </code>
+    )
+  }
+}
+
+/**
+ * Markdown rendering is the most expensive part of a streaming chat commit, so
+ * the plugin arrays and component map are module-level constants (previously
+ * they were rebuilt on every render) and the component is memoised on content.
+ */
+export const AssistantMarkdown = memo(function AssistantMarkdown({
+  content
+}: {
+  content: string
+}): JSX.Element {
   const query = preprocessLatexDelimiters(content)
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[rehypeKatex]}
+      remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+      rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
       className="chat-markdown"
-      components={{
-        a({ href, children, ...props }) {
-          const safeHref = typeof href === 'string' ? href : undefined
-          return (
-            <a href={safeHref} target="_blank" rel="noreferrer" {...props}>
-              {children}
-            </a>
-          )
-        },
-        pre({ children, ...props }) {
-          const childArr = Children.toArray(children)
-          const codeEl = childArr[0] as { props?: { className?: string; children?: unknown } } | undefined
-          const className = codeEl?.props?.className ?? ''
-          const rawCode = codeEl?.props?.children != null ? String(codeEl.props.children).replace(/\n$/, '') : ''
-          const match = /language-(\w+)/.exec(className)
-          const language = match?.[1]
-
-          return <CodeBlock language={language} code={rawCode} {...props} />
-        },
-        code({ className, children, ...props }) {
-          return (
-            <code className={className || 'chat-code-inline'} {...props}>
-              {children}
-            </code>
-          )
-        }
-      }}
+      components={MARKDOWN_COMPONENTS}
     >
       {query}
     </ReactMarkdown>
   )
-}
+})

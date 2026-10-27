@@ -39,9 +39,24 @@ export function useChatSearch({
   const [activeSearchMatchIndex, setActiveSearchMatchIndex] = useState(0)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
+  // Debounce the expensive history scan. The DOM highlight below still follows
+  // `searchQuery` immediately, so typing feels instant while the match list
+  // catches up one keystroke burst at a time.
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setDebouncedSearchQuery('')
+      return undefined
+    }
+    const timer = window.setTimeout(() => setDebouncedSearchQuery(searchQuery), 110)
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [searchQuery])
+
   const searchMatches = useMemo(
-    () => buildSearchMatches(conversations, activeConversation, searchQuery),
-    [conversations, activeConversation, searchQuery]
+    () => buildSearchMatches(conversations, activeConversation, debouncedSearchQuery),
+    [conversations, activeConversation, debouncedSearchQuery]
   )
 
   const searchGroups = useMemo<SearchGroup[]>(() => {

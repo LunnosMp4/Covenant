@@ -104,6 +104,8 @@ export class PasteStore {
   private readonly itemsDir: string
   private readonly blobsDir: string
   private entries: PasteItemMeta[] = []
+  private readonly byId = new Map<string, PasteItemMeta>()
+  private sortedCache: PasteItemMeta[] | null = null
   private flushTimer: NodeJS.Timeout | null = null
   private writeChain: Promise<void> = Promise.resolve()
   private initialized = false
@@ -132,20 +134,34 @@ export class PasteStore {
         .map(normalizeStoredMeta)
         .filter((entry): entry is PasteItemMeta => entry != null)
         .sort(pinnedFirst)
+      this.reindex()
     } catch {
       this.entries = []
+      this.reindex()
     }
 
     this.initialized = true
   }
 
+  /** Rebuilds the id index and drops the memoised sort order. */
+  private reindex(): void {
+    this.byId.clear()
+    for (const entry of this.entries) {
+      this.byId.set(entry.id, entry)
+    }
+    this.sortedCache = null
+  }
+
   /** Metadata only, pinned first then newest first. */
   list(): PasteItemMeta[] {
-    return [...this.entries].sort(pinnedFirst)
+    if (!this.sortedCache) {
+      this.sortedCache = [...this.entries].sort(pinnedFirst)
+    }
+    return [...this.sortedCache]
   }
 
   getMeta(id: string): PasteItemMeta | null {
-    return this.entries.find((entry) => entry.id === id) ?? null
+    return this.byId.get(id) ?? null
   }
 
   /** Hash of the most recently stored entry (for consecutive-duplicate checks). */
@@ -232,7 +248,9 @@ export class PasteStore {
     }
 
     this.entries.push(meta)
+    this.byId.set(meta.id, meta)
     this.entries.sort(pinnedFirst)
+    this.sortedCache = null
     this.scheduleFlush()
     return meta
   }
@@ -242,7 +260,10 @@ export class PasteStore {
     const meta = this.getMeta(id)
     if (!meta) return null
     Object.assign(meta, patch)
-    if (patch.pinned !== undefined) this.entries.sort(pinnedFirst)
+    if (patch.pinned !== undefined) {
+      this.entries.sort(pinnedFirst)
+      this.sortedCache = null
+    }
     this.scheduleFlush()
     return meta
   }
@@ -253,6 +274,7 @@ export class PasteStore {
     if (meta.pinned === pinned) return meta
     meta.pinned = pinned
     this.entries.sort(pinnedFirst)
+    this.sortedCache = null
     this.scheduleFlush()
     return meta
   }
@@ -261,6 +283,8 @@ export class PasteStore {
     const index = this.entries.findIndex((entry) => entry.id === id)
     if (index < 0) return false
     const [meta] = this.entries.splice(index, 1)
+    this.byId.delete(meta.id)
+    this.sortedCache = null
     await this.removeFiles(meta)
     this.scheduleFlush()
     return true
@@ -275,6 +299,7 @@ export class PasteStore {
       else removed.push(entry)
     }
     this.entries = keep
+    this.reindex()
     await Promise.all(removed.map((entry) => this.removeFiles(entry)))
     this.scheduleFlush()
     return removed.length
@@ -306,6 +331,7 @@ export class PasteStore {
 
     const removed = this.entries.filter((entry) => removeIds.has(entry.id))
     this.entries = this.entries.filter((entry) => !removeIds.has(entry.id))
+    this.reindex()
     await Promise.all(removed.map((entry) => this.removeFiles(entry)))
     this.scheduleFlush()
     return removed.length

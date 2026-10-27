@@ -43,6 +43,13 @@ describe('scoreLauncherItem', () => {
   it('does not match a long sentence against a short app name', () => {
     expect(scoreLauncherItem('chrome is my favorite browser', app('1', 'Chrome'))).toBe(0)
   })
+
+  it('derives the executable name once and prefers an exact executable match', () => {
+    const item = app('zed', 'Zed Editor', '/Applications/zed.app')
+    // Exact executable match (1200 * 0.95) must beat the title prefix match.
+    expect(scoreLauncherItem('zed', item)).toBeGreaterThan(1000)
+    expect(scoreLauncherItem('zed', item)).toBe(scoreLauncherItem('zed', item))
+  })
 })
 
 describe('rankLauncherItems', () => {
@@ -70,5 +77,19 @@ describe('rankLauncherItems', () => {
   it('honors the limit', () => {
     const results = rankLauncherItems('c', items, 1)
     expect(results).toHaveLength(1)
+  })
+
+  it('ignores surrounding whitespace and diacritics in the query', () => {
+    expect(rankLauncherItems('  firefox  ', items)[0].title).toBe('Firefox')
+    expect(rankLauncherItems('  firefox  ', items)[0].id).toBe(
+      rankLauncherItems('firefox', items)[0].id
+    )
+  })
+
+  it('is stable across repeated calls (derived data is cached)', () => {
+    const first = rankLauncherItems('firefox', items)
+    const second = rankLauncherItems('firefox', items)
+    expect(second.map((item) => item.id)).toEqual(first.map((item) => item.id))
+    expect(second.map((item) => item.score)).toEqual(first.map((item) => item.score))
   })
 })

@@ -1,4 +1,10 @@
-import { execFileSync } from 'child_process'
+import { execFile } from 'child_process'
+import { app } from 'electron'
+import { promises as fs } from 'fs'
+import { join } from 'path'
+import { promisify } from 'util'
+
+const execFileAsync = promisify(execFile)
 
 const FALLBACK_TERMINAL_FONTS = [
   'Cascadia Mono',
@@ -10,7 +16,18 @@ const FALLBACK_TERMINAL_FONTS = [
   'DejaVu Sans Mono'
 ]
 
+const FONT_CACHE_FILE = 'terminal-fonts.json'
+/** Re-enumerate in the background once the cached list is older than this. */
+const FONT_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const FONT_SCAN_TIMEOUT_MS = 8000
+
 let cachedTerminalFonts: string[] | null = null
+let pendingFontScan: Promise<string[]> | null = null
+
+interface PersistedFontCache {
+  generatedAt: number
+  fonts: string[]
+}
 
 const TERMINAL_FONT_PATTERNS = [
   /\bmono\b/i,
@@ -77,7 +94,7 @@ function toFontList(output: string): string[] {
     .filter((item) => item.length > 0)
 }
 
-function getWindowsFontFamilies(): string[] {
+async function getWindowsFontFamilies(): Promise<string[]> {
   const script = `
 $ErrorActionPreference = 'SilentlyContinue'
 try {
@@ -93,23 +110,22 @@ try {
 `
 
   try {
-    const output = execFileSync(
+    const { stdout } = await execFileAsync(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
       {
         encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'ignore'],
-        timeout: 8000
+        timeout: FONT_SCAN_TIMEOUT_MS
       }
     )
 
-    return toFontList(output)
+    return toFontList(stdout)
   } catch {
     return []
   }
 }
 
-function getMacFontFamilies(): string[] {
+async function getMacFontFamilies(): Promise<string[]> {
   const script = `
 ObjC.import('AppKit');
 const families = $.NSFontManager.sharedFontManager.availableFontFamilies;
@@ -121,33 +137,31 @@ out.join('\\n');
 `
 
   try {
-    const output = execFileSync('osascript', ['-l', 'JavaScript', '-e', script], {
+    const { stdout } = await execFileAsync('osascript', ['-l', 'JavaScript', '-e', script], {
       encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'ignore'],
-      timeout: 8000
+      timeout: FONT_SCAN_TIMEOUT_MS
     })
 
-    return toFontList(output)
+    return toFontList(stdout)
   } catch {
     return []
   }
 }
 
-function getLinuxFontFamilies(): string[] {
+async function getLinuxFontFamilies(): Promise<string[]> {
   try {
-    const output = execFileSync('fc-list', ['--format', '%{family}\\n'], {
+    const { stdout } = await execFileAsync('fc-list', ['--format', '%{family}\\n'], {
       encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'ignore'],
-      timeout: 8000
+      timeout: FONT_SCAN_TIMEOUT_MS
     })
 
-    return toFontList(output.replace(/,/g, '\n'))
+    return toFontList(stdout.replace(/,/g, '\n'))
   } catch {
     return []
   }
 }
 
-function getFontFamiliesFromSystem(): string[] {
+async function getFontFamiliesFromSystem(): Promise<string[]> {
   switch (process.platform) {
     case 'win32':
       return getWindowsFontFamilies()
@@ -160,19 +174,85 @@ function getFontFamiliesFromSystem(): string[] {
   }
 }
 
+function getFontCachePath(): string {
+  return join(app.getPath('userData'), FONT_CACHE_FILE)
+}
+
+async function readPersistedFontCache(): Promise<PersistedFontCache | null> {
+  try {
+    const raw = await fs.readFile(getFontCachePath(), 'utf-8')
+    const parsed = JSON.parse(raw) as Partial<PersistedFontCache>
+    if (!Array.isArray(parsed.fonts)) return null
+    const fonts = parsed.fonts.filter((font): font is string => typeof font === 'string' && font.length > 0)
+    if (fonts.length === 0) return null
+    return {
+      generatedAt: typeof parsed.generatedAt === 'number' ? parsed.generatedAt : 0,
+      fonts
+    }
+  } catch {
+    return null
+  }
+}
+
+async function writePersistedFontCache(fonts: string[]): Promise<void> {
+  try {
+    await fs.mkdir(app.getPath('userData'), { recursive: true })
+    const payload: PersistedFontCache = { generatedAt: Date.now(), fonts }
+    await fs.writeFile(getFontCachePath(), JSON.stringify(payload), 'utf-8')
+  } catch {
+    // Caching is best-effort; enumeration still works without it.
+  }
+}
+
+async function scanTerminalFonts(): Promise<string[]> {
+  const installedFonts = await getFontFamiliesFromSystem()
+  const terminalFonts = installedFonts.filter(isTerminalFont)
+  const source = terminalFonts.length > 0 ? terminalFonts : FALLBACK_TERMINAL_FONTS
+  return Array.from(new Set(source)).sort((a, b) => a.localeCompare(b))
+}
+
 /**
  * Returns terminal-suitable fonts from the installed fonts list.
  * This intentionally excludes generic UI fonts like Arial or Calibri.
+ *
+ * Enumeration shells out to the OS (up to 8s), so it runs asynchronously instead
+ * of blocking the main process, and its result is cached on disk to make later
+ * visits to Settings instant.
  */
-export function getTerminalFonts(): string[] {
+export async function getTerminalFonts(): Promise<string[]> {
   if (cachedTerminalFonts) {
     return cachedTerminalFonts
   }
 
-  const installedFonts = getFontFamiliesFromSystem()
-  const terminalFonts = installedFonts.filter(isTerminalFont)
-  const source = terminalFonts.length > 0 ? terminalFonts : FALLBACK_TERMINAL_FONTS
-  cachedTerminalFonts = Array.from(new Set(source)).sort((a, b) => a.localeCompare(b))
+  if (pendingFontScan) {
+    return pendingFontScan
+  }
 
-  return cachedTerminalFonts
+  const persisted = await readPersistedFontCache()
+  if (persisted) {
+    cachedTerminalFonts = persisted.fonts
+    if (Date.now() - persisted.generatedAt > FONT_CACHE_TTL_MS) {
+      // Serve the cached list immediately and refresh it quietly.
+      void scanTerminalFonts()
+        .then((fonts) => {
+          cachedTerminalFonts = fonts
+          return writePersistedFontCache(fonts)
+        })
+        .catch(() => undefined)
+    }
+    return cachedTerminalFonts
+  }
+
+  pendingFontScan = scanTerminalFonts()
+    .then((fonts) => {
+      cachedTerminalFonts = fonts
+      void writePersistedFontCache(fonts)
+      return fonts
+    })
+    .catch(() => FALLBACK_TERMINAL_FONTS)
+    .finally(() => {
+      pendingFontScan = null
+    })
+
+  return pendingFontScan
 }

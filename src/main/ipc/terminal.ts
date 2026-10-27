@@ -18,6 +18,51 @@ import { assertMainWindowSender } from '../windows'
 const terminalSubscribers = new Set<WebContents>()
 let lastActiveSessionId: string | null = null
 
+/**
+ * PTY chunks arrive in tiny reads (often a few dozen bytes). Forwarding each one
+ * as its own IPC message drowns the renderer during bursty output, so chunks are
+ * coalesced per session into a single message per flush window. Ordering inside
+ * a session is preserved; the flush also runs before `terminal:exit` so no
+ * output can be dropped or reordered relative to process exit.
+ */
+const TERMINAL_DATA_FLUSH_MS = 12
+const pendingTerminalData = new Map<string, string[]>()
+let terminalDataFlushTimer: NodeJS.Timeout | null = null
+
+function flushTerminalData(): void {
+  if (terminalDataFlushTimer) {
+    clearTimeout(terminalDataFlushTimer)
+    terminalDataFlushTimer = null
+  }
+  if (pendingTerminalData.size === 0) return
+
+  const pending = [...pendingTerminalData.entries()]
+  pendingTerminalData.clear()
+
+  for (const [sessionId, chunks] of pending) {
+    if (chunks.length === 0) continue
+    emitTerminalEvent('terminal:data', { sessionId, chunk: chunks.join('') })
+  }
+}
+
+function queueTerminalData(sessionId: string, chunk: string): void {
+  if (!chunk) return
+
+  const queued = pendingTerminalData.get(sessionId)
+  if (queued) {
+    queued.push(chunk)
+  } else {
+    pendingTerminalData.set(sessionId, [chunk])
+  }
+
+  if (terminalDataFlushTimer) return
+  terminalDataFlushTimer = setTimeout(() => {
+    terminalDataFlushTimer = null
+    flushTerminalData()
+  }, TERMINAL_DATA_FLUSH_MS)
+  terminalDataFlushTimer.unref?.()
+}
+
 function attachTerminalSubscriber(sender: WebContents): void {
   if (sender.isDestroyed() || terminalSubscribers.has(sender)) {
     return
@@ -46,10 +91,11 @@ function emitTerminalEvent(
 
 export function registerTerminalIpc(): void {
   terminalManager.onData((sessionId, chunk) => {
-    emitTerminalEvent('terminal:data', { sessionId, chunk })
+    queueTerminalData(sessionId, chunk)
   })
 
   terminalManager.onExit((payload: TerminalExitPayload) => {
+    flushTerminalData()
     if (payload.sessionId === lastActiveSessionId) {
       lastActiveSessionId = null
     }

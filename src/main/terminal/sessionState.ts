@@ -26,7 +26,17 @@ export class ShellStateTracker {
   private lastCommand: string | null = null
   private lastExitCode: number | null = null
   private running = false
-  private output = ''
+  /**
+   * AI-facing output ring, stored as chunks instead of one growing string.
+   *
+   * Bare string concatenation plus a `slice(-MAX)` on every PTY chunk copies up
+   * to MAX_OUTPUT_CHARS per chunk (quadratic work during bursty output). Chunks
+   * are appended in O(1) and only materialised as a string when the assistant
+   * actually reads the output.
+   */
+  private chunks: string[] = []
+  private head = 0
+  private retainedLength = 0
   private markerBuffer = ''
   private updatedAt = Date.now()
 
@@ -58,10 +68,7 @@ export class ShellStateTracker {
 
     const clean = stripAnsi(chunk)
     if (clean) {
-      this.output += clean
-      if (this.output.length > MAX_OUTPUT_CHARS) {
-        this.output = this.output.slice(-MAX_OUTPUT_CHARS)
-      }
+      this.appendOutput(clean)
     }
 
     this.updatedAt = Date.now()
@@ -69,6 +76,36 @@ export class ShellStateTracker {
     if (this.cwd !== previousCwd) {
       this.emitState()
     }
+  }
+
+  private appendOutput(text: string): void {
+    this.chunks.push(text)
+    this.retainedLength += text.length
+
+    let overflow = this.retainedLength - MAX_OUTPUT_CHARS
+    while (overflow > 0 && this.head < this.chunks.length) {
+      const headChunk = this.chunks[this.head]
+      if (headChunk.length <= overflow) {
+        overflow -= headChunk.length
+        this.retainedLength -= headChunk.length
+        this.head += 1
+        continue
+      }
+      this.chunks[this.head] = headChunk.slice(overflow)
+      this.retainedLength -= overflow
+      overflow = 0
+    }
+
+    // Reclaim the consumed prefix once it dominates the array.
+    if (this.head > 64 && this.head * 2 >= this.chunks.length) {
+      this.chunks = this.chunks.slice(this.head)
+      this.head = 0
+    }
+  }
+
+  private getOutputText(): string {
+    if (this.head === 0) return this.chunks.join('')
+    return this.chunks.slice(this.head).join('')
   }
 
   private applySentinel(sentinel: SentinelMatch): void {
@@ -134,20 +171,21 @@ export class ShellStateTracker {
 
   read(lineCount = 80): string {
     const bounded = Math.max(1, Math.min(lineCount, MAX_READ_LINES))
-    const lines = this.output.split('\n')
+    const lines = this.getOutputText().split('\n')
     const slice = lines.slice(Math.max(0, lines.length - bounded))
     return slice.join('\n').trim()
   }
 
   /** Monotonic-ish marker of how much output has been produced so far. */
   getOutputLength(): number {
-    return this.output.length
+    return this.retainedLength
   }
 
   /** Returns output produced after `offset`, capped to `maxLines`. */
   readSince(offset: number, maxLines = 200): string {
-    const start = Math.max(0, Math.min(offset, this.output.length))
-    const slice = this.output.slice(start)
+    const output = this.getOutputText()
+    const start = Math.max(0, Math.min(offset, output.length))
+    const slice = output.slice(start)
     const lines = slice.split('\n')
     const bounded = lines.slice(Math.max(0, lines.length - maxLines))
     return bounded.join('\n').trim()

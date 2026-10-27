@@ -86,9 +86,9 @@ export function registerConfigIpc(): void {
     broadcast('terminal-font-updated', nextTerminalFont)
   })
 
-  ipcMain.handle('get-terminal-fonts', () => {
+  ipcMain.handle('get-terminal-fonts', async () => {
     try {
-      const fonts = getTerminalFonts()
+      const fonts = await getTerminalFonts()
       const savedFont = normalizeTerminalFont(readConfig().terminalFont)
       const hasSavedFont = fonts.some((font) => font.toLowerCase() === savedFont.toLowerCase())
       return hasSavedFont ? fonts : [...fonts, savedFont].sort((a, b) => a.localeCompare(b))

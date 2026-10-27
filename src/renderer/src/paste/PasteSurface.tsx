@@ -37,21 +37,39 @@ interface PasteSurfaceProps {
   onTogglePin: () => void
 }
 
-function scorePasteItem(normalizedQuery: string, item: PasteItemMeta): number {
-  let best = scoreMatch(normalizedQuery, normalizeText(item.preview))
-  if (item.linkTitle) {
-    best = Math.max(best, scoreMatch(normalizedQuery, normalizeText(item.linkTitle)) * 1.05)
+interface PasteSearchFields {
+  preview: string
+  linkTitle: string
+  searchText: string
+  ocrText: string
+  linkUrl: string
+}
+
+function scorePasteFields(normalizedQuery: string, fields: PasteSearchFields): number {
+  let best = scoreMatch(normalizedQuery, fields.preview)
+  if (fields.linkTitle) {
+    best = Math.max(best, scoreMatch(normalizedQuery, fields.linkTitle) * 1.05)
   }
-  if (item.searchText) {
-    best = Math.max(best, scoreMatch(normalizedQuery, normalizeText(item.searchText)))
+  if (fields.searchText) {
+    best = Math.max(best, scoreMatch(normalizedQuery, fields.searchText))
   }
-  if (item.ocrText) {
-    best = Math.max(best, scoreMatch(normalizedQuery, normalizeText(item.ocrText)))
+  if (fields.ocrText) {
+    best = Math.max(best, scoreMatch(normalizedQuery, fields.ocrText))
   }
-  if (item.linkUrl) {
-    best = Math.max(best, scoreMatch(normalizedQuery, normalizeText(item.linkUrl)))
+  if (fields.linkUrl) {
+    best = Math.max(best, scoreMatch(normalizedQuery, fields.linkUrl))
   }
   return best
+}
+
+function buildPasteSearchFields(item: PasteItemMeta): PasteSearchFields {
+  return {
+    preview: normalizeText(item.preview),
+    linkTitle: item.linkTitle ? normalizeText(item.linkTitle) : '',
+    searchText: item.searchText ? normalizeText(item.searchText) : '',
+    ocrText: item.ocrText ? normalizeText(item.ocrText) : '',
+    linkUrl: item.linkUrl ? normalizeText(item.linkUrl) : ''
+  }
 }
 
 /**
@@ -79,6 +97,31 @@ export default function PasteSurface({
 
   const searchRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+
+  // Debounced query: the history can hold up to a thousand entries and each
+  // match scans several normalized fields, so typing does not need to re-rank
+  // on every keystroke.
+  const [debouncedQuery, setDebouncedQuery] = useState('')
+  useEffect(() => {
+    if (!query.trim()) {
+      setDebouncedQuery('')
+      return undefined
+    }
+    const timer = window.setTimeout(() => setDebouncedQuery(query), 80)
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [query])
+
+  // Normalized search fields are derived once per list load instead of being
+  // rebuilt for every entry on every keystroke.
+  const searchFieldsById = useMemo(() => {
+    const fields = new Map<string, PasteSearchFields>()
+    for (const item of items) {
+      fields.set(item.id, buildPasteSearchFields(item))
+    }
+    return fields
+  }, [items])
 
   const reload = useCallback(async () => {
     if (!window.api?.paste) return
@@ -113,17 +156,20 @@ export default function PasteSurface({
 
   const filtered = useMemo(() => {
     let list = items.filter((item) => typeFilter === 'all' || item.type === typeFilter)
-    const trimmed = query.trim()
+    const trimmed = debouncedQuery.trim()
     if (trimmed) {
       const normalizedQuery = normalizeText(trimmed)
       list = list
-        .map((item) => ({ item, score: scorePasteItem(normalizedQuery, item) }))
+        .map((item) => ({
+          item,
+          score: scorePasteFields(normalizedQuery, searchFieldsById.get(item.id) ?? buildPasteSearchFields(item))
+        }))
         .filter((entry) => entry.score > 0)
         .sort((a, b) => b.score - a.score || b.item.createdAt - a.item.createdAt)
         .map((entry) => entry.item)
     }
     return list
-  }, [items, query, typeFilter])
+  }, [items, debouncedQuery, typeFilter, searchFieldsById])
 
   useEffect(() => {
     if (filtered.length === 0) {

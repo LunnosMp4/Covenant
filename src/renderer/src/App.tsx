@@ -168,6 +168,12 @@ export default function App(): JSX.Element {
   const [autoCollapseReasoning, setAutoCollapseReasoning] = useState(true)
   const [textureIntensity, setTextureIntensity] = useState(DEFAULT_TEXTURE_INTENSITY)
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
+  const updateBannerVisible =
+    updateStatus !== null &&
+    (updateStatus.state === 'available' ||
+      updateStatus.state === 'downloading' ||
+      updateStatus.state === 'downloaded')
+  const [updateBannerHeight, setUpdateBannerHeight] = useState(0)
   const [isPinned, setIsPinned] = useState(false)
   const [sourcesPanelMessageId, setSourcesPanelMessageId] = useState<string | null>(null)
   const [deletingConversation, setDeletingConversation] = useState<ChatConversation | null>(null)
@@ -177,6 +183,7 @@ export default function App(): JSX.Element {
   const [pendingExternalPrompt, setPendingExternalPrompt] = useState<string | null>(null)
   const inputRef = useRef<HTMLDivElement>(null)
   const barRef = useRef<HTMLDivElement>(null)
+  const updateBannerRef = useRef<HTMLDivElement>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const pasteBlocksRef = useRef<Map<string, string>>(new Map())
   const isComposingRef = useRef(false)
@@ -200,6 +207,9 @@ export default function App(): JSX.Element {
   // Forces the next submit to start a brand-new conversation (paste manager AI actions).
   const forceNewConversationRef = useRef(false)
   const reasoningAutoCloseTimersRef = useRef<Record<string, number>>({})
+  // Remembers the last auto-scroll target so streamed token growth can scroll
+  // without restarting the smooth-scroll animation on every delta.
+  const lastAutoScrollRef = useRef<{ conversationId: string; messageCount: number } | null>(null)
   const autoCollapseReasoningRef = useRef(autoCollapseReasoning)
   // When false, the visible surfaces stay at their entry (hidden) state until the
   // native window has actually been shown by the main process.
@@ -555,6 +565,24 @@ export default function App(): JSX.Element {
     return () => observer.disconnect()
   }, [visible])
 
+  // Measure the update notice so the terminal surface (which floats above the
+  // bar) and the expanded surfaces can make room for it instead of overlapping.
+  useLayoutEffect(() => {
+    const banner = updateBannerRef.current
+    if (!banner) {
+      setUpdateBannerHeight(0)
+      return
+    }
+    const measure = (): void => {
+      const height = banner.offsetHeight
+      setUpdateBannerHeight((previous) => (Math.abs(previous - height) < 1 ? previous : height))
+    }
+    const observer = new ResizeObserver(measure)
+    observer.observe(banner)
+    measure()
+    return () => observer.disconnect()
+  }, [visible, updateBannerVisible])
+
   // Track whether Alt is held so the expand control can switch to the
   // horizontal expand/collapse variant.
   useEffect(() => {
@@ -596,16 +624,21 @@ export default function App(): JSX.Element {
     if (platform !== 'win32' && platform !== 'darwin') return undefined
 
     let ignoring = false
+    let pendingFrame: number | null = null
+    let lastPointer: { x: number; y: number } | null = null
     const setIgnore = (next: boolean): void => {
       if (next === ignoring) return
       ignoring = next
       window.api?.window.setIgnoreMouseEvents?.(next)
     }
 
-    const onMouseMove = (event: MouseEvent): void => {
-      // Don't toggle mid-drag (text selection, etc.).
-      if (event.buttons !== 0) return
-      const target = document.elementFromPoint(event.clientX, event.clientY)
+    const updateFromPointer = (): void => {
+      pendingFrame = null
+      const pointer = lastPointer
+      if (!pointer) return
+      // `elementFromPoint` forces a hit test and layout resolution, so it is
+      // sampled at most once per frame instead of on every pointer event.
+      const target = document.elementFromPoint(pointer.x, pointer.y)
       const overBackground =
         !target ||
         target === rootRef.current ||
@@ -614,10 +647,23 @@ export default function App(): JSX.Element {
       setIgnore(overBackground)
     }
 
+    const onMouseMove = (event: MouseEvent): void => {
+      // Don't toggle mid-drag (text selection, etc.).
+      if (event.buttons !== 0) return
+      lastPointer = { x: event.clientX, y: event.clientY }
+      if (pendingFrame !== null) return
+      pendingFrame = window.requestAnimationFrame(updateFromPointer)
+    }
+
     window.addEventListener('mousemove', onMouseMove)
 
     return () => {
       window.removeEventListener('mousemove', onMouseMove)
+      if (pendingFrame !== null) {
+        window.cancelAnimationFrame(pendingFrame)
+        pendingFrame = null
+      }
+      lastPointer = null
       window.api?.window.setIgnoreMouseEvents?.(false)
     }
   }, [visible])
@@ -1065,18 +1111,32 @@ export default function App(): JSX.Element {
   }, [isChatOpen, activeConversation?.id])
 
   useEffect(() => {
-    if (!isChatOpen || !autoScrollEnabled) return
+    if (!isChatOpen || !autoScrollEnabled) {
+      lastAutoScrollRef.current = null
+      return
+    }
 
-    const scrollTimer = window.setTimeout(() => {
-      if (!chatScrollRef.current) return
-      chatScrollRef.current.scrollTo({
-        top: chatScrollRef.current.scrollHeight,
-        behavior: 'smooth'
+    const conversationId = activeConversation?.id ?? ''
+    const messageCount = activeConversation?.messages.length ?? 0
+    const previous = lastAutoScrollRef.current
+    // A new conversation, a new message or the panel opening animates; plain
+    // token growth inside the last message jumps instantly so the smooth-scroll
+    // animation is not restarted on every streaming delta.
+    const isDiscrete =
+      previous === null || previous.conversationId !== conversationId || previous.messageCount !== messageCount
+    lastAutoScrollRef.current = { conversationId, messageCount }
+
+    const frame = window.requestAnimationFrame(() => {
+      const scrollElement = chatScrollRef.current
+      if (!scrollElement) return
+      scrollElement.scrollTo({
+        top: scrollElement.scrollHeight,
+        behavior: isDiscrete ? 'smooth' : 'auto'
       })
-    }, 40)
+    })
 
     return () => {
-      window.clearTimeout(scrollTimer)
+      window.cancelAnimationFrame(frame)
     }
   }, [isChatOpen, activeConversation, isLoading, autoScrollEnabled])
 
@@ -1327,13 +1387,17 @@ export default function App(): JSX.Element {
       setActiveConversation((current) => {
         if (!current || current.id !== conversationId) return current
 
-        const nextMessages = current.messages.map((message) =>
-          message.id === messageId ? updater(message) : message
-        )
+        // Streaming deltas only replace one message; the array order is already
+        // established, so avoid copying + re-sorting every message per token.
+        const index = current.messages.findIndex((message) => message.id === messageId)
+        if (index === -1) return current
+
+        const nextMessages = current.messages.slice()
+        nextMessages[index] = updater(current.messages[index])
 
         return {
           ...current,
-          messages: normalizeMessageOrder(nextMessages)
+          messages: nextMessages
         }
       })
     },
@@ -1598,6 +1662,7 @@ export default function App(): JSX.Element {
               ...previous,
               [messageId]: false
             }))
+            delete reasoningAutoCloseTimersRef.current[messageId]
           }, 900)
           reasoningAutoCloseTimersRef.current[messageId] = timerId
         }
@@ -2397,12 +2462,15 @@ export default function App(): JSX.Element {
 
   const wideWidth = Math.max(750, viewportWidth - 80)
   const barBusy = isCodeOpen ? code.stream.busy : isLoading
+  // Space taken by the update notice, including its gap below. Surfaces make
+  // room for it so the bottom-anchored stack never overflows the window.
+  const updateBannerOffset = updateBannerVisible ? updateBannerHeight + 8 : 0
   // Keep the terminal surface on exactly the same height rhythm as chat/code:
   // same body height (CHAT_SCROLL_HEIGHT / viewport-based when expanded) plus
   // the same header+padding allowance. This prevents the terminal from growing
   // taller than the other surfaces and cropping at the top when maximized.
   const surfaceBodyHeight = isExpanded
-    ? Math.max(CHAT_SCROLL_HEIGHT, viewportHeight - 210)
+    ? Math.max(CHAT_SCROLL_HEIGHT, viewportHeight - 210 - updateBannerOffset)
     : CHAT_SCROLL_HEIGHT
   const terminalSurfaceHeight = surfaceBodyHeight + 80
   // Full-bleed surfaces (paste/notes) get the same header allowance as the
@@ -2412,7 +2480,7 @@ export default function App(): JSX.Element {
   // Notes gets extra vertical room compared to chat/code when maximized: the
   // command bar is hidden for full surfaces, so use nearly the whole viewport.
   const notesSurfaceHeight = isExpanded
-    ? Math.max(fullSurfaceHeight, viewportHeight - 80)
+    ? Math.max(fullSurfaceHeight, viewportHeight - 80 - updateBannerOffset)
     : fullSurfaceHeight
 
   return (
@@ -2423,57 +2491,6 @@ export default function App(): JSX.Element {
       onClick={handleOverlayClick}
       onKeyDownCapture={handleRootKeyDownCapture}
     >
-      {updateStatus &&
-      (updateStatus.state === 'available' ||
-        updateStatus.state === 'downloading' ||
-        updateStatus.state === 'downloaded') ? (
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-50 flex justify-center px-4 pt-3">
-          <div className="modal-shadow pointer-events-auto flex w-[750px] max-w-full items-center gap-3 rounded-2xl border border-white/10 bg-neutral-900 px-4 py-3">
-            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-amber-400/15 text-amber-300">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <path d="M12 3v12" />
-                <path d="m7 10 5 5 5-5" />
-                <path d="M5 21h14" />
-              </svg>
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-medium text-neutral-100">
-                {updateStatus.state === 'downloaded'
-                  ? `Covenant v${updateStatus.version} is ready to install`
-                  : updateStatus.state === 'downloading'
-                    ? `Downloading Covenant v${updateStatus.version}…`
-                    : updateStatus.downloadUrl
-                      ? `Covenant v${updateStatus.version} is available`
-                      : `Covenant v${updateStatus.version} update found`}
-              </p>
-              {typeof updateStatus.percent === 'number' && updateStatus.state !== 'available' ? (
-                <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-white/10">
-                  <div
-                    className={`h-full rounded-full transition-all duration-200 ${
-                      updateStatus.state === 'downloaded' ? 'bg-emerald-400' : 'bg-amber-400'
-                    }`}
-                    style={{ width: `${Math.min(Math.max(updateStatus.percent, 0), 100)}%` }}
-                  />
-                </div>
-              ) : null}
-            </div>
-            {updateStatus.state === 'downloaded' || (updateStatus.state === 'available' && updateStatus.downloadUrl) ? (
-              <button
-                type="button"
-                onClick={() => window.api?.config.installUpdate?.()}
-                className="flex-shrink-0 rounded-lg bg-[color:var(--chat-accent)] px-3 py-1.5 text-xs font-semibold text-[color:var(--chat-on-accent)] transition-opacity hover:opacity-90"
-              >
-                {updateStatus.state === 'downloaded' ? 'Restart & install' : 'Download'}
-              </button>
-            ) : (
-              <span className="flex-shrink-0 text-xs tabular-nums text-neutral-400">
-                {typeof updateStatus.percent === 'number' ? `${Math.round(updateStatus.percent)}%` : '…'}
-              </span>
-            )}
-          </div>
-        </div>
-      ) : null}
-
       {/*
         isAppVisible tracks whether the visible command bar has finished its
         exit animation. Heavy transient UI such as popups should respect it,
@@ -2505,6 +2522,64 @@ export default function App(): JSX.Element {
             className="relative flex flex-col w-full max-w-full items-center pointer-events-none"
             style={themeStyles}
           >
+            <AnimatePresence>
+              {updateBannerVisible && updateStatus && (
+                <motion.div
+                  key="update-notice"
+                  ref={updateBannerRef}
+                  initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                  transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                  className="surface-shadow pointer-events-auto mb-2 flex max-w-full items-center gap-3 rounded-2xl border border-white/10 bg-neutral-900/95 px-4 py-3"
+                  style={{ width: isWide && mode === 'ai' && activeSurface !== null ? wideWidth : 750 }}
+                  aria-live="polite"
+                >
+                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-amber-400/15 text-amber-300">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                      <path d="M12 3v12" />
+                      <path d="m7 10 5 5 5-5" />
+                      <path d="M5 21h14" />
+                    </svg>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-medium text-neutral-100">
+                      {updateStatus.state === 'downloaded'
+                        ? `Covenant v${updateStatus.version} is ready to install`
+                        : updateStatus.state === 'downloading'
+                          ? `Downloading Covenant v${updateStatus.version}…`
+                          : updateStatus.downloadUrl
+                            ? `Covenant v${updateStatus.version} is available`
+                            : `Covenant v${updateStatus.version} update found`}
+                    </p>
+                    {typeof updateStatus.percent === 'number' && updateStatus.state !== 'available' ? (
+                      <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-white/10">
+                        <div
+                          className={`h-full rounded-full transition-all duration-200 ${
+                            updateStatus.state === 'downloaded' ? 'bg-emerald-400' : 'bg-amber-400'
+                          }`}
+                          style={{ width: `${Math.min(Math.max(updateStatus.percent, 0), 100)}%` }}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                  {updateStatus.state === 'downloaded' || (updateStatus.state === 'available' && updateStatus.downloadUrl) ? (
+                    <button
+                      type="button"
+                      onClick={() => window.api?.config.installUpdate?.()}
+                      className="flex-shrink-0 rounded-lg bg-[color:var(--chat-accent)] px-3 py-1.5 text-xs font-semibold text-[color:var(--chat-on-accent)] transition-opacity hover:opacity-90"
+                    >
+                      {updateStatus.state === 'downloaded' ? 'Restart & install' : 'Download'}
+                    </button>
+                  ) : (
+                    <span className="flex-shrink-0 text-xs tabular-nums text-neutral-400">
+                      {typeof updateStatus.percent === 'number' ? `${Math.round(updateStatus.percent)}%` : '…'}
+                    </span>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <AnimatePresence>
               {mode === 'ai' && activeSurface !== null && (
                 <MeasuredPanel
@@ -3183,7 +3258,7 @@ export default function App(): JSX.Element {
           style={{
             pointerEvents: 'none',
             transformOrigin: 'bottom center',
-            bottom: barHeight > 0 ? barHeight + 28 : 112
+            bottom: (barHeight > 0 ? barHeight + 28 : 112) + updateBannerOffset
           }}
           aria-hidden={mode !== 'terminal' || !visible}
         >
