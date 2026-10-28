@@ -2,6 +2,7 @@ import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, typ
 import { motion, AnimatePresence } from 'framer-motion'
 import ModulePopup, { type ActivePopup, type PopupItem } from './launcher/ModulePopup'
 import LauncherResults from './launcher/LauncherResults'
+import InstructionPicker from './launcher/InstructionPicker'
 import TerminalView from './terminal/TerminalView'
 import TerminalApprovalModal from './terminal/TerminalApprovalModal'
 import VoiceWaveform from './chat/VoiceWaveform'
@@ -31,6 +32,10 @@ import { createId } from './utils/helpers'
 import MeasuredPanel from './ui/MeasuredPanel'
 import { TERMINAL_SPRING, WINDOW_SPRING } from './constants/motion'
 import { rankLauncherItems } from './utils/launcher/fuzzy'
+import {
+  filterInstructionMentions,
+  parseMentionTrigger
+} from './app/utils/instructionMentions'
 import {
   computeContextStats,
   formatConversationTimestamp
@@ -152,6 +157,9 @@ export default function App(): JSX.Element {
   const [launcherSelectedIndex, setLauncherSelectedIndex] = useState(0)
   const [launcherIcons, setLauncherIcons] = useState<Record<string, string>>({})
   const [launcherDismissed, setLauncherDismissed] = useState(false)
+  const [instructionMention, setInstructionMention] = useState<{ query: string; start: number } | null>(null)
+  const [instructionMentionDismissed, setInstructionMentionDismissed] = useState(false)
+  const [instructionMentionIndex, setInstructionMentionIndex] = useState(0)
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [preprompts, setPreprompts] = useState<Preprompt[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
@@ -316,6 +324,9 @@ export default function App(): JSX.Element {
     if (!div) return ''
     let result = ''
     for (const node of div.childNodes) {
+      if (node instanceof HTMLElement && node.hasAttribute('data-instruction-id')) {
+        continue
+      }
       if (node instanceof HTMLElement && node.hasAttribute('data-paste-id')) {
         const id = node.getAttribute('data-paste-id')!
         result += pasteBlocksRef.current.get(id) ?? node.textContent ?? ''
@@ -326,6 +337,38 @@ export default function App(): JSX.Element {
     return result
   }
 
+  function getEditableText(): string {
+    const div = inputRef.current
+    if (!div) return ''
+    let result = ''
+    for (const node of div.childNodes) {
+      if (node instanceof HTMLElement && node.hasAttribute('data-instruction-id')) {
+        continue
+      }
+      result += node.textContent ?? ''
+    }
+    return result
+  }
+
+  function getCaretTextContext(): { node: Text; textBefore: string; offset: number } | null {
+    const div = inputRef.current
+    const selection = window.getSelection()
+    if (!div || !selection || selection.rangeCount === 0) return null
+
+    const range = selection.getRangeAt(0)
+    if (!range.collapsed || !div.contains(range.startContainer)) return null
+
+    const node = range.startContainer
+    if (node.nodeType !== Node.TEXT_NODE) return null
+
+    const textNode = node as Text
+    return {
+      node: textNode,
+      textBefore: textNode.data.slice(0, range.startOffset),
+      offset: range.startOffset
+    }
+  }
+
   function clearInput(): void {
     const div = inputRef.current
     if (div) {
@@ -334,6 +377,8 @@ export default function App(): JSX.Element {
     pasteBlocksRef.current.clear()
     setAttachedImages([])
     setShowImagePanel(false)
+    setInstructionMention(null)
+    setInstructionMentionDismissed(false)
     setQuery('')
   }
 
@@ -345,8 +390,33 @@ export default function App(): JSX.Element {
     pasteBlocksRef.current.clear()
     setAttachedImages([])
     setShowImagePanel(false)
+    setInstructionMention(null)
+    setInstructionMentionDismissed(false)
     setQuery(text)
   }
+
+  const syncInstructionMention = useCallback((): void => {
+    if (mode !== 'ai' || isCodeOpen || isComposingRef.current) {
+      setInstructionMention((previous) => (previous === null ? previous : null))
+      return
+    }
+
+    const context = getCaretTextContext()
+    const trigger = context ? parseMentionTrigger(context.textBefore) : null
+
+    setInstructionMention((previous) => {
+      if (!trigger) return previous === null ? previous : null
+      if (previous && previous.start === trigger.start && previous.query === trigger.query) {
+        return previous
+      }
+      return trigger
+    })
+  }, [isCodeOpen, mode])
+
+  useEffect(() => {
+    setInstructionMentionIndex(0)
+    setInstructionMentionDismissed(false)
+  }, [instructionMention?.query, instructionMention?.start])
 
   // When a Code message is restored, OpenCode hands the prompt back: prefill the
   // command bar so the user can review, edit, and resubmit it.
@@ -869,6 +939,11 @@ export default function App(): JSX.Element {
       setPreprompts([])
     }
   }, [])
+
+  useEffect(() => {
+    if (!visible) return
+    void loadPreprompts()
+  }, [visible, loadPreprompts])
 
   const loadInstalledApps = useCallback(async (): Promise<void> => {
     if (!window.api?.installedApps?.list) {
@@ -1949,8 +2024,61 @@ export default function App(): JSX.Element {
   )
 
   const clearCurrentSystemPrompt = useCallback(() => {
+    const input = inputRef.current
+    if (input) {
+      input.querySelectorAll('[data-instruction-id]').forEach((chip) => chip.remove())
+      setQuery(getEditableText())
+    }
     setCurrentSystemPrompt(null)
   }, [setCurrentSystemPrompt])
+
+  const applyInstructionMention = useCallback(
+    (item: Preprompt): void => {
+      const input = inputRef.current
+      const selection = window.getSelection()
+      const context = getCaretTextContext()
+
+      if (input && selection && context) {
+        const trigger = parseMentionTrigger(context.textBefore)
+        if (trigger) {
+          const range = document.createRange()
+          range.setStart(context.node, trigger.start)
+          range.setEnd(context.node, context.offset)
+          range.deleteContents()
+
+          input.querySelectorAll('[data-instruction-id]').forEach((chip) => chip.remove())
+
+          const chip = document.createElement('span')
+          chip.setAttribute('contenteditable', 'false')
+          chip.setAttribute('data-instruction-id', item.id)
+          chip.className =
+            'inline-flex select-none items-center rounded-md border border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] px-2 py-0.5 align-middle text-sm font-medium text-[color:var(--chat-accent)]'
+          chip.textContent = `@${item.title}`
+
+          range.insertNode(chip)
+          const space = document.createTextNode('\u00A0')
+          chip.after(space)
+
+          const caret = document.createRange()
+          caret.setStartAfter(space)
+          caret.collapse(true)
+          selection.removeAllRanges()
+          selection.addRange(caret)
+        }
+      }
+
+      setCurrentSystemPrompt({
+        id: item.id,
+        title: item.title,
+        content: item.content
+      })
+      setQuery(getEditableText())
+      setInstructionMention(null)
+      setInstructionMentionDismissed(false)
+      window.setTimeout(() => inputRef.current?.focus(), 0)
+    },
+    [setCurrentSystemPrompt]
+  )
 
   const appendAssistantMessage = useCallback(
     (content: string) => {
@@ -1990,15 +2118,7 @@ export default function App(): JSX.Element {
 
   const handlePopupItemSelect = useCallback(
     (item: PopupItem) => {
-      if (activePopup === 'settings' && item.promptText) {
-        setCurrentSystemPrompt({
-          id: item.id,
-          title: item.title,
-          content: item.promptText
-        })
-
-        setTimeout(() => inputRef.current?.focus(), 40)
-      } else if (activePopup === 'workflow' && item.workflowData) {
+      if (activePopup === 'workflow' && item.workflowData) {
         if (!window.api?.executeWorkflow) {
           appendAssistantMessage('Workflow execution is only available in the Electron app.')
         } else {
@@ -2075,7 +2195,7 @@ export default function App(): JSX.Element {
             })
         }
       }
-      if (activePopup !== 'workflow' && activePopup !== 'settings') {
+      if (activePopup !== 'workflow') {
         setActivePopup(null)
       } else {
         if (mode === 'ai') {
@@ -2085,6 +2205,22 @@ export default function App(): JSX.Element {
     },
     [activePopup, appendAssistantMessage, mode]
   )
+
+  const instructionMentionItems = useMemo(
+    () =>
+      instructionMention
+        ? filterInstructionMentions(preprompts, instructionMention.query)
+        : [],
+    [instructionMention, preprompts]
+  )
+
+  const instructionMentionVisible =
+    mode === 'ai' &&
+    !isCodeOpen &&
+    !activePopup &&
+    !instructionMentionDismissed &&
+    instructionMention !== null &&
+    (instructionMentionItems.length > 0 || preprompts.length === 0)
 
   const launcherPool = useMemo<LauncherItem[]>(
     () =>
@@ -2112,6 +2248,7 @@ export default function App(): JSX.Element {
     !isChatOpen &&
     !isCodeOpen &&
     !activePopup &&
+    instructionMention === null &&
     !launcherDismissed &&
     query.trim().length > 0 &&
     launcherResults.length > 0
@@ -2136,6 +2273,12 @@ export default function App(): JSX.Element {
       Math.min(current, Math.max(launcherResults.length - 1, 0))
     )
   }, [launcherResults.length])
+
+  useEffect(() => {
+    setInstructionMentionIndex((current) =>
+      Math.min(current, Math.max(instructionMentionItems.length - 1, 0))
+    )
+  }, [instructionMentionItems.length])
 
   useEffect(() => {
     if (!launcherVisible) return
@@ -2200,6 +2343,63 @@ export default function App(): JSX.Element {
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (instructionMentionVisible) {
+        const mentionCount = instructionMentionItems.length
+
+        if (e.key === 'ArrowDown') {
+          e.preventDefault()
+          if (mentionCount > 0) {
+            setInstructionMentionIndex((current) => (current + 1) % mentionCount)
+          }
+          return
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault()
+          if (mentionCount > 0) {
+            setInstructionMentionIndex(
+              (current) => (current - 1 + mentionCount) % mentionCount
+            )
+          }
+          return
+        }
+        if (e.key === 'Tab') {
+          e.preventDefault()
+          e.stopPropagation()
+          if (e.shiftKey) {
+            if (mentionCount > 0) {
+              setInstructionMentionIndex(
+                (current) => (current - 1 + mentionCount) % mentionCount
+              )
+            }
+            return
+          }
+          const selectedItem = instructionMentionItems[instructionMentionIndex]
+          if (selectedItem) {
+            applyInstructionMention(selectedItem)
+          } else {
+            setInstructionMentionDismissed(true)
+          }
+          return
+        }
+        if (e.key === 'Enter') {
+          if (isComposingRef.current) return
+          e.preventDefault()
+          const selectedItem = instructionMentionItems[instructionMentionIndex]
+          if (selectedItem) {
+            applyInstructionMention(selectedItem)
+          } else {
+            setInstructionMentionDismissed(true)
+          }
+          return
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          e.stopPropagation()
+          setInstructionMentionDismissed(true)
+          return
+        }
+      }
+
       if (launcherVisible) {
         if (e.key === 'ArrowDown') {
           e.preventDefault()
@@ -2256,23 +2456,33 @@ export default function App(): JSX.Element {
           ? (range.startOffset === 0 ? range.startContainer.previousSibling : null)
           : range.startContainer.nextSibling
 
-        if (node instanceof HTMLElement && node.hasAttribute('data-paste-id')) {
+        if (!(node instanceof HTMLElement)) return
+
+        if (node.hasAttribute('data-paste-id')) {
           e.preventDefault()
           const id = node.getAttribute('data-paste-id')!
           pasteBlocksRef.current.delete(id)
           node.remove()
-          if (inputRef.current) {
-            setQuery(inputRef.current.textContent ?? '')
-          }
+          setQuery(getEditableText())
+        } else if (node.hasAttribute('data-instruction-id')) {
+          e.preventDefault()
+          node.remove()
+          clearCurrentSystemPrompt()
+          setQuery(getEditableText())
         }
       }
     },
     [
       activePopup,
+      applyInstructionMention,
+      clearCurrentSystemPrompt,
       showImagePanel,
       handleClose,
       handleSubmit,
       handleCodeSubmit,
+      instructionMentionIndex,
+      instructionMentionItems,
+      instructionMentionVisible,
       isCodeOpen,
       launcherVisible,
       launcherResults,
@@ -2336,6 +2546,11 @@ export default function App(): JSX.Element {
       // Notes has its own inputs, toolbar and keyboard handling. Don't let the
       // command bar's Tab/search shortcuts hijack typing inside a note.
       if (activeSurface === 'notes') {
+        return
+      }
+      // Let the instruction picker consume Tab (it applies the highlighted
+      // instruction) instead of toggling AI/terminal mode.
+      if (instructionMention !== null && !instructionMentionDismissed && event.key === 'Tab') {
         return
       }
 
@@ -2408,6 +2623,8 @@ export default function App(): JSX.Element {
       activeSurface,
       conversations,
       focusTerminalComposer,
+      instructionMention,
+      instructionMentionDismissed,
       isChatOpen,
       mode,
       switchToAiMode,
@@ -2613,6 +2830,19 @@ export default function App(): JSX.Element {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
+                      {selectedSystemPrompt ? (
+                        <button
+                          type="button"
+                          onClick={clearCurrentSystemPrompt}
+                          className="group flex min-w-0 max-w-[220px] items-center gap-1.5 rounded-lg border border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] px-2 py-1 text-[11px] font-medium text-[color:var(--chat-accent)] transition-colors hover:bg-[color:var(--chat-accent-strong)]"
+                          title={selectedSystemPrompt.content}
+                          aria-label={`Remove instruction ${selectedSystemPrompt.title}`}
+                        >
+                          <span className="shrink-0 opacity-70">@</span>
+                          <span className="truncate">{selectedSystemPrompt.title}</span>
+                          <XIcon />
+                        </button>
+                      ) : null}
                       <div className="relative">
                         <motion.div
                           initial={false}
@@ -2795,6 +3025,11 @@ export default function App(): JSX.Element {
                                           term
                                         </span>
                                       ) : null}
+                                      {conversation.systemPrompt ? (
+                                        <span className="shrink-0 rounded border border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] px-1 py-0.5 text-[9px] uppercase tracking-[0.1em] text-[color:var(--chat-accent)]">
+                                          @
+                                        </span>
+                                      ) : null}
                                     </span>
                                     <span className="mt-0.5 flex items-center justify-between gap-2">
                                       <span className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
@@ -2903,6 +3138,20 @@ export default function App(): JSX.Element {
               className={`surface-shadow relative flex items-center w-[750px] max-w-full rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10 transition-opacity duration-100 texture-surface opacity-100 pointer-events-auto`}
             >
             <AnimatePresence>
+              {instructionMentionVisible && (
+                <InstructionPicker
+                  items={instructionMentionItems}
+                  selectedIndex={instructionMentionIndex}
+                  query={instructionMention?.query ?? ''}
+                  hasInstructions={preprompts.length > 0}
+                  themeGradient={themeGradient}
+                  onHover={setInstructionMentionIndex}
+                  onSelect={applyInstructionMention}
+                />
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence>
               {launcherVisible && (
                 <LauncherResults
                   items={launcherDisplayItems}
@@ -2921,8 +3170,6 @@ export default function App(): JSX.Element {
                   activePopup={activePopup}
                   popupRef={popupRef}
                   themeGradient={themeGradient}
-                  selectedSettingsItemId={selectedSystemPrompt?.id}
-                  onClearSelectedSettingsItem={clearCurrentSystemPrompt}
                   workflowItems={workflows.map((item) => ({
                     id: item.id,
                     title: item.title,
@@ -2933,13 +3180,6 @@ export default function App(): JSX.Element {
                   workflowExecutionById={workflowExecutionById}
                   workflowLogsOpenById={workflowLogsOpenById}
                   onToggleWorkflowLogs={handleToggleWorkflowLogs}
-                  settingsItems={preprompts.map((item) => ({
-                    id: item.id,
-                    title: item.title,
-                    subtitle: item.content,
-                    icon: 'doc',
-                    promptText: item.content
-                  }))}
                   onAddNew={() => {
                     setActivePopup(null)
                     const tab =
@@ -3039,8 +3279,11 @@ export default function App(): JSX.Element {
                     if ((d.textContent ?? '').length === 0 && d.childNodes.length > 0) {
                       d.innerHTML = ''
                     }
-                    setQuery(d.textContent ?? '')
+                    setQuery(getEditableText())
+                    syncInstructionMention()
                   }}
+                  onKeyUp={syncInstructionMention}
+                  onClick={syncInstructionMention}
                   onPaste={(e) => {
                     const items = e.clipboardData.items
                     let hasImage = false
@@ -3108,7 +3351,10 @@ export default function App(): JSX.Element {
                     }
                   }}
                   onCompositionStart={() => { isComposingRef.current = true }}
-                  onCompositionEnd={() => { isComposingRef.current = false }}
+                  onCompositionEnd={() => {
+                    isComposingRef.current = false
+                    syncInstructionMention()
+                  }}
                   data-placeholder={
                     mode === 'terminal'
                       ? 'Ask about this terminal…'

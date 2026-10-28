@@ -101,7 +101,7 @@ export default function PrepromptsTab({
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-neutral-100">Instructions</h2>
-          <p className="mt-1 text-sm text-neutral-400">Reusable instruction presets for the Instructions selector in the bar's Settings popup.</p>
+          <p className="mt-1 text-sm text-neutral-400">Reusable instructions. Type @ in the command bar to apply one to your conversation.</p>
         </div>
         <button
           type="button"
@@ -123,7 +123,7 @@ export default function PrepromptsTab({
 
         {!isLoading && preprompts.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-neutral-700 bg-neutral-900/70 px-4 py-6 text-sm text-neutral-500">
-            No instructions saved yet. Add your first reusable instruction.
+            No instructions saved yet. Add your first reusable instruction to use it from the command bar with @.
           </div>
         ) : null}
 

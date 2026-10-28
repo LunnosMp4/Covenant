@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { motion } from 'framer-motion'
 import type { RefObject } from 'react'
 import type { ReasoningEffort } from '../../../shared/config'
@@ -18,7 +17,6 @@ import TasksPopup from '../tasks/TasksPopup'
 
 export type ActivePopup = 'workflow' | 'settings' | 'tasks'
 export type PopupAnchorSide = 'left' | 'right'
-type SettingsPopupTab = 'prompt' | 'model'
 
 type PopupIcon = 'folder' | 'doc' | 'bolt' | 'shield' | 'clock'
 
@@ -27,13 +25,12 @@ export interface PopupItem {
   title: string
   icon: PopupIcon
   subtitle?: string
-  promptText?: string
   workflowData?: Workflow
 }
 
 const MODULE_LABELS: Record<ActivePopup, string> = {
   workflow: 'Workflows',
-  settings: 'Settings',
+  settings: 'Model & effort',
   tasks: 'Tasks'
 }
 
@@ -43,14 +40,11 @@ interface ModulePopupProps {
   onAddNew: () => void
   onSelectItem: (item: PopupItem) => void
   workflowItems?: PopupItem[]
-  settingsItems?: PopupItem[]
   workflowExecutionById?: Record<string, WorkflowExecutionState>
   workflowLogsOpenById?: Record<string, boolean>
   onToggleWorkflowLogs?: (workflowId: string) => void
   anchorSide?: PopupAnchorSide
   themeGradient: string
-  selectedSettingsItemId?: string | null
-  onClearSelectedSettingsItem?: () => void
 
   chatModel?: string
   onSelectChatModel?: (model: string) => void
@@ -65,15 +59,6 @@ interface ModulePopupProps {
   onClearCompletedTasks?: () => void
   gamification?: GamificationState
   xpToast?: XpToastState | null
-}
-
-function CloseIcon(): JSX.Element {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M18 6L6 18" />
-      <path d="M6 6l12 12" />
-    </svg>
-  )
 }
 
 function PlusIcon(): JSX.Element {
@@ -139,164 +124,54 @@ function ItemIcon({ icon }: { icon: PopupIcon }): JSX.Element {
 }
 
 function SettingsPopup({
-  items,
-  selectedItemId,
-  onClearSelectedItem,
-  onSelectItem,
-  onAddNew,
   onOpenFullSettings,
   chatModel,
   onSelectChatModel,
   reasoningEffort,
   onSelectReasoningEffort
 }: {
-  items: PopupItem[]
-  selectedItemId: string | null | undefined
-  onClearSelectedItem?: () => void
-  onSelectItem: (item: PopupItem) => void
-  onAddNew: () => void
   onOpenFullSettings?: () => void
   chatModel: string
   onSelectChatModel?: (model: string) => void
   reasoningEffort: ReasoningEffort
   onSelectReasoningEffort?: (effort: ReasoningEffort) => void
 }): JSX.Element {
-  const [activeTab, setActiveTab] = useState<SettingsPopupTab>('prompt')
   const supportsExtended = modelSupportsExtendedParams(chatModel || DEFAULT_CHAT_MODEL)
 
   return (
     <div className="flex flex-col">
-      <div className="flex gap-1 px-2 pb-2">
-        <button
-          type="button"
-          onClick={() => setActiveTab('prompt')}
-          className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-            activeTab === 'prompt'
-              ? 'bg-white/10 text-neutral-100'
-              : 'text-neutral-500 hover:text-neutral-300'
-          }`}
-        >
-          Instructions
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('model')}
-          className={`flex-1 rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors ${
-            activeTab === 'model'
-              ? 'bg-white/10 text-neutral-100'
-              : 'text-neutral-500 hover:text-neutral-300'
-          }`}
-        >
-          Model
-        </button>
+      <div className="space-y-3 px-1">
+        <div>
+          <label className="mb-2 block text-xs font-medium uppercase tracking-[0.08em] text-neutral-400">
+            Chat Model
+          </label>
+          <CustomSelect
+            options={CHAT_MODEL_OPTIONS.map((option) => ({
+              value: option.id,
+              label: option.label
+            }))}
+            value={chatModel || DEFAULT_CHAT_MODEL}
+            onChange={(value) => onSelectChatModel?.(value)}
+          />
+        </div>
+
+        <div>
+          <label className={`mb-2 block text-xs font-medium uppercase tracking-[0.08em] ${supportsExtended ? 'text-neutral-400' : 'text-neutral-600'}`}>
+            Reasoning Effort
+          </label>
+          <CustomSelect
+            options={REASONING_EFFORT_OPTIONS.map((effort) => ({
+              value: effort,
+              label: effort.charAt(0).toUpperCase() + effort.slice(1)
+            }))}
+            value={reasoningEffort || DEFAULT_REASONING_EFFORT}
+            onChange={(value) => onSelectReasoningEffort?.(value as ReasoningEffort)}
+            disabled={!supportsExtended}
+          />
+        </div>
       </div>
 
-      {activeTab === 'prompt' ? (
-        <div className="space-y-1">
-          {items.length === 0 ? (
-            <div className="rounded-xl border border-neutral-800 bg-neutral-900/70 px-3 py-5 text-center text-xs text-neutral-500">
-              No instructions saved yet.
-            </div>
-          ) : (
-            items.map((item) =>
-              selectedItemId === item.id ? (
-                <motion.div
-                  key={item.id}
-                  initial={{ opacity: 0.95, scale: 0.995 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="relative overflow-hidden rounded-xl border border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] p-3 text-sm text-neutral-100"
-                >
-                  <div className="relative flex items-center gap-3">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--chat-accent)]">
-                      <ItemIcon icon={item.icon} />
-                    </span>
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate font-medium text-neutral-100">{item.title}</span>
-                      {item.subtitle && <span className="mt-0.5 truncate text-xs text-neutral-400">{item.subtitle}</span>}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={onClearSelectedItem}
-                      className="shrink-0 rounded-lg border border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] p-1.5 text-[color:var(--chat-accent)] transition-colors hover:bg-[color:var(--chat-accent-strong)]"
-                      aria-label="Remove selected instruction"
-                    >
-                      <CloseIcon />
-                    </button>
-                  </div>
-                </motion.div>
-              ) : (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => onSelectItem(item)}
-                  disabled={Boolean(selectedItemId)}
-                  className={`flex w-full items-center gap-3 rounded-xl p-3 text-left text-sm transition-colors duration-150 ${
-                    Boolean(selectedItemId)
-                      ? 'cursor-not-allowed border border-neutral-800/90 bg-neutral-950/55 text-neutral-500 opacity-55'
-                      : 'cursor-pointer text-neutral-200 hover:bg-white/5'
-                  }`}
-                  aria-disabled={Boolean(selectedItemId)}
-                >
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-xs font-semibold uppercase tracking-[0.08em] text-neutral-200">
-                    <ItemIcon icon={item.icon} />
-                  </span>
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate">{item.title}</span>
-                    {item.subtitle && <span className="mt-0.5 truncate text-xs text-neutral-500">{item.subtitle}</span>}
-                  </span>
-                </button>
-              )
-            )
-          )}
-
-          <button
-            type="button"
-            onClick={onAddNew}
-            className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-neutral-700 bg-neutral-800/40 p-2.5 text-sm text-neutral-500 transition-colors duration-150 hover:border-neutral-500 hover:text-neutral-300"
-          >
-            <PlusIcon />
-            <span>Add new...</span>
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-3 px-1">
-          <div>
-            <label className="mb-2 block text-xs font-medium uppercase tracking-[0.08em] text-neutral-400">
-              Chat Model
-            </label>
-            <CustomSelect
-              options={CHAT_MODEL_OPTIONS.map((option) => ({
-                value: option.id,
-                label: option.label
-              }))}
-              value={chatModel || DEFAULT_CHAT_MODEL}
-              onChange={(value) => onSelectChatModel?.(value)}
-            />
-          </div>
-
-          <div>
-            <label className={`mb-2 block text-xs font-medium uppercase tracking-[0.08em] ${supportsExtended ? 'text-neutral-400' : 'text-neutral-600'}`}>
-              Reasoning Effort
-            </label>
-            <CustomSelect
-              options={REASONING_EFFORT_OPTIONS.map((effort) => ({
-                value: effort,
-                label: effort.charAt(0).toUpperCase() + effort.slice(1)
-              }))}
-              value={reasoningEffort || DEFAULT_REASONING_EFFORT}
-              onChange={(value) => onSelectReasoningEffort?.(value as ReasoningEffort)}
-              disabled={!supportsExtended}
-            />
-            <p className={`mt-2 text-xs ${supportsExtended ? 'text-neutral-500' : 'text-neutral-600'}`}>
-              {supportsExtended
-                ? 'Controls how much compute the model spends reasoning.'
-                : 'Not supported by this model.'}
-            </p>
-          </div>
-        </div>
-      )}
-
-      <div className="mt-2 border-t border-white/5 pt-2">
+      <div className="mt-3 space-y-0.5 border-t border-white/5 pt-2">
         <button
           type="button"
           onClick={onOpenFullSettings}
@@ -320,14 +195,11 @@ export default function ModulePopup({
   onAddNew,
   onSelectItem,
   workflowItems,
-  settingsItems,
   workflowExecutionById = {},
   workflowLogsOpenById = {},
   onToggleWorkflowLogs,
   anchorSide = 'right',
   themeGradient,
-  selectedSettingsItemId = null,
-  onClearSelectedSettingsItem,
   chatModel = DEFAULT_CHAT_MODEL,
   onSelectChatModel,
   onOpenFullSettings,
@@ -343,22 +215,11 @@ export default function ModulePopup({
   xpToast
 }: ModulePopupProps): JSX.Element {
   const items =
-    activePopup === 'workflow'
-      ? workflowItems && workflowItems.length > 0
-        ? workflowItems
-        : []
-      : activePopup === 'settings'
-      ? settingsItems && settingsItems.length > 0
-        ? settingsItems
-        : []
+    activePopup === 'workflow' && workflowItems && workflowItems.length > 0
+      ? workflowItems
       : []
 
-  const emptyMessage =
-    activePopup === 'workflow'
-      ? 'No workflows saved yet.'
-      : activePopup === 'settings'
-        ? 'No instructions saved yet.'
-        : 'No items available.'
+  const emptyMessage = 'No workflows saved yet.'
   const anchorClass = anchorSide === 'left' ? 'left-0' : 'right-0'
   const popupWidthClass =
     activePopup === 'workflow' ? 'w-[460px] max-w-[92vw]' : activePopup === 'tasks' ? 'w-[360px]' : 'w-[320px]'
@@ -376,11 +237,6 @@ export default function ModulePopup({
 
       {activePopup === 'settings' ? (
         <SettingsPopup
-          items={items}
-          selectedItemId={selectedSettingsItemId}
-          onClearSelectedItem={onClearSelectedSettingsItem}
-          onSelectItem={onSelectItem}
-          onAddNew={onAddNew}
           onOpenFullSettings={onOpenFullSettings}
           chatModel={chatModel}
           onSelectChatModel={onSelectChatModel}

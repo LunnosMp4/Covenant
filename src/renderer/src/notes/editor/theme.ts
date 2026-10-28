@@ -21,7 +21,7 @@ export const notesEditorTheme = EditorView.theme({
     overflowX: 'hidden'
   },
   '.cm-content': {
-    padding: '2px 0 28px',
+    padding: '2px 2px 28px 2px',
     caretColor: 'rgb(var(--n-100))'
   },
   '.cm-line': {
@@ -30,10 +30,13 @@ export const notesEditorTheme = EditorView.theme({
   '.cm-cursor, .cm-dropCursor': {
     borderLeftColor: 'rgb(var(--n-100))'
   },
-  '.cm-selectionBackground': {
+  // The base light/dark themes ship their own `&light.cm-focused ... .cm-selectionBackground`
+  // colour (lavender on light), whose specificity beats the shorthand selector. Match the
+  // full descendant chain so the theme-aware token always wins in both modes.
+  '&.cm-editor .cm-selectionBackground': {
     backgroundColor: 'rgb(var(--n-50) / 0.14)'
   },
-  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': {
+  '&.cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground': {
     backgroundColor: 'rgb(var(--n-50) / 0.18)'
   },
   '.cm-placeholder': {
