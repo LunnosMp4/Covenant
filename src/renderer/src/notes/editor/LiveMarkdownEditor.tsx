@@ -160,8 +160,11 @@ const LiveMarkdownEditor = forwardRef<NotesEditorHandle, LiveMarkdownEditorProps
         })
       }
 
+      const initialDoc = valueRef.current
       const state = EditorState.create({
-        doc: valueRef.current,
+        doc: initialDoc,
+        // Opening an existing note should continue where the text ends.
+        selection: EditorSelection.cursor(initialDoc.length),
         extensions: [
           historyCompartmentRef.current.of(history()),
           drawSelection(),
@@ -209,6 +212,7 @@ const LiveMarkdownEditor = forwardRef<NotesEditorHandle, LiveMarkdownEditorProps
       try {
         view.dispatch({
           changes: { from: 0, to: view.state.doc.length, insert: value },
+          selection: EditorSelection.cursor(value.length),
           annotations: Transaction.addToHistory.of(false)
         })
         // The document now belongs to another note (or a regenerated recap),

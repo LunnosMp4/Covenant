@@ -76,6 +76,7 @@ export default function ModalOverlay({
       className={`fixed z-[100] flex items-center justify-center p-4 ${
         withBackdrop ? backdropClass : scoped ? 'rounded-2xl overflow-hidden' : ''
       }`}
+      data-interactive-surface
       style={scoped ? { top: bounds.top, left: bounds.left, width: bounds.width, height: bounds.height } : undefined}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {

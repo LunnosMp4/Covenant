@@ -8,11 +8,20 @@ import {
   type RawClipboardSnapshot
 } from './clipboardCapture'
 
-const DEFAULT_POLL_MS = 400
+const DEFAULT_POLL_MS = 800
 /** Re-check the (expensive) image payload only every Nth tick while one is present. */
-const IMAGE_PROBE_TICKS = 4
+const IMAGE_PROBE_TICKS = 2
 /** How long a self-write suppression hash stays valid. */
 const SUPPRESS_TTL_MS = 5000
+/** Back off after a poll that took long enough to indicate clipboard contention. */
+const SLOW_POLL_THRESHOLD_MS = 200
+const MAX_SLOW_POLL_MS = 3000
+
+const TEXT_FORMAT_HINTS = ['text/', 'utf8_string', 'string', 'html format', 'rtf']
+
+function isTextFormat(lowerFormat: string): boolean {
+  return TEXT_FORMAT_HINTS.some((hint) => lowerFormat.includes(hint))
+}
 
 const IMAGE_BUFFER_FORMATS = [
   'image/png',
@@ -59,6 +68,8 @@ function decodeFileUri(uri: string): string {
  */
 export class ClipboardWatcher {
   private timer: NodeJS.Timeout | null = null
+  private running = false
+  private pollMs = DEFAULT_POLL_MS
   private tick = 0
   private lastSignature = ''
   private lastImageHash = ''
@@ -73,22 +84,52 @@ export class ClipboardWatcher {
   }
 
   start(pollMs = DEFAULT_POLL_MS): void {
-    if (this.timer) return
+    if (this.running) return
+    this.running = true
+    this.pollMs = pollMs
     this.lastSignature = ''
     this.lastImageHash = ''
-    this.timer = setInterval(() => this.poll(), pollMs)
-    this.timer.unref?.()
+    this.schedule(0)
   }
 
   stop(): void {
+    this.running = false
     if (this.timer) {
-      clearInterval(this.timer)
+      clearTimeout(this.timer)
       this.timer = null
     }
   }
 
   isRunning(): boolean {
-    return this.timer != null
+    return this.running
+  }
+
+  /**
+   * Self-scheduling poll. A `setInterval` would keep firing while a slow
+   * clipboard call is in flight, piling work onto the main thread; this also
+   * lets us back off when the clipboard is contended.
+   */
+  private schedule(delay: number): void {
+    if (!this.running) return
+    this.timer = setTimeout(() => {
+      this.timer = null
+      if (!this.running) return
+
+      const startedAt = Date.now()
+      try {
+        this.poll()
+      } catch {
+        // A malformed clipboard payload should not stop future polls.
+      } finally {
+        const elapsed = Date.now() - startedAt
+        const nextDelay =
+          elapsed >= SLOW_POLL_THRESHOLD_MS
+            ? Math.min(this.pollMs * 2, MAX_SLOW_POLL_MS)
+            : this.pollMs
+        this.schedule(nextDelay)
+      }
+    }, delay)
+    this.timer.unref?.()
   }
 
   /**
@@ -128,16 +169,28 @@ export class ClipboardWatcher {
     this.tick += 1
 
     let formats: string[] = []
-    let text = ''
     try {
       formats = clipboard.availableFormats() ?? []
-      text = clipboard.readText() ?? ''
     } catch {
       return
     }
 
+    const lowerFormats = formats.map((format) => format.toLowerCase())
+    const hasText = lowerFormats.some(isTextFormat)
+
+    // Reading text is another synchronous clipboard call; skip it entirely when
+    // the clipboard only holds files or an image.
+    let text = ''
+    if (hasText) {
+      try {
+        text = clipboard.readText() ?? ''
+      } catch {
+        return
+      }
+    }
+
     const options = this.getOptions()
-    const filePaths = this.readFilePaths(formats)
+    const filePaths = this.readFilePaths(lowerFormats)
     const hasFiles = filePaths.length > 0
     const hasImage = options.captureImages && !hasFiles && formats.some(isImageFormat)
 
@@ -154,9 +207,7 @@ export class ClipboardWatcher {
     }
 
     const html =
-      options.captureRichText && formats.some((f) => f.toLowerCase() === 'text/html')
-        ? this.readHtml()
-        : ''
+      options.captureRichText && lowerFormats.includes('text/html') ? this.readHtml() : ''
 
     const snapshot: RawClipboardSnapshot = {
       formats,
@@ -218,23 +269,24 @@ export class ClipboardWatcher {
     return null
   }
 
-  private readFilePaths(formats: string[]): string[] {
-    try {
-      const uriList = clipboard.read('text/uri-list')
-      if (uriList && uriList.trim()) {
-        const paths = uriList
-          .split(/\r?\n/)
-          .map((line) => line.trim())
-          .filter((line) => line.length > 0 && !line.startsWith('#'))
-          .map(decodeFileUri)
-          .filter((value) => value.length > 0)
-        if (paths.length > 0) return paths
+  private readFilePaths(lowerFormats: string[]): string[] {
+    if (lowerFormats.includes('text/uri-list')) {
+      try {
+        const uriList = clipboard.read('text/uri-list')
+        if (uriList && uriList.trim()) {
+          const paths = uriList
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0 && !line.startsWith('#'))
+            .map(decodeFileUri)
+            .filter((value) => value.length > 0)
+          if (paths.length > 0) return paths
+        }
+      } catch {
+        // ignore and fall through to platform-specific formats
       }
-    } catch {
-      // ignore and fall through to platform-specific formats
     }
 
-    const lowerFormats = formats.map((f) => f.toLowerCase())
     try {
       if (lowerFormats.includes('filenamew')) {
         // Windows: UTF-16LE, NUL-separated list of file names.

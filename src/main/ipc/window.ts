@@ -3,11 +3,14 @@ import {
   closeSettingsWindow,
   completeHide,
   createSettingsWindow,
+  getMainWebContents,
   hideWindow,
   markRendererReady,
   minimizeSettingsWindow,
   reportView,
+  setInteractiveRegions,
   setMainWindowIgnoreMouseEvents,
+  setPointerDown,
   setPinned
 } from '../windows'
 import type { WindowView } from '../../shared/view'
@@ -40,6 +43,16 @@ export function registerWindowIpc(): void {
 
   ipcMain.on('set-ignore-mouse-events', (_event, ignore: boolean) => {
     setMainWindowIgnoreMouseEvents(ignore)
+  })
+
+  ipcMain.on('set-interactive-regions', (event, regions: unknown, viewport: unknown) => {
+    if (event.sender.id !== getMainWebContents()?.id) return
+    setInteractiveRegions(regions, viewport)
+  })
+
+  ipcMain.on('set-pointer-down', (event, down: boolean) => {
+    if (event.sender.id !== getMainWebContents()?.id) return
+    setPointerDown(down)
   })
 
   ipcMain.on('open-settings', (_event, tab?: string) => {

@@ -99,6 +99,7 @@ import ContextStatsDonut from './app/components/ContextStatsDonut'
 import { useAttachments } from './app/hooks/useAttachments'
 import { useVoiceInput } from './app/hooks/useVoiceInput'
 import { useChatSearch } from './app/hooks/useChatSearch'
+import { useWindowsClickThrough } from './app/hooks/useWindowsClickThrough'
 import CodePanel from './code/CodePanel'
 import CodePermissionModal from './code/CodePermissionModal'
 import { useCodeSession } from './code/useCodeSession'
@@ -686,12 +687,17 @@ export default function App(): JSX.Element {
     if (isChatOpen || activeSurface === null) setIsWide(false)
   }, [mode, isChatOpen, activeSurface])
 
-  // Make the reserved (empty) area of the oversized window click-through so the
-  // desktop/apps behind stay usable, and re-enable mouse events over content.
-  // Only Windows/macOS can forward mouse moves while ignoring them.
+  // Windows keeps the window interactive via a main-process cursor poll fed by
+  // interactive surface rectangles; macOS still uses mouse forwarding.
+  useWindowsClickThrough(visible)
+
+  // macOS: make the reserved (empty) area of the oversized window click-through
+  // so the desktop/apps behind stay usable, and re-enable mouse events over
+  // content. Windows has its own path above (Electron's forwarding installs a
+  // global low-level mouse hook on Windows).
   useEffect(() => {
     const platform = window.api?.platform
-    if (platform !== 'win32' && platform !== 'darwin') return undefined
+    if (platform !== 'darwin') return undefined
 
     let ignoring = false
     let pendingFrame: number | null = null
@@ -1261,8 +1267,11 @@ export default function App(): JSX.Element {
   }, [activePopup, loadPreprompts, loadTasks, loadWorkflows, loadGamification])
 
   useEffect(() => {
+    // Scanning the Start Menu / Store app list is expensive on Windows. Only
+    // do it once the command bar is actually shown, instead of during login.
+    if (!visible) return
     void loadInstalledApps()
-  }, [loadInstalledApps])
+  }, [visible, loadInstalledApps])
 
   useEffect(() => {
     const unsubscribe = window.api?.config?.onLauncherShowSystemAppsUpdated?.(() => {
@@ -2749,6 +2758,7 @@ export default function App(): JSX.Element {
                   exit={{ opacity: 0, y: 8, scale: 0.98 }}
                   transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
                   className="surface-shadow pointer-events-auto mb-2 flex max-w-full items-center gap-3 rounded-2xl border border-white/10 bg-neutral-900/95 px-4 py-3"
+                  data-interactive-surface
                   style={{ width: isWide && mode === 'ai' && activeSurface !== null ? wideWidth : 750 }}
                   aria-live="polite"
                 >
@@ -2926,7 +2936,7 @@ export default function App(): JSX.Element {
                           )}
                         </motion.div>
                         {searchQuery.trim() && searchGroups.length > 0 && (
-                          <div className="absolute left-0 top-full z-20 mt-1 w-72 max-h-52 overflow-y-auto chat-scrollbar rounded-lg border border-neutral-800 bg-neutral-950/95 py-1 shadow-xl">
+                          <div className="absolute left-0 top-full z-20 mt-1 w-72 max-h-52 overflow-y-auto chat-scrollbar rounded-lg border border-neutral-800 bg-neutral-950/95 py-1 shadow-xl" data-interactive-surface>
                             {searchGroups.map((group) => (
                               <div key={group.conversationId} className="py-0.5">
                                 <button
@@ -2995,6 +3005,7 @@ export default function App(): JSX.Element {
                           exit={{ opacity: 0, y: -8, scale: 0.98 }}
                           transition={{ duration: 0.15 }}
                           className="absolute right-0 top-10 z-20 w-72 overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950/95 shadow-xl"
+                          data-interactive-surface
                         >
                           <div className="max-h-40 overflow-y-auto scrollbar-hidden py-1">
                             {conversations.length === 0 ? (
@@ -3136,6 +3147,7 @@ export default function App(): JSX.Element {
             <motion.div
               ref={barRef}
               className={`surface-shadow relative flex items-center w-[750px] max-w-full rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10 transition-opacity duration-100 texture-surface opacity-100 pointer-events-auto`}
+              data-interactive-surface
             >
             <AnimatePresence>
               {instructionMentionVisible && (
@@ -3230,6 +3242,7 @@ export default function App(): JSX.Element {
                   exit={{ opacity: 0, scale: 0.95, y: 10 }}
                   transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
                   className={`texture-surface surface-shadow absolute bottom-full right-0 z-30 mb-3 w-[280px] rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} p-3`}
+                  data-interactive-surface
                 >
                   <p className="px-2 pb-2 text-xs uppercase tracking-[0.12em] text-neutral-500">
                     Attachments ({attachedImages.length})
@@ -3510,6 +3523,7 @@ export default function App(): JSX.Element {
         >
           <motion.div
             className={`relative flex h-full max-w-full flex-col overflow-hidden rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10 texture-surface`}
+            data-interactive-surface
             initial={false}
             animate={{ width: isWide ? wideWidth : 750 }}
             transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}

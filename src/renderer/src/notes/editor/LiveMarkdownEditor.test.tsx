@@ -38,20 +38,23 @@ function mountEditor(value: string, mode: NotesEditorMode = 'live') {
 describe('LiveMarkdownEditor', () => {
   it('mounts a CodeMirror editor with the Markdown source', () => {
     const { container, ref } = mountEditor('## Title')
-    expect(container.querySelector('.cm-editor')).toBeTruthy()
-    expect(container.querySelector('.cm-content')?.textContent).toContain('## Title')
+    const view = EditorView.findFromDOM(container.querySelector('.cm-editor') as HTMLElement)
+    expect(view).not.toBeNull()
+    expect(view?.state.doc.toString()).toBe('## Title')
     expect(ref.current).not.toBeNull()
   })
 
-  it('reports edits through onChange but not the initial value', () => {
-    const { ref, changes } = mountEditor('start')
+  it('starts with the caret at the end and reports edits through onChange', () => {
+    const { container, ref, changes } = mountEditor('start')
+    const view = EditorView.findFromDOM(container.querySelector('.cm-editor') as HTMLElement)
     expect(changes).toHaveLength(0)
+    expect(view?.state.selection.main.head).toBe(view?.state.doc.length)
 
     act(() => {
       ref.current?.insertText(' more')
     })
 
-    expect(changes[changes.length - 1]).toBe(' morestart')
+    expect(changes[changes.length - 1]).toBe('start more')
   })
 
   it('can replace a specific range (AI replace selection)', () => {
@@ -73,7 +76,9 @@ describe('LiveMarkdownEditor', () => {
         onSelectionChange={() => {}}
       />
     )
-    expect(container.querySelector('.cm-content')?.textContent).toContain('second')
+    const view = EditorView.findFromDOM(container.querySelector('.cm-editor') as HTMLElement)
+    expect(view?.state.doc.toString()).toBe('second')
+    expect(view?.state.selection.main.head).toBe('second'.length)
   })
 
   it('renders raw Markdown in source mode', () => {

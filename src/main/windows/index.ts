@@ -20,10 +20,20 @@ import type { AppConfig } from '../../shared/config'
 import { DEFAULT_SHORTCUTS } from '../../shared/config'
 import type { WindowTargetView, WindowView } from '../../shared/view'
 import type { CodeActivitySummary } from '../../shared/code/code'
+import type {
+  InteractiveRect,
+  InteractiveViewport
+} from '../../shared/windows/interactive'
 import { readConfig } from '../config/configStore'
 import { openLogsFolder } from '../logger'
 import { getPasteManager, isPasteBlurSuppressed } from '../paste/runtime'
 import { checkForUpdatesManually } from '../updater'
+import {
+  isPointInInteractiveRegions,
+  normalizeInteractiveRegions,
+  normalizeInteractiveViewport,
+  screenPointToViewportPoint
+} from './pointerRegions'
 import { buildTrayIcon, setTrayIconPaths } from './trayIcon'
 
 const isMac = process.platform === 'darwin'
@@ -63,6 +73,20 @@ let currentView: WindowView | null = null
 
 let rendererReadyResolver: (() => void) | null = null
 let hideTimer: ReturnType<typeof setTimeout> | null = null
+
+// Windows click-through is driven from the main process instead of Electron's
+// `setIgnoreMouseEvents(..., { forward: true })`. Forwarding installs a global
+// low-level mouse hook (WH_MOUSE_LL) on the main thread, which delays mouse
+// input system-wide whenever the main process is busy. The renderer reports the
+// rectangles of its interactive surfaces and a light cursor poll toggles the
+// window's ignore state instead.
+const POINTER_POLL_MS = 40
+let pointerTimer: ReturnType<typeof setInterval> | null = null
+let pointerIgnoring = false
+let pointerDown = false
+let interactiveRegions: InteractiveRect[] = []
+let interactiveViewport: InteractiveViewport | null = null
+let hasInteractiveRegions = false
 
 export function getMainWindow(): BrowserWindow | null {
   return mainWindow
@@ -217,6 +241,7 @@ export function createWindow(): void {
   })
 
   mainWindow.webContents.on('render-process-gone', () => {
+    resetPointerInteraction()
     setMeetingRecordingActive(false)
     setVoiceRecordingActive(false)
   })
@@ -504,6 +529,7 @@ export function completeHide(): void {
     hideTimer = null
   }
   if (isVisible || !mainWindow || mainWindow.isDestroyed()) return
+  resetPointerInteraction()
   mainWindow.hide()
   scheduleSleepModeCleanup(mainWindow)
 }
@@ -520,8 +546,9 @@ export function showWindow(view: WindowTargetView = 'bar'): void {
   // animates inside it. Reposition it under the cursor's display.
   mainWindow.setBounds(getMainWindowLayout())
   // Start interactive so the bar responds immediately on show; the renderer
-  // re-enables click-through once the pointer moves over empty space.
-  setMainWindowIgnoreMouseEvents(false)
+  // reports its interactive regions shortly after, and the cursor poll takes
+  // over from there.
+  resetPointerInteraction()
 
   isVisible = true
   currentView = view
@@ -533,6 +560,7 @@ export function showWindow(view: WindowTargetView = 'bar'): void {
     if (!mainWindow || mainWindow.isDestroyed() || !isVisible) return
     mainWindow.show()
     mainWindow.focus()
+    startPointerTracking()
     mainWindow.webContents.send('toggle-visibility', true, view, 'animate')
   })
 }
@@ -570,6 +598,10 @@ export function reportView(view: WindowView): void {
 
 export function hideWindow(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return
+  // Let clicks fall through while the exit animation plays; no forwarding hook
+  // is installed on Windows.
+  stopPointerTracking(true)
+  pointerDown = false
   mainWindow.webContents.send('toggle-visibility', false)
   isVisible = false
   isPinned = false
@@ -586,32 +618,113 @@ export function hideWindow(): void {
 function scheduleSleepModeCleanup(win: BrowserWindow): void {
   if (win.isDestroyed()) return
 
+  // Only drop navigation history while hidden. Clearing the HTTP cache and
+  // forcing a full GC here made every dismissal hitch for no user-visible
+  // benefit; V8 recycles the rest of the memory on its own.
   win.webContents.navigationHistory.clear()
+}
 
-  void win.webContents.session.clearCache().catch(() => {
-    // Non-fatal — ignore cache-clear failures.
-  })
+// ---------------------------------------------------------------------------
+// Click-through handling
+//
+// Windows cannot use `setIgnoreMouseEvents(..., { forward: true })`: Electron
+// implements forwarding with a global WH_MOUSE_LL hook whose callback runs on
+// the main-process thread, so any main-thread stall delays mouse input for
+// every application. Instead the renderer reports the rectangles of its
+// interactive surfaces; a cheap cursor poll toggles the window's ignore state.
+// macOS keeps the existing forwarding path, where it is not a system-wide hook.
+// ---------------------------------------------------------------------------
 
-  // global.gc is available when --expose_gc is passed via js-flags.
+function applyMouseIgnore(ignore: boolean, forward: boolean): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  if (!isWindows && !isMac) return
   try {
-    if (typeof (global as Record<string, unknown>).gc === 'function') {
-      ;(global as Record<string, unknown>).gc as () => void
-      ;((global as Record<string, unknown>).gc as () => void)()
+    if (forward) {
+      mainWindow.setIgnoreMouseEvents(ignore, { forward: true })
+    } else {
+      mainWindow.setIgnoreMouseEvents(ignore)
     }
   } catch {
-    // Ignore if GC is unavailable in this build.
+    // The window may have been destroyed between the guard and the call.
   }
 }
 
-// Toggles click-through for the transparent regions of the window. The renderer
-// drives this from mousemove so the reserved (empty) area stays usable while the
-// content region remains interactive. `forward` keeps mouse-move messages coming
-// to the renderer while the window is ignoring mouse events. Only Windows and
-// macOS can forward mouse moves, so other platforms stay interactive.
+function setWindowsIgnore(ignore: boolean): void {
+  if (!isWindows) return
+  if (pointerIgnoring === ignore) return
+  pointerIgnoring = ignore
+  applyMouseIgnore(ignore, false)
+}
+
+function tickPointer(): void {
+  if (!isWindows || !mainWindow || mainWindow.isDestroyed() || !isVisible) return
+
+  // Stay interactive until the renderer has reported its layout; otherwise a
+  // click during the first frame after showing would fall through.
+  if (!hasInteractiveRegions || !interactiveViewport) {
+    setWindowsIgnore(false)
+    return
+  }
+
+  const bounds = mainWindow.getContentBounds()
+  const point = screen.getCursorScreenPoint()
+  const local = screenPointToViewportPoint(point, bounds, interactiveViewport)
+  const inside =
+    pointerDown || isPointInInteractiveRegions(local.x, local.y, interactiveRegions)
+  setWindowsIgnore(!inside)
+}
+
+function startPointerTracking(): void {
+  if (!isWindows || pointerTimer) return
+  pointerTimer = setInterval(tickPointer, POINTER_POLL_MS)
+  pointerTimer.unref?.()
+  tickPointer()
+}
+
+function stopPointerTracking(passThrough: boolean): void {
+  if (pointerTimer) {
+    clearInterval(pointerTimer)
+    pointerTimer = null
+  }
+  if (isWindows) setWindowsIgnore(passThrough)
+}
+
+/** Clears all pointer state and releases any click-through mode. */
+export function resetPointerInteraction(): void {
+  if (pointerTimer) {
+    clearInterval(pointerTimer)
+    pointerTimer = null
+  }
+  pointerDown = false
+  interactiveRegions = []
+  interactiveViewport = null
+  hasInteractiveRegions = false
+  pointerIgnoring = false
+  applyMouseIgnore(false, false)
+}
+
+/** Renderer-reported interactive surfaces, in CSS pixels relative to the viewport. */
+export function setInteractiveRegions(regions: unknown, viewport: unknown): void {
+  if (!isWindows || !isVisible) return
+  interactiveRegions = normalizeInteractiveRegions(regions)
+  interactiveViewport = normalizeInteractiveViewport(viewport) ?? interactiveViewport
+  hasInteractiveRegions = true
+  tickPointer()
+}
+
+/** Pauses click-through toggling while a drag or selection is in progress. */
+export function setPointerDown(down: boolean): void {
+  if (!isWindows) return
+  pointerDown = down === true
+  tickPointer()
+}
+
 export function setMainWindowIgnoreMouseEvents(ignore: boolean): void {
-  if (!mainWindow || mainWindow.isDestroyed()) return
-  if (!isWindows && !isMac) return
-  mainWindow.setIgnoreMouseEvents(ignore, { forward: true })
+  // Windows uses the cursor poll above; ignore renderer-driven requests there
+  // so the two paths cannot fight each other.
+  if (isWindows) return
+  if (!isMac) return
+  applyMouseIgnore(ignore, true)
 }
 
 export function setPinned(pinned: boolean): void {

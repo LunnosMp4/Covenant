@@ -13,6 +13,10 @@ export type {
 } from '../../../shared/notes/note'
 export type { NoteAiAction, NoteAiRequest } from '../../../shared/notes/prompts'
 export type {
+  InteractiveRect,
+  InteractiveViewport
+} from '../../../shared/windows/interactive'
+export type {
   Workflow,
   WorkflowLanguage,
   WorkflowLogPayload,

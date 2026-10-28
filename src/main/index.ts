@@ -5,7 +5,6 @@ import { readConfig, updateConfig } from './config/configStore'
 import { CodeService, getCodeService, setCodeService } from './code/codeService'
 import { createCodeActivityTracker, disposeCodeActivityTracker } from './code/codeActivity'
 import { markInterruptedMeetings } from './features/notes'
-import { warmInstalledAppsCache } from './installedApps'
 import { registerIpc } from './ipc'
 import { setupLogger } from './logger'
 import { registerNotesProtocol } from './notes/audioProtocol'
@@ -32,10 +31,6 @@ import { sendToMain, setBroadcastProviders } from './windows/broadcast'
 
 const isMac = process.platform === 'darwin'
 const isWindows = process.platform === 'win32'
-
-// Expose V8's garbage collector so we can force a collection on window hide.
-// Must be set before app.whenReady() — top-level module scope satisfies this.
-app.commandLine.appendSwitch('js-flags', '--expose_gc')
 
 // Custom schemes for serving clipboard images and meeting audio to the renderer
 // without base64-in-IPC. Must be registered before app.whenReady().
@@ -117,10 +112,6 @@ app.whenReady().then(() => {
   configureMeetingAudioCapture()
   registerNotesProtocol()
   void markInterruptedMeetings()
-
-  // Build the application index in the background so the first keystroke in
-  // the search field is already instant.
-  warmInstalledAppsCache(config.launcherShowSystemApps === true)
 
   // Initialize the Paste Manager (clipboard history). The watcher only starts
   // when the feature is enabled in config.

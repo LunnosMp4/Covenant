@@ -70,6 +70,11 @@ interface CovenantAPI {
     notifyExitComplete: () => void
     setPinned: (pinned: boolean) => void
     setIgnoreMouseEvents: (ignore: boolean) => void
+    setInteractiveRegions: (
+      regions: Array<{ x: number; y: number; width: number; height: number }>,
+      viewport: { width: number; height: number }
+    ) => void
+    setPointerDown: (down: boolean) => void
     openSettings: (tab?: string) => void
     closeSettings: () => void
     minimizeSettings: () => void

@@ -49,6 +49,7 @@ export default function MeasuredPanel({
         if (height > 0) setSettled(true)
       }}
       className={className}
+      data-interactive-surface
       style={{ overflow: settled ? 'visible' : 'hidden' }}
     >
       <div ref={ref} className={contentClassName}>

@@ -53,6 +53,10 @@ import type {
   RemoteBrowseResult
 } from '../shared/code/connection'
 import type { WindowView } from '../shared/view'
+import type {
+  InteractiveRect,
+  InteractiveViewport
+} from '../shared/windows/interactive'
 
 const api = {
   platform: process.platform,
@@ -63,6 +67,9 @@ const api = {
     setPinned: (pinned: boolean) => ipcRenderer.send('set-pinned', pinned),
     setIgnoreMouseEvents: (ignore: boolean) =>
       ipcRenderer.send('set-ignore-mouse-events', ignore),
+    setInteractiveRegions: (regions: InteractiveRect[], viewport: InteractiveViewport) =>
+      ipcRenderer.send('set-interactive-regions', regions, viewport),
+    setPointerDown: (down: boolean) => ipcRenderer.send('set-pointer-down', down),
     openSettings: (tab?: string) => ipcRenderer.send('open-settings', tab),
     closeSettings: () => ipcRenderer.send('close-settings'),
     minimizeSettings: () => ipcRenderer.send('minimize-settings'),

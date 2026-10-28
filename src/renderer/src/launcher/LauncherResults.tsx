@@ -60,6 +60,7 @@ export default function LauncherResults({
       exit={{ opacity: 0, scale: 0.98, y: 10 }}
       transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
       className={`absolute inset-x-0 bottom-full z-40 mb-3 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} p-2 surface-shadow texture-surface`}
+      data-interactive-surface
     >
       <div className="space-y-0.5">
         {items.map((item, index) => {
