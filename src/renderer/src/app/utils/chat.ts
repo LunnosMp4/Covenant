@@ -34,6 +34,90 @@ export function sortConversations(conversations: ChatConversation[]): ChatConver
   return [...conversations].sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
+export interface ConversationGroup {
+  label: string
+  conversations: ChatConversation[]
+}
+
+const DAY_MS = 86_400_000
+
+const ROW_TIME_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false
+})
+const ROW_WEEKDAY_FORMATTER = new Intl.DateTimeFormat('en-US', { weekday: 'short' })
+const ROW_MONTH_DAY_FORMATTER = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
+const ROW_FULL_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric'
+})
+
+function startOfDay(timestamp: number): number {
+  const date = new Date(timestamp)
+  date.setHours(0, 0, 0, 0)
+  return date.getTime()
+}
+
+/** Whole calendar days between `timestamp` and `now` (today = 0, yesterday = 1). */
+function daysBefore(timestamp: number, now: number): number {
+  return Math.round((startOfDay(now) - startOfDay(timestamp)) / DAY_MS)
+}
+
+/**
+ * Buckets conversations the way people remember them — calendar days, not
+ * rolling hours — so the history reads as "Today / Yesterday / older".
+ * Empty buckets are dropped and each bucket keeps newest-first order.
+ */
+export function groupConversationsByRecency(
+  conversations: ChatConversation[],
+  now = Date.now()
+): ConversationGroup[] {
+  const groups: ConversationGroup[] = [
+    { label: 'Today', conversations: [] },
+    { label: 'Yesterday', conversations: [] },
+    { label: 'Previous 7 days', conversations: [] },
+    { label: 'Previous 30 days', conversations: [] },
+    { label: 'Older', conversations: [] }
+  ]
+
+  for (const conversation of sortConversations(conversations)) {
+    const days = daysBefore(conversation.updatedAt, now)
+    const group =
+      days <= 0
+        ? groups[0]
+        : days === 1
+          ? groups[1]
+          : days <= 7
+            ? groups[2]
+            : days <= 30
+              ? groups[3]
+              : groups[4]
+    group.conversations.push(conversation)
+  }
+
+  return groups.filter((group) => group.conversations.length > 0)
+}
+
+/**
+ * Compact timestamp for a history row. The bucket header already carries the
+ * day for older entries, so only the time (today) or the weekday (this week)
+ * needs to be repeated.
+ */
+export function formatConversationRowTimestamp(timestamp: number, now = Date.now()): string {
+  const date = new Date(timestamp)
+  const days = daysBefore(timestamp, now)
+
+  if (days <= 0) return ROW_TIME_FORMATTER.format(date)
+  if (days === 1) return 'Yesterday'
+  if (days <= 7) return ROW_WEEKDAY_FORMATTER.format(date)
+  if (date.getFullYear() === new Date(now).getFullYear()) {
+    return ROW_MONTH_DAY_FORMATTER.format(date)
+  }
+  return ROW_FULL_DATE_FORMATTER.format(date)
+}
+
 export function normalizeMessageOrder(messages: ChatMessage[]): ChatMessage[] {
   return [...messages].sort((a, b) => {
     if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt

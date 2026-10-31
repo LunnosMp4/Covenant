@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatConversation, ChatMessage } from '../../../../shared/chat/chat'
-import { buildSearchMatches, countOccurrences, buildSearchSnippet } from './chat'
+import {
+  buildSearchMatches,
+  countOccurrences,
+  buildSearchSnippet,
+  formatConversationRowTimestamp,
+  groupConversationsByRecency,
+  sortConversations
+} from './chat'
 
 function message(id: string, role: ChatMessage['role'], content: string, createdAt: number): ChatMessage {
   return { id, role, content, createdAt }
@@ -69,5 +76,75 @@ describe('chat search', () => {
   it('returns no matches for an empty query', () => {
     const conversations = [conversation('c1', [message('m1', 'user', 'needle', 1)])]
     expect(buildSearchMatches(conversations, null, '   ')).toEqual([])
+  })
+})
+
+describe('conversation history grouping', () => {
+  const NOW = new Date(2026, 9, 31, 15, 0, 0).getTime()
+  const at = (daysAgo: number, hour = 10): number => {
+    const date = new Date(2026, 9, 31, hour, 0, 0)
+    date.setDate(date.getDate() - daysAgo)
+    return date.getTime()
+  }
+
+  function datedConversation(id: string, updatedAt: number): ChatConversation {
+    return { id, title: id, createdAt: updatedAt, updatedAt, messages: [] }
+  }
+
+  it('buckets by calendar day and drops empty groups', () => {
+    const conversations = [
+      datedConversation('today', at(0)),
+      datedConversation('yesterday', at(1)),
+      datedConversation('week', at(4)),
+      datedConversation('month', at(12)),
+      datedConversation('old', at(90))
+    ]
+
+    const groups = groupConversationsByRecency(conversations, NOW)
+
+    expect(groups.map((group) => group.label)).toEqual([
+      'Today',
+      'Yesterday',
+      'Previous 7 days',
+      'Previous 30 days',
+      'Older'
+    ])
+    expect(groups.map((group) => group.conversations.map((item) => item.id))).toEqual([
+      ['today'],
+      ['yesterday'],
+      ['week'],
+      ['month'],
+      ['old']
+    ])
+  })
+
+  it('keeps newest-first order inside a group', () => {
+    const groups = groupConversationsByRecency(
+      [datedConversation('older', at(0, 8)), datedConversation('newer', at(0, 14))],
+      NOW
+    )
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0].conversations.map((item) => item.id)).toEqual(['newer', 'older'])
+  })
+
+  it('returns no groups for an empty history', () => {
+    expect(groupConversationsByRecency([], NOW)).toEqual([])
+  })
+
+  it('formats row timestamps relative to the bucket', () => {
+    expect(formatConversationRowTimestamp(at(0, 9), NOW)).toMatch(/^\d{2}:\d{2}$/)
+    expect(formatConversationRowTimestamp(at(1), NOW)).toBe('Yesterday')
+    expect(formatConversationRowTimestamp(at(3), NOW)).toMatch(/^[A-Z][a-z]{2}$/)
+    expect(formatConversationRowTimestamp(at(20), NOW)).toMatch(/^[A-Z][a-z]{2} \d{1,2}$/)
+  })
+
+  it('sorts conversations without mutating the input', () => {
+    const a = datedConversation('a', at(2))
+    const b = datedConversation('b', at(0))
+    const input = [a, b]
+
+    expect(sortConversations(input).map((item) => item.id)).toEqual(['b', 'a'])
+    expect(input.map((item) => item.id)).toEqual(['a', 'b'])
   })
 })

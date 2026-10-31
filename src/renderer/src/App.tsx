@@ -8,6 +8,7 @@ import TerminalApprovalModal from './terminal/TerminalApprovalModal'
 import VoiceWaveform from './chat/VoiceWaveform'
 import ConfirmDeleteModal from './ui/ConfirmDeleteModal'
 import ChatTranscript from './chat/ChatTranscript'
+import ConversationHistoryMenu from './chat/ConversationHistoryMenu'
 import { buildTerminalContext } from './terminal/terminalContext'
 import {
   ChevronDownIcon,
@@ -24,7 +25,6 @@ import {
   SpinnerIcon,
   StopIcon,
   TasksIcon,
-  TrashIcon,
   XIcon
 } from './ui/icons'
 import ExpandButton from './ui/ExpandButton'
@@ -45,10 +45,7 @@ import {
   filterInstructionMentions,
   parseMentionTrigger
 } from './app/utils/instructionMentions'
-import {
-  computeContextStats,
-  formatConversationTimestamp
-} from './utils/chat/chatUsage'
+import { computeContextStats } from './utils/chat/chatUsage'
 import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from './constants/terminalFonts'
 import {
   DEFAULT_THEME_GRADIENT,
@@ -1350,6 +1347,11 @@ export default function App(): JSX.Element {
           setShowImagePanel(false)
           return
         }
+        if (isHistoryOpen) {
+          event.preventDefault()
+          setIsHistoryOpen(false)
+          return
+        }
         if (activePopup) {
           event.preventDefault()
           setActivePopup(null)
@@ -1361,7 +1363,7 @@ export default function App(): JSX.Element {
     return () => {
       window.removeEventListener('keydown', handleEscape)
     }
-  }, [activePopup, showImagePanel])
+  }, [activePopup, isHistoryOpen, showImagePanel])
 
   useEffect(() => {
     const clearSuccessTimer = (workflowId: string): void => {
@@ -3010,82 +3012,21 @@ export default function App(): JSX.Element {
                       />
                     </div>
 
-                    <AnimatePresence>
-                      {isHistoryOpen && (
-                        <motion.div
-                          key="history-menu"
-                          ref={historyMenuRef}
-                          initial={{ opacity: 0, y: -6, scale: 0.98 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                          transition={SPRING_POPOVER}
-                          style={{ transformOrigin: 'top right' }}
-                          className="absolute right-0 top-10 z-20 w-72 overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950/95 shadow-xl"
-                          data-interactive-surface
-                        >
-                          <div className="max-h-40 overflow-y-auto scrollbar-hidden py-1">
-                            {conversations.length === 0 ? (
-                              <p className="px-2.5 py-2 text-[11px] text-neutral-500">No conversations yet.</p>
-                            ) : (
-                              conversations.map((conversation) => (
-                                <div
-                                  key={conversation.id}
-                                  className={`flex w-full items-center gap-1 px-2.5 py-1.5 text-[12px] transition-colors hover:bg-neutral-800/70 ${
-                                    conversation.id === activeConversation?.id
-                                      ? 'bg-neutral-800/70 text-neutral-100'
-                                      : 'text-neutral-300'
-                                  }`}
-                                >
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setActiveConversation(conversation)
-                                      setIsChatOpen(true)
-                                      setIsHistoryOpen(false)
-                                    }}
-                                    className="flex min-w-0 flex-1 flex-col gap-0.5 text-left"
-                                  >
-                                    <span className="flex min-w-0 items-center gap-1.5">
-                                      <span className="truncate font-medium">{conversation.title}</span>
-                                      {conversation.terminalSessionId ? (
-                                        <span className="shrink-0 rounded border border-white/10 px-1 py-0.5 text-[9px] uppercase tracking-[0.1em] text-neutral-400">
-                                          term
-                                        </span>
-                                      ) : null}
-                                      {conversation.systemPrompt ? (
-                                        <span className="shrink-0 rounded border border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] px-1 py-0.5 text-[9px] uppercase tracking-[0.1em] text-[color:var(--chat-accent)]">
-                                          @
-                                        </span>
-                                      ) : null}
-                                    </span>
-                                    <span className="mt-0.5 flex items-center justify-between gap-2">
-                                      <span className="text-[10px] uppercase tracking-[0.12em] text-neutral-400">
-                                        {conversation.messages.length} messages
-                                      </span>
-                                      <span className="flex-shrink-0 text-[10px] tabular-nums text-neutral-400">
-                                        {formatConversationTimestamp(conversation.updatedAt)}
-                                      </span>
-                                    </span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      setDeletingConversation(conversation)
-                                      setIsHistoryOpen(false)
-                                    }}
-                                    className="pressable flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-red-500/20 hover:text-red-300"
-                                    aria-label={`Delete ${conversation.title}`}
-                                  >
-                                    <TrashIcon />
-                                  </button>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                    <ConversationHistoryMenu
+                      open={isHistoryOpen}
+                      conversations={conversations}
+                      activeConversationId={activeConversation?.id ?? null}
+                      panelRef={historyMenuRef}
+                      onSelect={(conversation) => {
+                        setActiveConversation(conversation)
+                        setIsChatOpen(true)
+                        setIsHistoryOpen(false)
+                      }}
+                      onDelete={(conversation) => {
+                        setDeletingConversation(conversation)
+                        setIsHistoryOpen(false)
+                      }}
+                    />
                   </div>
 
                   <motion.div

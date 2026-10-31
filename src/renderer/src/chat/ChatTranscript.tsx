@@ -67,6 +67,7 @@ function ChatMessageRow({
     .join(` \u00b7 `)
   const rowJustify = isUser && !fullWidthBubbles ? 'justify-end' : 'justify-start'
   const bubbleWidth = fullWidthBubbles ? 'w-full' : 'max-w-[78%]'
+  const canCopy = isAssistant && !isStreaming && message.content.trim().length > 0
 
   return (
     <div
@@ -238,13 +239,16 @@ function ChatMessageRow({
           </>
         )}
 
-        {isAssistant ? (
+        {isAssistant && (metaLabel || canCopy) ? (
           <div className="chat-message-meta flex items-center gap-2">
             {metaLabel ? <span>{metaLabel}</span> : null}
-            <CopyButton
-              text={message.content}
-              className="pressable flex items-center justify-center h-6 w-6 rounded-md text-neutral-500 hover:text-neutral-200 hover:bg-white/10"
-            />
+            {/* Only offer copy once the stream has finished and there is text. */}
+            {canCopy ? (
+              <CopyButton
+                text={message.content}
+                className="pressable flex items-center justify-center h-6 w-6 rounded-md text-neutral-500 hover:text-neutral-200 hover:bg-white/10"
+              />
+            ) : null}
           </div>
         ) : null}
       </div>
