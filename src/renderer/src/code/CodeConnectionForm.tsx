@@ -15,7 +15,7 @@ const AUTH_OPTIONS: Array<{ value: CodeSshAuthMethod; label: string }> = [
 ]
 
 const FIELD_LABEL =
-  'mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500'
+  'mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-400'
 const FIELD_INPUT =
   'w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-white/25 focus:outline-none'
 const SECONDARY_BUTTON =

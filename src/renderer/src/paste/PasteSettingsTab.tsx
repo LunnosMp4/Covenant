@@ -143,7 +143,7 @@ export default function PasteSettingsTab({
             ))}
           </select>
         </div>
-        <p className="text-[11px] text-neutral-600">
+        <p className="text-[11px] text-neutral-400">
           Range: {MIN_PASTE_AGE_DAYS}–{MAX_PASTE_AGE_DAYS} days, or unlimited.
         </p>
       </Card>

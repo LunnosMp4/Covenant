@@ -156,7 +156,7 @@ export default function WorkflowList({
                     </p>
                   ))
                 ) : (
-                  <p className="text-neutral-500">Waiting for logs...</p>
+                  <p className="text-neutral-500">Waiting for logs…</p>
                 )}
               </div>
             </MeasuredCollapse>

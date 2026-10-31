@@ -21,7 +21,7 @@ const ROW = 'group flex items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] tr
 function SectionLabel({ children, action }: { children: string; action?: JSX.Element }): JSX.Element {
   return (
     <div className="flex items-center justify-between px-2 pb-1 pt-2">
-      <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
         {children}
       </span>
       {action}
@@ -84,7 +84,7 @@ export default function CodeProjectsSidebar({
               <button
                 type="button"
                 onClick={() => onDeleteProject(project)}
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-500 opacity-0 transition hover:bg-red-500/20 hover:text-red-300 group-hover:opacity-100"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-500 opacity-0 transition hover:bg-red-500/20 hover:text-red-300 group-hover:opacity-100 focus-visible:opacity-100"
                 aria-label={`Remove ${project.name}`}
               >
                 <TrashIcon />
@@ -146,7 +146,7 @@ export default function CodeProjectsSidebar({
               <button
                 type="button"
                 onClick={() => onDeleteSession(session)}
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-500 opacity-0 transition hover:bg-red-500/20 hover:text-red-300 group-hover:opacity-100"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-500 opacity-0 transition hover:bg-red-500/20 hover:text-red-300 group-hover:opacity-100 focus-visible:opacity-100"
                 aria-label={`Delete ${session.title}`}
               >
                 <TrashIcon />

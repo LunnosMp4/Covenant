@@ -1,11 +1,25 @@
-import { motion } from 'framer-motion'
-import { FADE_FAST, SPRING_POPOVER } from '../../constants/motion'
+import { Fragment } from 'react'
+import Kbd from '../../ui/Kbd'
+import ModalOverlay from '../../ui/ModalOverlay'
 
 interface OnboardingModalProps {
   apiKey: string
   onApiKeyChange: (value: string) => void
   onSkip: () => void
   onComplete: () => void
+}
+
+function Shortcut({ keys }: { keys: string[] }): JSX.Element {
+  return (
+    <span className="inline-flex items-center gap-1 align-middle">
+      {keys.map((key, index) => (
+        <Fragment key={`${key}-${index}`}>
+          {index > 0 ? <span className="text-[10px] text-neutral-400">+</span> : null}
+          <Kbd>{key}</Kbd>
+        </Fragment>
+      ))}
+    </span>
+  )
 }
 
 export default function OnboardingModal({
@@ -15,46 +29,31 @@ export default function OnboardingModal({
   onComplete
 }: OnboardingModalProps): JSX.Element {
   return (
-    <motion.div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-6"
-      data-interactive-surface
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0, transition: FADE_FAST }}
-      transition={FADE_FAST}
-    >
-      <div className="absolute inset-0 bg-black/60" />
-      <motion.div
-        initial={{ scale: 0.97, opacity: 0, y: 8 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.97, opacity: 0, y: 8, transition: FADE_FAST }}
-        transition={SPRING_POPOVER}
-        className="relative w-full max-w-md rounded-2xl border border-neutral-700 bg-neutral-900 p-6 shadow-2xl"
-      >
-        <h2 className="text-lg font-semibold text-neutral-100">Welcome to Covenant</h2>
+    <ModalOverlay contentClassName="max-w-md">
+      <div className="relative w-full rounded-2xl border border-neutral-700 bg-neutral-900 p-6 shadow-2xl">
+        <h2 className="text-lg font-semibold tracking-[-0.01em] text-neutral-100">Welcome to Covenant</h2>
         <p className="mt-2 text-sm text-neutral-400">
           A floating command bar for AI chat, terminal, and workflows. Press{' '}
-          <span className="text-neutral-200">Alt+Space</span> to open it.
+          <Shortcut keys={['Alt', 'Space']} /> to open it.
         </p>
         <ul className="mt-4 space-y-2 text-sm text-neutral-400">
           <li>
-            <span className="text-neutral-200">Alt+Space</span> — open the bar for a new
-            conversation
+            <Shortcut keys={['Alt', 'Space']} /> — open the bar for a new conversation
           </li>
           <li>
-            <span className="text-neutral-200">Ctrl+Alt+Space</span> — open your last conversation
+            <Shortcut keys={['Ctrl', 'Alt', 'Space']} /> — open your last conversation
           </li>
           <li>
-            <span className="text-neutral-200">Alt+T</span> — open the terminal
+            <Shortcut keys={['Alt', 'T']} /> — open the terminal
           </li>
           <li>
-            <span className="text-neutral-200">Alt+C</span> — open Covenant Code
+            <Shortcut keys={['Alt', 'C']} /> — open Covenant Code
           </li>
           <li>
-            <span className="text-neutral-200">Ctrl+Tab</span> — toggle the conversation panel
+            <Shortcut keys={['Ctrl', 'Tab']} /> — toggle the conversation panel
           </li>
           <li>
-            <span className="text-neutral-200">Escape</span> — close the bar
+            <Shortcut keys={['Esc']} /> — close the bar
           </li>
         </ul>
         <div className="mt-5">
@@ -84,12 +83,13 @@ export default function OnboardingModal({
           <button
             type="button"
             onClick={onComplete}
-            className="pressable rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-white"
+            data-autofocus
+            className="pressable btn-primary rounded-xl px-4 py-2 text-sm font-medium"
           >
             Get started
           </button>
         </div>
-      </motion.div>
-    </motion.div>
+      </div>
+    </ModalOverlay>
   )
 }

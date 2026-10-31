@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import type { Preprompt } from '../../../shared/domain/preprompt'
 import { SPRING_POPOVER } from '../constants/motion'
+import Kbd from '../ui/Kbd'
 
 interface InstructionPickerProps {
   items: Preprompt[]
@@ -49,11 +50,11 @@ export default function InstructionPicker({
       data-interactive-surface
     >
       <div className="flex items-center justify-between gap-3 px-2 pb-1.5">
-        <span className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+        <span className="text-[10px] uppercase tracking-[0.12em] text-neutral-400">
           Instructions
         </span>
         {query ? (
-          <span className="truncate text-[10px] text-neutral-600">@{query}</span>
+          <span className="truncate text-[10px] text-neutral-400">@{query}</span>
         ) : null}
       </div>
 
@@ -109,7 +110,7 @@ export default function InstructionPicker({
                   </span>
                   <span
                     className={`mt-0.5 truncate text-xs ${
-                      isSelected ? 'text-neutral-400' : 'text-neutral-600'
+                      isSelected ? 'text-neutral-400' : 'text-neutral-500'
                     }`}
                   >
                     {item.content}
@@ -131,10 +132,21 @@ export default function InstructionPicker({
         </div>
       )}
 
-      <div className="flex items-center gap-3 border-t border-white/5 px-3 pt-2 pb-1 text-[10px] uppercase tracking-[0.08em] text-neutral-600">
-        <span>↑↓ navigate</span>
-        <span>tab / ↵ apply</span>
-        <span>esc dismiss</span>
+      <div className="flex items-center gap-3 border-t border-white/5 px-3 pb-1 pt-2 text-[10px] uppercase tracking-[0.08em] text-neutral-400">
+        <span className="inline-flex items-center gap-1">
+          <Kbd>↑</Kbd>
+          <Kbd>↓</Kbd>
+          <span>navigate</span>
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <Kbd>Tab</Kbd>
+          <Kbd>↵</Kbd>
+          <span>apply</span>
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <Kbd>Esc</Kbd>
+          <span>dismiss</span>
+        </span>
       </div>
     </motion.div>
   )

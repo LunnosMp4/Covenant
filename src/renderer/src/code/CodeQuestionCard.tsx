@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { CodeFormField, CodeFormRequest, CodeFormValue } from '../../../shared/code/code'
+import { XIcon } from '../ui/icons'
 import { SessionIcon } from './icons'
 
 interface CodeQuestionCardProps {
@@ -14,7 +15,7 @@ const CHIP_ON = 'border-white/25 bg-white/15 text-neutral-100'
 const CHIP_OFF =
   'border-white/10 text-neutral-400 hover:border-white/20 hover:bg-white/10 hover:text-neutral-200'
 const INPUT =
-  'w-full rounded-lg border border-white/10 bg-neutral-950/60 px-2.5 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-600 focus:border-white/20 focus:outline-none'
+  'w-full rounded-lg border border-white/10 bg-neutral-950/60 px-2.5 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-500 focus:border-white/20 focus:outline-none'
 
 function isFieldVisible(field: CodeFormField, answers: Record<string, CodeFormValue>): boolean {
   if (field.hidden) return false
@@ -194,7 +195,10 @@ export default function CodeQuestionCard({
               title="Remove"
               onClick={() => toggleMulti(field, entry)}
             >
-              {entry} ×
+              <span className="inline-flex items-center gap-1">
+                {entry}
+                <XIcon />
+              </span>
             </button>
           ))}
         </div>

@@ -264,7 +264,7 @@ export default function CodeTab({
               type="button"
               onClick={() => void handleSaveKey()}
               disabled={authBusy || !apiKey.trim()}
-              className="rounded-md bg-[color:var(--chat-accent)] px-3 py-2 text-xs font-medium text-[color:var(--chat-on-accent)] transition-opacity hover:opacity-90 disabled:opacity-40"
+              className="pressable btn-primary rounded-md px-3 py-2 text-xs font-medium disabled:opacity-40"
             >
               Save
             </button>

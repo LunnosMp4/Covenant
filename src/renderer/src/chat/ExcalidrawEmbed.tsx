@@ -117,7 +117,7 @@ export function ExcalidrawEmbed({ checkpointId, serverId }: ExcalidrawEmbedProps
         <div className="flex min-w-0 items-center gap-2">
           <span className={`h-2 w-2 flex-shrink-0 rounded-full ${statusDot}`} />
           <span className="font-medium text-neutral-200">Excalidraw Diagram</span>
-          <span className="truncate font-mono text-[10px] text-neutral-500">
+          <span className="truncate font-mono text-[10px] text-neutral-400">
             #{checkpointId.slice(0, 8)}
           </span>
         </div>

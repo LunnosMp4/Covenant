@@ -26,7 +26,7 @@ function formatCost(value: number | null | undefined): string {
 function Section({ title, children }: { title: string; children: ReactNode }): JSX.Element {
   return (
     <div>
-      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">
+      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
         {title}
       </p>
       <div className="space-y-1">{children}</div>

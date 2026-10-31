@@ -128,7 +128,7 @@ export function ShortcutRecorder({
           }`}
         >
           {isRecording
-            ? 'Press a key combo...'
+            ? 'Press a key combo…'
             : value || (
               <span className="italic text-neutral-600">Disabled</span>
             )}

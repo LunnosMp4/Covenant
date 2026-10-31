@@ -8,7 +8,7 @@ import ContextStatsDonut from '../app/components/ContextStatsDonut'
 import type { ContextStats } from '../utils/chat/chatUsage'
 import ConfirmDeleteModal from '../ui/ConfirmDeleteModal'
 import ExpandButton from '../ui/ExpandButton'
-import { CodeIcon, PinIcon } from '../ui/icons'
+import { CodeIcon, PinIcon, XIcon } from '../ui/icons'
 import CodeConversation from './CodeConversation'
 import CodeNavMenu from './CodeNavMenu'
 import CodeProjectsSidebar from './CodeProjectsSidebar'
@@ -308,10 +308,10 @@ export default function CodePanel({
           <button
             type="button"
             onClick={session.dismissError}
-            className="shrink-0 text-red-300/70 transition-colors hover:text-red-200"
+            className="pressable flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-red-300/70 hover:bg-red-500/10 hover:text-red-200"
             aria-label="Dismiss error"
           >
-            ×
+            <XIcon />
           </button>
         </div>
       )}

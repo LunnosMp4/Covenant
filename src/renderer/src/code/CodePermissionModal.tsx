@@ -7,7 +7,7 @@ interface CodePermissionModalProps {
 }
 
 const BUTTON =
-  'inline-flex h-9 items-center justify-center rounded-xl border px-4 text-sm font-medium transition duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 active:scale-[0.98]'
+  'inline-flex h-9 items-center justify-center rounded-xl border px-4 text-sm font-medium transition duration-150 active:scale-[0.98]'
 
 export default function CodePermissionModal({
   request,

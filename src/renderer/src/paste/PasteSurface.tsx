@@ -11,6 +11,7 @@ import type { PasteItemDetail, PasteItemMeta, PasteItemType } from '../../../sha
 import PasteDetail from './PasteDetail'
 import { PasteTypeIcon, PinIcon, SearchIcon } from './PasteIcons'
 import ExpandButton from '../ui/ExpandButton'
+import Kbd from '../ui/Kbd'
 import { PinIcon as WindowPinIcon } from '../ui/icons'
 import { normalizeText, scoreMatch } from '../utils/launcher/fuzzy'
 import { formatAbsoluteTime, formatRelativeTime } from '../utils/paste/pasteFormat'
@@ -403,9 +404,19 @@ export default function PasteSurface({
               )}
             </div>
 
-            <div className="flex items-center justify-between border-t border-white/5 px-3 py-2 text-[11px] text-neutral-600">
-              <span>↑↓ navigate · Enter paste · Esc close</span>
-              {filtered.length > 0 && <span>{selectedIndex + 1}/{filtered.length}</span>}
+            <div className="flex items-center justify-between gap-2 border-t border-white/5 px-3 py-2 text-[10px] uppercase tracking-[0.08em] text-neutral-400">
+              <span className="inline-flex min-w-0 items-center gap-1">
+                <Kbd>↑</Kbd>
+                <Kbd>↓</Kbd>
+                <span>navigate</span>
+                <span className="text-neutral-500">·</span>
+                <Kbd>Enter</Kbd>
+                <span>paste</span>
+                <span className="text-neutral-500">·</span>
+                <Kbd>Esc</Kbd>
+                <span>close</span>
+              </span>
+              {filtered.length > 0 && <span className="shrink-0 text-[11px] tabular-nums">{selectedIndex + 1}/{filtered.length}</span>}
             </div>
           </aside>
 
@@ -422,7 +433,7 @@ export default function PasteSurface({
                 onAskAi={handleAskAi}
               />
             ) : (
-              <div className="flex h-full items-center justify-center text-sm text-neutral-600">
+              <div className="flex h-full items-center justify-center text-sm text-neutral-400">
                 Select an item to preview it.
               </div>
             )}

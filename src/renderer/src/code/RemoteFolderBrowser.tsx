@@ -129,7 +129,7 @@ export default function RemoteFolderBrowser({
                   isDir ? 'text-neutral-200 hover:bg-white/5' : 'cursor-default text-neutral-500'
                 }`}
               >
-                <span className={isDir ? 'text-neutral-400' : 'text-neutral-600'}>
+                <span className={isDir ? 'text-neutral-400' : 'text-neutral-500'}>
                   {isDir ? <FolderIcon /> : <FileIcon />}
                 </span>
                 <span className="min-w-0 flex-1 truncate">{entry.name}</span>

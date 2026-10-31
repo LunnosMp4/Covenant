@@ -593,7 +593,7 @@ const handleMinimizeWindow = (): void => {
     if (!window.api?.config.refreshMcpServerTools) return
 
     try {
-      setMcpFeedbackMessage('Refreshing MCP tools...')
+      setMcpFeedbackMessage('Refreshing MCP tools…')
       const refreshedServers = await window.api.config.refreshMcpServerTools(server.id)
       setMcpServers(refreshedServers)
       setMcpFeedbackMessage('MCP tools refreshed.')
@@ -1030,7 +1030,7 @@ const handleMinimizeWindow = (): void => {
             >
             <header className="mb-6">
               <p className="text-xs text-neutral-500">Preferences</p>
-              <h2 className="mt-2 text-2xl font-semibold text-neutral-100">{pageTitle}</h2>
+              <h2 className="mt-2 text-2xl font-semibold tracking-[-0.02em] text-neutral-100">{pageTitle}</h2>
             </header>
 
             {activeTab === 'general' && (

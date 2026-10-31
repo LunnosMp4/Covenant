@@ -550,7 +550,7 @@ function TerminalView({
                       e.stopPropagation()
                       void closeTab(tab.sessionId)
                     }}
-                    className="pressable flex items-center justify-center w-4 h-4 rounded hover:bg-white/15 shrink-0 text-neutral-500 hover:text-neutral-200"
+                    className="pressable flex items-center justify-center h-5 w-5 rounded hover:bg-white/15 shrink-0 text-neutral-500 hover:text-neutral-200"
                     aria-label={`Close ${tab.shell} tab`}
                   >
                     <CloseTabIcon />

@@ -61,7 +61,7 @@ export default function WorkflowsTab({
         <button
           type="button"
           onClick={onAdd}
-          className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-white"
+          className="pressable btn-primary rounded-xl px-4 py-2 text-sm font-medium"
         >
           Add Workflow
         </button>
@@ -70,7 +70,7 @@ export default function WorkflowsTab({
       <div className="space-y-3">
         {isLoading ? (
           <div className="rounded-2xl border border-neutral-800 bg-neutral-900/80 px-4 py-6 text-sm text-neutral-400">
-            Loading workflows...
+            Loading workflows…
           </div>
         ) : null}
 

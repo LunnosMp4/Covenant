@@ -28,7 +28,7 @@ export default function CodeChangesSidebar({
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
       <div className="flex items-center justify-between px-2 pb-2">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
           Changes
         </span>
         {diffs.length > 0 && (

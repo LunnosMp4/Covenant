@@ -53,7 +53,7 @@ export default function PrepromptFormModal({
               id="preprompt-content"
               value={content}
               onChange={(event) => setContent(event.target.value)}
-              placeholder="Write the reusable instruction content here..."
+              placeholder="Write the reusable instruction content here…"
               className="min-h-[180px] w-full resize-y rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-neutral-500 focus:outline-none"
             />
           </div>
@@ -71,7 +71,7 @@ export default function PrepromptFormModal({
             type="button"
             disabled={isDisabled}
             onClick={() => onSave({ id: initialData?.id, title, content })}
-            className="pressable rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+            className="pressable btn-primary rounded-xl px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
           >
             Save
           </button>

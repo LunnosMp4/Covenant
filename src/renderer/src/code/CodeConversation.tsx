@@ -135,7 +135,7 @@ function TranscriptBlock({
             onClick={() => onRestore(item)}
             title="Restore to this message"
             aria-label="Restore to this message"
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-neutral-500 opacity-0 transition-opacity hover:bg-white/10 hover:text-neutral-200 group-hover:opacity-100"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-neutral-500 opacity-0 transition-opacity hover:bg-white/10 hover:text-neutral-200 group-hover:opacity-100 focus-visible:opacity-100"
           >
             <RestoreIcon />
           </button>

@@ -82,7 +82,7 @@ export default function CodeNavMenu({
           className="surface-shadow absolute left-0 top-10 z-30 w-80 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/95">
           <div className="max-h-72 overflow-y-auto p-1 chat-scrollbar">
             <div className="flex items-center justify-between px-2 pb-1 pt-2">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
                 Projects
               </span>
               <button
@@ -127,7 +127,7 @@ export default function CodeNavMenu({
                       event.stopPropagation()
                       onDeleteProject(project)
                     }}
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-500 opacity-0 transition hover:bg-red-500/20 hover:text-red-300 group-hover:opacity-100"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-500 opacity-0 transition hover:bg-red-500/20 hover:text-red-300 group-hover:opacity-100 focus-visible:opacity-100"
                     aria-label={`Remove ${project.name}`}
                   >
                     <TrashIcon />
@@ -137,7 +137,7 @@ export default function CodeNavMenu({
             })}
 
             <div className="mt-1 flex items-center justify-between border-t border-white/5 px-2 pb-1 pt-2">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
                 Sessions
               </span>
               <button
@@ -195,7 +195,7 @@ export default function CodeNavMenu({
                       event.stopPropagation()
                       onDeleteSession(session)
                     }}
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-500 opacity-0 transition hover:bg-red-500/20 hover:text-red-300 group-hover:opacity-100"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-500 opacity-0 transition hover:bg-red-500/20 hover:text-red-300 group-hover:opacity-100 focus-visible:opacity-100"
                     aria-label={`Delete ${session.title}`}
                   >
                     <TrashIcon />

@@ -7,7 +7,7 @@ interface TerminalApprovalModalProps {
 }
 
 const BUTTON =
-  'inline-flex h-9 items-center justify-center rounded-xl border px-4 text-sm font-medium transition duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 active:scale-[0.98]'
+  'inline-flex h-9 items-center justify-center rounded-xl border px-4 text-sm font-medium transition duration-150 active:scale-[0.98]'
 
 export default function TerminalApprovalModal({
   request,
@@ -33,7 +33,22 @@ export default function TerminalApprovalModal({
 
         {request.destructive ? (
           <div className="mt-3 flex items-start gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] leading-relaxed text-red-200">
-            <span aria-hidden>⚠</span>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="mt-0.5 shrink-0"
+              aria-hidden
+            >
+              <path d="m12 3 9 16H3z" />
+              <path d="M12 9v4" />
+              <path d="M12 17h.01" />
+            </svg>
             <span>This command looks destructive. Review it carefully before allowing.</span>
           </div>
         ) : null}

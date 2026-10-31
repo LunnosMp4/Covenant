@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { CodeModel } from '../../../shared/code/code'
 import { SPRING_POPOVER } from '../constants/motion'
-import { ChevronDownIcon } from '../ui/icons'
+import { CheckIcon, ChevronDownIcon } from '../ui/icons'
 
 interface CodeModelMenuProps {
   modelLabel: string | null
@@ -110,7 +110,7 @@ export default function CodeModelMenu({
                       }`}
                     >
                       <span className="min-w-0 truncate">{model.label}</span>
-                      {active && <span className="shrink-0 text-neutral-400">✓</span>}
+                      {active && <span className="shrink-0 text-neutral-400"><CheckIcon /></span>}
                     </button>
                   )
                 })}
@@ -138,7 +138,7 @@ export default function CodeModelMenu({
                           }`}
                         >
                           <span className="min-w-0 truncate capitalize">{option.label}</span>
-                          {active && <span className="shrink-0 text-neutral-400">✓</span>}
+                          {active && <span className="shrink-0 text-neutral-400"><CheckIcon /></span>}
                         </button>
                       )
                     }

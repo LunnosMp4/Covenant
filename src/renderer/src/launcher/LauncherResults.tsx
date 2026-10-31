@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import type { LauncherItem } from '../../../shared/launcher/launcher'
 import { SPRING_POPOVER } from '../constants/motion'
+import Kbd from '../ui/Kbd'
 import { getAppBadgeText } from '../utils/helpers'
 
 interface LauncherResultsProps {
@@ -99,7 +100,7 @@ export default function LauncherResults({
                   {item.title}
                 </span>
                 {item.subtitle && (
-                  <span className={`mt-0.5 truncate text-xs ${isSelected ? 'text-neutral-400' : 'text-neutral-600'}`}>
+                  <span className={`mt-0.5 truncate text-xs ${isSelected ? 'text-neutral-400' : 'text-neutral-500'}`}>
                     {item.subtitle}
                   </span>
                 )}
@@ -119,10 +120,20 @@ export default function LauncherResults({
         })}
       </div>
 
-      <div className="flex items-center gap-3 border-t border-white/5 px-3 pt-2 pb-1 text-[10px] uppercase tracking-[0.08em] text-neutral-600">
-        <span>↑↓ navigate</span>
-        <span>↵ open</span>
-        <span>esc ask AI</span>
+      <div className="flex items-center gap-3 border-t border-white/5 px-3 pb-1 pt-2 text-[10px] uppercase tracking-[0.08em] text-neutral-400">
+        <span className="inline-flex items-center gap-1">
+          <Kbd>↑</Kbd>
+          <Kbd>↓</Kbd>
+          <span>navigate</span>
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <Kbd>↵</Kbd>
+          <span>open</span>
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <Kbd>Esc</Kbd>
+          <span>ask AI</span>
+        </span>
       </div>
     </motion.div>
   )

@@ -123,7 +123,7 @@ export default function TerminalTab({ terminalFont, onTerminalFontSelect, prefer
               className="w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100 transition-colors focus:border-neutral-600 focus:outline-none disabled:opacity-50"
             >
               <option value="">
-                {isLoadingFonts ? 'Loading terminal fonts...' : 'Select a terminal font'}
+                {isLoadingFonts ? 'Loading terminal fonts…' : 'Select a terminal font'}
               </option>
               {fontOptions.map((font) => (
                 <option key={font} value={font}>

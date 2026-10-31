@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { FADE_FAST, SPRING_POPOVER } from '../constants/motion'
 
@@ -18,6 +18,15 @@ interface ModalOverlayProps {
 }
 
 const CONTAINED_SELECTOR = '.command-surface'
+
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'textarea:not([disabled])',
+  'select:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])'
+].join(',')
 
 interface Rect {
   top: number
@@ -44,6 +53,72 @@ export default function ModalOverlay({
 }: ModalOverlayProps): JSX.Element {
   const resolvedContentClassName = contentClassName ?? 'max-w-xl'
   const [bounds, setBounds] = useState<Rect | null>(() => (contained ? measureContained() : null))
+  const contentRef = useRef<HTMLDivElement>(null)
+  const onCloseRef = useRef(onClose)
+
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
+
+  // Keep keyboard focus inside the dialog, close on Escape when allowed, and
+  // return focus to the control that opened it once the modal unmounts.
+  useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const content = contentRef.current
+
+    const getFocusable = (): HTMLElement[] => {
+      if (!content) return []
+      return Array.from(content.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+        (element) => element.getClientRects().length > 0
+      )
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      if (!content || content.contains(document.activeElement)) return
+      const preferred = content.querySelector<HTMLElement>('[data-autofocus]')
+      const first = preferred ?? getFocusable()[0] ?? content
+      first.focus({ preventScroll: true })
+    })
+
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape' && onCloseRef.current) {
+        event.preventDefault()
+        event.stopPropagation()
+        onCloseRef.current()
+        return
+      }
+
+      if (event.key !== 'Tab') return
+
+      const items = getFocusable()
+      if (items.length === 0) {
+        event.preventDefault()
+        content?.focus({ preventScroll: true })
+        return
+      }
+
+      const first = items[0]
+      const last = items[items.length - 1]
+      const active = document.activeElement
+      const inside = content?.contains(active)
+
+      if (event.shiftKey && (!inside || active === first)) {
+        event.preventDefault()
+        last.focus({ preventScroll: true })
+      } else if (!event.shiftKey && (!inside || active === last)) {
+        event.preventDefault()
+        first.focus({ preventScroll: true })
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown, true)
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+      document.removeEventListener('keydown', handleKeyDown, true)
+      if (previous?.isConnected) previous.focus({ preventScroll: true })
+    }
+  }, [])
 
   useEffect(() => {
     if (!contained) return
@@ -86,11 +161,15 @@ export default function ModalOverlay({
       }}
     >
       <motion.div
+        ref={contentRef}
+        role="dialog"
+        aria-modal="true"
+        tabIndex={-1}
         initial={{ opacity: 0, y: 10, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 10, scale: 0.98, transition: FADE_FAST }}
         transition={SPRING_POPOVER}
-        className={`modal-scroll w-full max-h-full overflow-y-auto ${resolvedContentClassName}`}
+        className={`modal-scroll w-full max-h-full overflow-y-auto outline-none ${resolvedContentClassName}`}
         onMouseDown={(event) => event.stopPropagation()}
       >
         {children}

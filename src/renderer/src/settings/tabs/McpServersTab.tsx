@@ -445,7 +445,7 @@ function PresetCard({
         <span className="text-sm font-medium text-neutral-100">{preset.name}</span>
       </span>
       <span className="text-xs leading-relaxed text-neutral-500">{preset.description}</span>
-      <span className="text-xs font-medium text-[color:var(--chat-accent)] opacity-0 transition-opacity group-hover:opacity-100">
+      <span className="text-xs font-medium text-[color:var(--chat-accent)] opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
         + Add server
       </span>
     </button>
@@ -486,7 +486,7 @@ export default function McpServersTab({
         <button
           type="button"
           onClick={onAdd}
-          className="flex-shrink-0 rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-white"
+          className="pressable btn-primary flex-shrink-0 rounded-xl px-4 py-2 text-sm font-medium"
         >
           Add MCP Server
         </button>
@@ -537,7 +537,7 @@ export default function McpServersTab({
 
         {isLoading ? (
           <div className="rounded-2xl border border-neutral-800 bg-neutral-900/80 px-4 py-6 text-sm text-neutral-400">
-            Loading MCP servers...
+            Loading MCP servers…
           </div>
         ) : null}
 

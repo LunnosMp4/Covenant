@@ -80,16 +80,16 @@ export default function PrepromptsTab({
             type="button"
             onClick={onSaveGlobalInstructions}
             disabled={!isGlobalInstructionsDirty || isGlobalInstructionsSaving}
-            className="shrink-0 rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+            className="pressable btn-primary shrink-0 rounded-xl px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isGlobalInstructionsSaving ? 'Saving...' : 'Save'}
+            {isGlobalInstructionsSaving ? 'Saving…' : 'Save'}
           </button>
         </div>
 
         <textarea
           value={globalInstructions}
           onChange={(event) => onGlobalInstructionsChange(event.target.value)}
-          placeholder="Write instructions that should apply to every conversation..."
+          placeholder="Write instructions that should apply to every conversation…"
           className="mt-3 min-h-[140px] w-full resize-y rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-neutral-500 focus:outline-none"
         />
 
@@ -106,7 +106,7 @@ export default function PrepromptsTab({
         <button
           type="button"
           onClick={onAdd}
-          className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-white"
+          className="pressable btn-primary rounded-xl px-4 py-2 text-sm font-medium"
         >
           Add Instruction
         </button>
@@ -117,7 +117,7 @@ export default function PrepromptsTab({
       <div className="space-y-3">
         {isLoading ? (
           <div className="rounded-2xl border border-neutral-800 bg-neutral-900/80 px-4 py-6 text-sm text-neutral-400">
-            Loading instructions...
+            Loading instructions…
           </div>
         ) : null}
 

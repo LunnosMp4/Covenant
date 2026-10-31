@@ -234,7 +234,7 @@ export default function TasksPopup({
                 draggable
                 onDragStart={(e) => handleDragStart(e, task.id)}
                 onDragEnd={handleDragEnd}
-                className="flex h-5 w-4 shrink-0 cursor-grab items-center justify-center text-neutral-600 opacity-0 transition-opacity hover:text-neutral-300 group-hover:opacity-100 active:cursor-grabbing"
+                className="flex h-5 w-4 shrink-0 cursor-grab items-center justify-center text-neutral-500 opacity-0 transition-opacity hover:text-neutral-300 group-hover:opacity-100 active:cursor-grabbing"
                 title="Drag to reorder"
               >
                 <GripIcon />
@@ -266,7 +266,7 @@ export default function TasksPopup({
                   {task.title}
                 </span>
                 {task.evaluating ? (
-                  <span className="task-shimmer mt-0.5 inline-block text-[10px] text-neutral-500">
+                  <span className="task-shimmer mt-0.5 inline-block text-[10px] text-neutral-400">
                     Evaluating…
                   </span>
                 ) : task.tier ? (
@@ -282,7 +282,7 @@ export default function TasksPopup({
                       {getTierLabel(task.tier)} · +{task.xpReward ?? 0} XP
                     </span>
                     {typeof task.estimatedMinutes === 'number' && (
-                      <span className="text-[10px] leading-none text-neutral-600">
+                      <span className="text-[10px] leading-none text-neutral-400">
                         ~{task.estimatedMinutes}m
                       </span>
                     )}
@@ -292,7 +292,7 @@ export default function TasksPopup({
               <button
                 type="button"
                 onClick={() => onDelete(task.id)}
-                className="pressable flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-neutral-600 opacity-0 transition-opacity hover:bg-white/10 hover:text-neutral-200 group-hover:opacity-100"
+                className="pressable flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-neutral-500 opacity-0 transition-opacity hover:bg-white/10 hover:text-neutral-200 group-hover:opacity-100 focus-visible:opacity-100"
                 aria-label="Delete task"
               >
                 <TrashIcon />

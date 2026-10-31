@@ -154,7 +154,7 @@ body,
   height: 100%;
   width: 100%;
   background: transparent !important;
-  font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   overflow: hidden;
 }
 
@@ -785,8 +785,8 @@ body[data-window='settings'] [contenteditable='true'] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   background: none;
   border: none;
@@ -1290,12 +1290,39 @@ body[data-window='settings'] [contenteditable='true'] {
    Kept unlayered so they win over Tailwind's `transition-*` utilities: a
    control either gets the shared tactile response or an explicit override. */
 
+/* One focus language for every interactive control. Mouse users never see it;
+   keyboard users always do, including on icon-only buttons and list rows. */
+button:focus-visible:not(:disabled),
+a[href]:focus-visible,
+[role='switch']:focus-visible,
+[role='option']:focus-visible {
+  outline: 2px solid rgb(var(--ui-fg) / 0.7);
+  outline-offset: 2px;
+}
+
 .pressable {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
-  transition-property: transform, background-color, border-color, color, opacity;
+  transition-property: transform, background-color, border-color, color, opacity, filter;
   transition-duration: 140ms;
   transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Primary actions share the active theme accent, exactly like the send button
+   and the modal confirmations. */
+.btn-primary {
+  border: 1px solid var(--chat-accent-strong);
+  background-color: var(--chat-accent);
+  color: var(--chat-on-accent);
+}
+
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.btn-primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .pressable:active:not(:disabled) {
@@ -1323,6 +1350,16 @@ body[data-window='settings'] [contenteditable='true'] {
   transform-origin: left center;
   transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform;
+}
+
+@media (prefers-contrast: more) {
+  button:focus-visible:not(:disabled),
+  a[href]:focus-visible,
+  [role='switch']:focus-visible,
+  [role='option']:focus-visible {
+    outline-width: 3px;
+    outline-color: rgb(var(--ui-fg));
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -2805,7 +2805,7 @@ export default function App(): JSX.Element {
                     <button
                       type="button"
                       onClick={() => window.api?.config.installUpdate?.()}
-                      className="pressable flex-shrink-0 rounded-lg bg-[color:var(--chat-accent)] px-3 py-1.5 text-xs font-semibold text-[color:var(--chat-on-accent)] hover:opacity-90"
+                      className="pressable btn-primary flex-shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold"
                     >
                       {updateStatus.state === 'downloaded' ? 'Restart & install' : 'Download'}
                     </button>
@@ -2964,7 +2964,7 @@ export default function App(): JSX.Element {
                                   <span className="truncate text-[12px] font-medium text-neutral-200">
                                     {group.conversationTitle}
                                   </span>
-                                  <span className="flex-shrink-0 text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+                                  <span className="flex-shrink-0 text-[10px] uppercase tracking-[0.12em] text-neutral-400">
                                     {group.matches.length} match{group.matches.length === 1 ? '' : 'es'}
                                   </span>
                                 </button>
@@ -2980,9 +2980,7 @@ export default function App(): JSX.Element {
                                     }`}
                                   >
                                     <span
-                                      className={`flex-shrink-0 text-[10px] uppercase tracking-[0.1em] ${
-                                        match.role === 'user' ? 'text-neutral-500' : 'text-neutral-600'
-                                      }`}
+                                      className="flex-shrink-0 text-[10px] uppercase tracking-[0.1em] text-neutral-400"
                                     >
                                       {match.role === 'user' ? 'You' : 'AI'}
                                     </span>
@@ -3061,10 +3059,10 @@ export default function App(): JSX.Element {
                                       ) : null}
                                     </span>
                                     <span className="mt-0.5 flex items-center justify-between gap-2">
-                                      <span className="text-[10px] uppercase tracking-[0.12em] text-neutral-500">
+                                      <span className="text-[10px] uppercase tracking-[0.12em] text-neutral-400">
                                         {conversation.messages.length} messages
                                       </span>
-                                      <span className="flex-shrink-0 text-[10px] tabular-nums text-neutral-500">
+                                      <span className="flex-shrink-0 text-[10px] tabular-nums text-neutral-400">
                                         {formatConversationTimestamp(conversation.updatedAt)}
                                       </span>
                                     </span>
@@ -3395,7 +3393,7 @@ export default function App(): JSX.Element {
                         ? 'Ask Covenant Code to change something…'
                         : 'What can I help you with today?'
                   }
-                  className="flex-1 bg-transparent text-lg text-neutral-100 placeholder:text-neutral-500 border-none focus:outline-none focus:ring-0 px-4 py-3 whitespace-pre overflow-hidden empty:before:content-[attr(data-placeholder)] empty:before:text-neutral-500"
+                  className="flex-1 bg-transparent text-lg tracking-[-0.01em] text-neutral-100 placeholder:text-neutral-500 border-none focus:outline-none focus:ring-0 px-4 py-3 whitespace-pre overflow-hidden empty:before:content-[attr(data-placeholder)] empty:before:text-neutral-500"
                   style={{ caretColor: 'var(--chat-accent)' }}
                   spellCheck={false}
                 />
@@ -3440,7 +3438,11 @@ export default function App(): JSX.Element {
                       }
                     }}
                     disabled={!barBusy && !query.trim()}
-                    className="pressable flex items-center justify-center w-8 h-8 mr-1 rounded-lg bg-neutral-700/60 hover:bg-neutral-600/80 disabled:opacity-30 disabled:cursor-not-allowed text-neutral-300 border border-white/[0.08]"
+                    className={`pressable flex items-center justify-center w-8 h-8 mr-1 rounded-lg border disabled:opacity-30 disabled:cursor-not-allowed ${
+                      barBusy
+                        ? 'border-red-400/40 bg-red-500/70 text-[color:var(--on-danger)] hover:bg-red-500/80'
+                        : 'border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent)] text-[color:var(--chat-on-accent)] hover:opacity-90'
+                    }`}
                     aria-label={barBusy ? 'Stop generating' : 'Submit prompt'}
                   >
                     <AnimatePresence initial={false}>

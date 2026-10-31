@@ -139,7 +139,7 @@ export default function PasteDetail({
                 </button>
               ))}
             </div>
-            <p className="mt-2 text-[11px] text-neutral-600">
+            <p className="mt-2 text-[11px] text-neutral-400">
               Opens the result in Covenant chat as a new conversation.
             </p>
           </div>

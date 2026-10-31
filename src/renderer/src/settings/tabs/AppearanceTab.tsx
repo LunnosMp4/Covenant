@@ -126,7 +126,7 @@ export default function AppearanceTab({
                       </div>
                       <div className="mt-3 flex items-center justify-between gap-2">
                         <p className="text-sm font-medium text-neutral-100">{themeOption.label}</p>
-                        <span className="text-[10px] uppercase tracking-[0.08em] text-neutral-500">
+                        <span className="text-[10px] uppercase tracking-[0.08em] text-neutral-400">
                           {isDark ? 'Dark' : 'Light'}
                         </span>
                       </div>
@@ -165,7 +165,7 @@ export default function AppearanceTab({
             className="w-full cursor-pointer accent-neutral-200"
           />
 
-          <div className="flex justify-between text-[10px] uppercase tracking-[0.08em] text-neutral-500">
+          <div className="flex justify-between text-[10px] uppercase tracking-[0.08em] text-neutral-400">
             <span>Off</span>
             <span>Subtle</span>
             <span>Strong</span>

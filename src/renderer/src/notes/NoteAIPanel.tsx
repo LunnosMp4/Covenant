@@ -177,7 +177,7 @@ export default function NoteAIPanel({
           </span>
           <div>
             <p className="text-xs font-semibold text-neutral-100">Note AI</p>
-            <p className="text-[10px] text-neutral-500">Uses the current note as context</p>
+            <p className="text-[10px] text-neutral-400">Uses the current note as context</p>
           </div>
         </div>
         <button

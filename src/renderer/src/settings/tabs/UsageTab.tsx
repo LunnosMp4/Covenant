@@ -82,7 +82,7 @@ function StatCard({
 }): JSX.Element {
   return (
     <div className="rounded-2xl border border-neutral-800 bg-neutral-900/70 px-4 py-3.5">
-      <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-neutral-500">{label}</p>
+      <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-neutral-400">{label}</p>
       <p className="mt-2 text-xl font-semibold tabular-nums text-neutral-100">{value}</p>
       {hint ? <p className="mt-1 text-xs text-neutral-500">{hint}</p> : null}
     </div>
@@ -186,7 +186,7 @@ function SpendChart({ daily }: { daily: UsageCostPoint[] }): JSX.Element {
           className="surface-shadow pointer-events-none absolute -translate-x-1/2 rounded-lg border border-neutral-700 bg-neutral-950/95 px-2.5 py-1.5 text-center"
           style={{ left: `${((hover! + 0.5) / daily.length) * 100}%`, top: 0 }}
         >
-          <p className="text-[10px] uppercase tracking-[0.08em] text-neutral-500">
+          <p className="text-[10px] uppercase tracking-[0.08em] text-neutral-400">
             {formatDay(activePoint.startTime)}
           </p>
           <p className="text-sm font-semibold tabular-nums text-neutral-100">
@@ -214,7 +214,7 @@ function ModelTable({ metrics }: { metrics: UsageMetrics }): JSX.Element {
     <div className="overflow-hidden rounded-xl border border-neutral-800">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-neutral-800 bg-neutral-900/80 text-[10px] uppercase tracking-[0.08em] text-neutral-500">
+          <tr className="border-b border-neutral-800 bg-neutral-900/80 text-[10px] uppercase tracking-[0.08em] text-neutral-400">
             <th className="px-4 py-2.5 text-left font-medium">Model</th>
             <th className="px-3 py-2.5 text-right font-medium">Requests</th>
             <th className="px-3 py-2.5 text-right font-medium">Input</th>
@@ -289,7 +289,7 @@ function ServiceBreakdown({ metrics }: { metrics: UsageMetrics }): JSX.Element {
                   }}
                 />
               </div>
-              <span className="w-10 text-right text-[10px] tabular-nums text-neutral-500">
+              <span className="w-10 text-right text-[10px] tabular-nums text-neutral-400">
                 {share.toFixed(0)}%
               </span>
             </div>
@@ -422,9 +422,9 @@ export default function UsageTab({
             type="button"
             onClick={onSaveAdminKey}
             disabled={isSavingAdminKey || !isConfigLoaded}
-            className="flex-shrink-0 rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+            className="pressable btn-primary flex-shrink-0 rounded-xl px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isSavingAdminKey ? 'Saving...' : 'Save'}
+            {isSavingAdminKey ? 'Saving…' : 'Save'}
           </button>
         </div>
         {adminKeyFeedback ? <p className="mt-2 text-xs text-emerald-300">{adminKeyFeedback}</p> : null}

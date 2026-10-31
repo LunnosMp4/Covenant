@@ -222,7 +222,7 @@ export default function WorkflowFormModal({
             type="button"
             disabled={isDisabled}
             onClick={handleSave}
-            className="pressable rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+            className="pressable btn-primary rounded-xl px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
           >
             Save
           </button>

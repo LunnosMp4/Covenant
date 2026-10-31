@@ -175,7 +175,7 @@ export default function NoteList({
                   <span className="line-clamp-2 text-[11px] leading-snug text-neutral-500">
                     {meta.preview || 'Empty note'}
                   </span>
-                  <span className="flex items-center justify-between gap-2 text-[10px] text-neutral-500">
+                  <span className="flex items-center justify-between gap-2 text-[10px] text-neutral-400">
                     <span className="flex items-center gap-1.5">
                       {formatRelativeTime(meta.updatedAt)}
                       {meta.meetingDurationMs ? ` · ${formatDuration(meta.meetingDurationMs)}` : ''}

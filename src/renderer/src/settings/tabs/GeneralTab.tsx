@@ -121,9 +121,9 @@ export default function GeneralTab({
               type="button"
               onClick={onSaveOpenAISettings}
               disabled={isSavingApiKey || !isConfigLoaded}
-              className="pressable rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+              className="pressable btn-primary rounded-xl px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isSavingApiKey ? 'Saving...' : 'Save'}
+              {isSavingApiKey ? 'Saving…' : 'Save'}
             </button>
           </div>
 
@@ -216,7 +216,7 @@ export default function GeneralTab({
                 <button
                   type="button"
                   onClick={onInstallUpdate}
-                  className="flex-shrink-0 rounded-lg bg-[color:var(--chat-accent)] px-3 py-1.5 text-xs font-semibold text-[color:var(--chat-on-accent)] transition-opacity hover:opacity-90"
+                  className="pressable btn-primary flex-shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold"
                 >
                   {updateStatus.state === 'downloaded' ? 'Restart & install' : 'Download'}
                 </button>

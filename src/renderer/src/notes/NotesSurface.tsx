@@ -758,7 +758,7 @@ export default function NotesSurface({
                               activeMeeting?.transcript ?? note.meeting?.transcript ?? ''
                             )
                           }
-                          className="ml-auto flex items-center gap-1 rounded-md px-2 py-1 text-[10px] text-neutral-500 transition-colors hover:bg-white/10 hover:text-neutral-200"
+                          className="ml-auto flex items-center gap-1 rounded-md px-2 py-1 text-[10px] text-neutral-400 transition-colors hover:bg-white/10 hover:text-neutral-200"
                         >
                           <CopyIcon /> Copy
                         </button>

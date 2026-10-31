@@ -17,10 +17,10 @@ interface ConfirmDeleteModalProps {
 }
 
 const SECONDARY_BUTTON =
-  'inline-flex h-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-medium text-neutral-200 transition-colors duration-150 hover:border-white/20 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 active:scale-[0.98]'
+  'inline-flex h-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-medium text-neutral-200 transition-colors duration-150 hover:border-white/20 hover:bg-white/10 active:scale-[0.98]'
 
 const PRIMARY_BUTTON =
-  'inline-flex h-9 items-center justify-center rounded-xl border px-4 text-sm font-semibold shadow-sm transition duration-150 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 active:scale-[0.98]'
+  'inline-flex h-9 items-center justify-center rounded-xl border px-4 text-sm font-semibold shadow-sm transition duration-150 hover:brightness-110 active:scale-[0.98]'
 
 function AlertIcon(): JSX.Element {
   return (
