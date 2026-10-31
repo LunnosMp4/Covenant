@@ -31,19 +31,17 @@ export default function MeasuredPanel({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -8, height: 0 }}
+      initial={{ opacity: 0, y: 6, height: 0 }}
       animate={{
         opacity: 1,
         y: 0,
         height: settled ? 'auto' : height,
         ...(width !== undefined ? { width } : {})
       }}
-      exit={{ opacity: 0, y: -6, height: 0, transition: PANEL_EXIT_TRANSITION }}
+      exit={{ opacity: 0, y: 6, height: 0, transition: PANEL_EXIT_TRANSITION }}
       transition={{
         ...PANEL_TRANSITION,
-        ...(width !== undefined
-          ? { width: { duration: 0.26, ease: [0.22, 1, 0.36, 1] } }
-          : {})
+        ...(width !== undefined ? { width: PANEL_TRANSITION } : {})
       }}
       onAnimationComplete={() => {
         if (height > 0) setSettled(true)

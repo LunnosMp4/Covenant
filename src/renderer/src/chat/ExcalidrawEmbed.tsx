@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
+import { SPRING_POPOVER } from '../constants/motion'
 
 interface ExcalidrawEmbedProps {
   checkpointId: string
@@ -109,6 +110,7 @@ export function ExcalidrawEmbed({ checkpointId, serverId }: ExcalidrawEmbedProps
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
+      transition={SPRING_POPOVER}
       className="surface-shadow my-3 overflow-hidden rounded-xl border border-white/10 bg-neutral-900"
     >
       <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-neutral-950/40 px-3 py-2 text-xs text-neutral-300">
@@ -123,7 +125,7 @@ export function ExcalidrawEmbed({ checkpointId, serverId }: ExcalidrawEmbedProps
           <button
             type="button"
             onClick={() => handleCopy(checkpointId, 'id')}
-            className="rounded px-2 py-1 text-[11px] text-neutral-400 transition hover:bg-white/10 hover:text-white"
+            className="pressable rounded px-2 py-1 text-[11px] text-neutral-400 hover:bg-white/10 hover:text-white"
           >
             {copied === 'id' ? 'Copied!' : 'Copy ID'}
           </button>
@@ -131,14 +133,14 @@ export function ExcalidrawEmbed({ checkpointId, serverId }: ExcalidrawEmbedProps
             type="button"
             onClick={() => handleCopy(iframeSrc, 'link')}
             disabled={!iframeSrc}
-            className="rounded px-2 py-1 text-[11px] text-neutral-400 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            className="pressable rounded px-2 py-1 text-[11px] text-neutral-400 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
           >
             {copied === 'link' ? 'Copied!' : 'Copy Link'}
           </button>
           <button
             type="button"
             onClick={() => setIsExpanded((expanded) => !expanded)}
-            className="rounded px-2 py-1 text-[11px] text-neutral-400 transition hover:bg-white/10 hover:text-white"
+            className="pressable rounded px-2 py-1 text-[11px] text-neutral-400 hover:bg-white/10 hover:text-white"
           >
             {isExpanded ? 'Collapse' : 'Expand'}
           </button>
@@ -146,7 +148,7 @@ export function ExcalidrawEmbed({ checkpointId, serverId }: ExcalidrawEmbedProps
             type="button"
             onClick={handleOpenExternal}
             disabled={!iframeSrc}
-            className="rounded px-2 py-1 text-[11px] text-[color:var(--chat-accent)] transition hover:bg-[color:var(--chat-accent-soft)] disabled:cursor-not-allowed disabled:opacity-40"
+            className="pressable rounded px-2 py-1 text-[11px] text-[color:var(--chat-accent)] hover:bg-[color:var(--chat-accent-soft)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             Open Browser ↗
           </button>
@@ -154,7 +156,7 @@ export function ExcalidrawEmbed({ checkpointId, serverId }: ExcalidrawEmbedProps
       </div>
 
       <div
-        className={`relative w-full transition-all duration-300 ${
+        className={`relative w-full transition-[height] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
           isExpanded ? 'h-[750px]' : 'h-[460px]'
         }`}
       >
@@ -176,14 +178,14 @@ export function ExcalidrawEmbed({ checkpointId, serverId }: ExcalidrawEmbedProps
               <button
                 type="button"
                 onClick={() => void resolveDiagram()}
-                className="rounded-lg border border-neutral-700 px-3 py-1.5 text-[11px] text-neutral-200 transition hover:border-neutral-600 hover:bg-neutral-800"
+                className="pressable rounded-lg border border-neutral-700 px-3 py-1.5 text-[11px] text-neutral-200 hover:border-neutral-600 hover:bg-neutral-800"
               >
                 Retry
               </button>
               <button
                 type="button"
                 onClick={() => handleCopy(checkpointId, 'id')}
-                className="rounded-lg border border-neutral-700 px-3 py-1.5 text-[11px] text-neutral-400 transition hover:border-neutral-600 hover:text-neutral-200"
+                className="pressable rounded-lg border border-neutral-700 px-3 py-1.5 text-[11px] text-neutral-400 hover:border-neutral-600 hover:text-neutral-200"
               >
                 {copied === 'id' ? 'Copied!' : 'Copy Checkpoint ID'}
               </button>

@@ -35,7 +35,7 @@ export default function CodeModeToggle({
             type="button"
             onClick={() => onSelect(agent.id)}
             title={agent.description ?? `${agent.name} mode`}
-            className={`h-7 rounded-md px-2.5 text-[11px] font-medium capitalize transition-colors ${
+            className={`pressable h-7 rounded-md px-2.5 text-[11px] font-medium capitalize ${
               active ? activeClass : 'text-neutral-400 hover:text-neutral-200'
             }`}
             aria-pressed={active}

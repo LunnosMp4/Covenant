@@ -30,7 +30,16 @@ import {
 import ExpandButton from './ui/ExpandButton'
 import { createId } from './utils/helpers'
 import MeasuredPanel from './ui/MeasuredPanel'
-import { TERMINAL_SPRING, WINDOW_SPRING } from './constants/motion'
+import {
+  EASE_OUT,
+  FADE_FAST,
+  PANEL_TRANSITION,
+  SPRING_POPOVER,
+  SPRING_UI,
+  TERMINAL_SPRING,
+  WINDOW_EXIT_TRANSITION,
+  WINDOW_SPRING
+} from './constants/motion'
 import { rankLauncherItems } from './utils/launcher/fuzzy'
 import {
   filterInstructionMentions,
@@ -2743,7 +2752,7 @@ export default function App(): JSX.Element {
             key="command-bar"
             initial={{ opacity: 0, y: 24, scale: 0.97 }}
             animate={enterReady ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 24, scale: 0.97 }}
-            exit={{ opacity: 0, y: 14, scale: 0.97 }}
+            exit={{ opacity: 0, y: 18, scale: 0.98, transition: WINDOW_EXIT_TRANSITION }}
             transition={WINDOW_SPRING}
             className="relative flex flex-col w-full max-w-full items-center pointer-events-none"
             style={themeStyles}
@@ -2756,7 +2765,7 @@ export default function App(): JSX.Element {
                   initial={{ opacity: 0, y: 8, scale: 0.98 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                  transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                  transition={SPRING_POPOVER}
                   className="surface-shadow pointer-events-auto mb-2 flex max-w-full items-center gap-3 rounded-2xl border border-white/10 bg-neutral-900/95 px-4 py-3"
                   data-interactive-surface
                   style={{ width: isWide && mode === 'ai' && activeSurface !== null ? wideWidth : 750 }}
@@ -2782,10 +2791,12 @@ export default function App(): JSX.Element {
                     {typeof updateStatus.percent === 'number' && updateStatus.state !== 'available' ? (
                       <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-white/10">
                         <div
-                          className={`h-full rounded-full transition-all duration-200 ${
+                          className={`progress-fill h-full rounded-full ${
                             updateStatus.state === 'downloaded' ? 'bg-emerald-400' : 'bg-amber-400'
                           }`}
-                          style={{ width: `${Math.min(Math.max(updateStatus.percent, 0), 100)}%` }}
+                          style={{
+                            transform: `scaleX(${Math.min(Math.max(updateStatus.percent, 0), 100) / 100})`
+                          }}
                         />
                       </div>
                     ) : null}
@@ -2794,7 +2805,7 @@ export default function App(): JSX.Element {
                     <button
                       type="button"
                       onClick={() => window.api?.config.installUpdate?.()}
-                      className="flex-shrink-0 rounded-lg bg-[color:var(--chat-accent)] px-3 py-1.5 text-xs font-semibold text-[color:var(--chat-on-accent)] transition-opacity hover:opacity-90"
+                      className="pressable flex-shrink-0 rounded-lg bg-[color:var(--chat-accent)] px-3 py-1.5 text-xs font-semibold text-[color:var(--chat-on-accent)] hover:opacity-90"
                     >
                       {updateStatus.state === 'downloaded' ? 'Restart & install' : 'Download'}
                     </button>
@@ -2815,6 +2826,12 @@ export default function App(): JSX.Element {
                   className={`relative ${isFullSurface ? '' : 'mb-2'} rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} command-surface texture-surface ${isFullSurface ? '' : 'surface-shadow'} pointer-events-auto`}
                   width={isWide ? wideWidth : 750}
                 >
+                  <motion.div
+                    key={activeSurface ?? 'chat'}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={FADE_FAST}
+                  >
                   {isChatOpen ? (
                   <>
                   <div className="relative flex items-center justify-between">
@@ -2822,7 +2839,7 @@ export default function App(): JSX.Element {
                       <button
                         type="button"
                         onClick={handleTogglePin}
-                        className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
+                        className={`pressable flex h-8 w-8 items-center justify-center rounded-lg border ${
                           isPinned
                             ? 'border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] text-[color:var(--chat-accent)]'
                             : 'border-white/10 text-neutral-400 hover:border-white/20 hover:bg-white/10 hover:text-neutral-200'
@@ -2844,7 +2861,7 @@ export default function App(): JSX.Element {
                         <button
                           type="button"
                           onClick={clearCurrentSystemPrompt}
-                          className="group flex min-w-0 max-w-[220px] items-center gap-1.5 rounded-lg border border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] px-2 py-1 text-[11px] font-medium text-[color:var(--chat-accent)] transition-colors hover:bg-[color:var(--chat-accent-strong)]"
+                          className="pressable group flex min-w-0 max-w-[220px] items-center gap-1.5 rounded-lg border border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] px-2 py-1 text-[11px] font-medium text-[color:var(--chat-accent)] hover:bg-[color:var(--chat-accent-strong)]"
                           title={selectedSystemPrompt.content}
                           aria-label={`Remove instruction ${selectedSystemPrompt.title}`}
                         >
@@ -2857,7 +2874,7 @@ export default function App(): JSX.Element {
                         <motion.div
                           initial={false}
                           animate={{ width: searchOpen ? 280 : 32 }}
-                          transition={{ type: 'spring', damping: 26, stiffness: 320, mass: 0.8 }}
+                          transition={SPRING_UI}
                           className={`flex h-8 items-center overflow-hidden rounded-lg border transition-colors duration-150 ${
                             searchOpen
                               ? 'border-white/20 bg-white/10'
@@ -2867,7 +2884,7 @@ export default function App(): JSX.Element {
                           <button
                             type="button"
                             onClick={toggleSearch}
-                            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-neutral-300 transition-colors hover:text-neutral-100"
+                            className="pressable flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-neutral-300 hover:text-neutral-100"
                             aria-label={searchOpen ? 'Close search' : 'Search conversations'}
                             aria-pressed={searchOpen}
                           >
@@ -2910,7 +2927,7 @@ export default function App(): JSX.Element {
                                 type="button"
                                 onClick={goToPreviousSearchMatch}
                                 disabled={searchMatches.length === 0}
-                                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-white/10 hover:text-neutral-200 disabled:cursor-not-allowed disabled:opacity-30"
+                                className="pressable flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-neutral-400 hover:bg-white/10 hover:text-neutral-200 disabled:cursor-not-allowed disabled:opacity-30"
                                 aria-label="Previous match"
                               >
                                 <ChevronUpIcon />
@@ -2919,7 +2936,7 @@ export default function App(): JSX.Element {
                                 type="button"
                                 onClick={goToNextSearchMatch}
                                 disabled={searchMatches.length === 0}
-                                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-white/10 hover:text-neutral-200 disabled:cursor-not-allowed disabled:opacity-30"
+                                className="pressable flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-neutral-400 hover:bg-white/10 hover:text-neutral-200 disabled:cursor-not-allowed disabled:opacity-30"
                                 aria-label="Next match"
                               >
                                 <ChevronDownIcon />
@@ -2927,7 +2944,7 @@ export default function App(): JSX.Element {
                               <button
                                 type="button"
                                 onClick={closeSearch}
-                                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-white/10 hover:text-neutral-200"
+                                className="pressable flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-white/10 hover:text-neutral-200"
                                 aria-label="Close search"
                               >
                                 <XIcon />
@@ -2942,7 +2959,7 @@ export default function App(): JSX.Element {
                                 <button
                                   type="button"
                                   onClick={() => selectSearchGroup(group.conversationId)}
-                                  className="flex w-full items-center justify-between gap-2 px-2.5 py-1 text-left transition-colors hover:bg-neutral-800/70"
+                                  className="pressable-soft flex w-full items-center justify-between gap-2 px-2.5 py-1 text-left hover:bg-neutral-800/70"
                                 >
                                   <span className="truncate text-[12px] font-medium text-neutral-200">
                                     {group.conversationTitle}
@@ -2956,7 +2973,7 @@ export default function App(): JSX.Element {
                                     key={match.messageId}
                                     type="button"
                                     onClick={() => selectSearchMatch(match)}
-                                    className={`flex w-full items-center gap-2 px-4 py-1 text-left transition-colors hover:bg-neutral-800/70 ${
+                                    className={`pressable-soft flex w-full items-center gap-2 px-4 py-1 text-left hover:bg-neutral-800/70 ${
                                       searchMatches.indexOf(match) === activeSearchMatchIndex
                                         ? 'bg-neutral-800/70'
                                         : ''
@@ -2982,7 +2999,7 @@ export default function App(): JSX.Element {
                         ref={historyButtonRef}
                         type="button"
                         onClick={() => setIsHistoryOpen((open) => !open)}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-neutral-300 transition-colors hover:border-white/20 hover:bg-white/10"
+                        className="pressable flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-neutral-300 hover:border-white/20 hover:bg-white/10"
                         aria-label="Open conversation history"
                       >
                         <MenuIcon />
@@ -3000,10 +3017,11 @@ export default function App(): JSX.Element {
                         <motion.div
                           key="history-menu"
                           ref={historyMenuRef}
-                          initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                          initial={{ opacity: 0, y: -6, scale: 0.98 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: -8, scale: 0.98 }}
-                          transition={{ duration: 0.15 }}
+                          exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                          transition={SPRING_POPOVER}
+                          style={{ transformOrigin: 'top right' }}
                           className="absolute right-0 top-10 z-20 w-72 overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950/95 shadow-xl"
                           data-interactive-surface
                         >
@@ -3058,7 +3076,7 @@ export default function App(): JSX.Element {
                                       setDeletingConversation(conversation)
                                       setIsHistoryOpen(false)
                                     }}
-                                    className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-red-500/20 hover:text-red-300"
+                                    className="pressable flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-red-500/20 hover:text-red-300"
                                     aria-label={`Delete ${conversation.title}`}
                                   >
                                     <TrashIcon />
@@ -3090,7 +3108,7 @@ export default function App(): JSX.Element {
                         ? Math.max(CHAT_SCROLL_HEIGHT, viewportHeight - 210)
                         : CHAT_SCROLL_HEIGHT
                     }}
-                    transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+                    transition={PANEL_TRANSITION}
                   >
                     <ChatTranscript
                       messages={chatMessages}
@@ -3139,6 +3157,7 @@ export default function App(): JSX.Element {
                       onTogglePin={handleTogglePin}
                     />
                   )}
+                  </motion.div>
                 </MeasuredPanel>
               )}
             </AnimatePresence>
@@ -3237,10 +3256,11 @@ export default function App(): JSX.Element {
               {showImagePanel && attachedImages.length > 0 && (
                 <motion.div
                   ref={imagePanelRef}
-                  initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                  initial={{ opacity: 0, scale: 0.96, y: 10 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                  transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                  exit={{ opacity: 0, scale: 0.96, y: 10 }}
+                  transition={SPRING_POPOVER}
+                  style={{ transformOrigin: 'bottom right' }}
                   className={`texture-surface surface-shadow absolute bottom-full right-0 z-30 mb-3 w-[280px] rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} p-3`}
                   data-interactive-surface
                 >
@@ -3254,7 +3274,7 @@ export default function App(): JSX.Element {
                         <span className="flex-1 text-sm text-neutral-300 truncate">{img.fileName}</span>
                         <button
                           onClick={() => setAttachedImages(prev => prev.filter(i => i.id !== img.id))}
-                          className="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-md text-neutral-500 hover:text-neutral-200 hover:bg-white/10 transition-colors"
+                          className="pressable flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-md text-neutral-500 hover:text-neutral-200 hover:bg-white/10"
                           aria-label={`Remove ${img.fileName}`}
                         >
                           <XIcon />
@@ -3272,7 +3292,7 @@ export default function App(): JSX.Element {
                 e.stopPropagation()
                 togglePopup('settings')
               }}
-              className="flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all duration-150"
+              className="pressable flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10"
               aria-label="Settings"
               aria-pressed={activePopup === 'settings'}
             >
@@ -3383,7 +3403,7 @@ export default function App(): JSX.Element {
 
               <button
                 onClick={(e) => { e.stopPropagation(); void toggleRecording() }}
-                className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-150 border ${
+                className={`pressable flex items-center justify-center w-8 h-8 rounded-lg border ${
                   voiceState === 'error'
                     ? 'bg-red-500/60 border-red-400/50 text-red-200'
                     : voiceState === 'recording'
@@ -3400,31 +3420,50 @@ export default function App(): JSX.Element {
 
               <div className="w-1" />
 
-              {(barBusy || query.trim()) && (
-                <button
-                  onClick={() => {
-                    if (barBusy) {
-                      if (isCodeOpen) void code.stop()
-                      else handleCancel()
-                    } else if (isCodeOpen) {
-                      handleCodeSubmit()
-                    } else {
-                      void handleSubmit()
-                    }
-                  }}
-                  disabled={!barBusy && !query.trim()}
-                  className="flex items-center justify-center w-8 h-8 mr-1 rounded-lg bg-neutral-700/60 hover:bg-neutral-600/80 disabled:opacity-30 disabled:cursor-not-allowed text-neutral-300 transition-all duration-150 border border-white/[0.08]"
-                  aria-label={barBusy ? 'Stop generating' : 'Submit prompt'}
-                >
-                  {barBusy ? <StopIcon /> : <SendIcon />}
-                </button>
-              )}
+              <AnimatePresence initial={false}>
+                {(barBusy || query.trim()) && (
+                  <motion.button
+                    key="submit"
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9, transition: FADE_FAST }}
+                    whileTap={{ scale: 0.94 }}
+                    transition={SPRING_UI}
+                    onClick={() => {
+                      if (barBusy) {
+                        if (isCodeOpen) void code.stop()
+                        else handleCancel()
+                      } else if (isCodeOpen) {
+                        handleCodeSubmit()
+                      } else {
+                        void handleSubmit()
+                      }
+                    }}
+                    disabled={!barBusy && !query.trim()}
+                    className="pressable flex items-center justify-center w-8 h-8 mr-1 rounded-lg bg-neutral-700/60 hover:bg-neutral-600/80 disabled:opacity-30 disabled:cursor-not-allowed text-neutral-300 border border-white/[0.08]"
+                    aria-label={barBusy ? 'Stop generating' : 'Submit prompt'}
+                  >
+                    <AnimatePresence initial={false}>
+                      <motion.span
+                        key={barBusy ? 'stop' : 'send'}
+                        initial={{ opacity: 0, scale: 0.7 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.7, transition: FADE_FAST }}
+                        transition={SPRING_UI}
+                        className="flex items-center justify-center"
+                      >
+                        {barBusy ? <StopIcon /> : <SendIcon />}
+                      </motion.span>
+                    </AnimatePresence>
+                  </motion.button>
+                )}
+              </AnimatePresence>
 
               {attachedImages.length > 0 && (
                 <button
                   ref={imageButtonRef}
                   onClick={(e) => { e.stopPropagation(); setShowImagePanel(v => !v) }}
-                  className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-150 border ${
+                  className={`pressable flex items-center justify-center w-8 h-8 rounded-lg border ${
                     showImagePanel
                       ? 'border-white/20 bg-white/10 text-neutral-200'
                       : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border-transparent hover:border-white/10'
@@ -3448,7 +3487,7 @@ export default function App(): JSX.Element {
                       e.stopPropagation()
                       togglePopup('workflow')
                     }}
-                    className="flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all duration-150"
+                    className="pressable flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10"
                     aria-label="Workflows"
                     aria-pressed={activePopup === 'workflow'}
                   >
@@ -3462,7 +3501,7 @@ export default function App(): JSX.Element {
                       e.stopPropagation()
                       togglePopup('tasks')
                     }}
-                    className="flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all duration-150"
+                    className="pressable flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10"
                     aria-label="Tasks"
                     aria-pressed={activePopup === 'tasks'}
                   >
@@ -3480,7 +3519,7 @@ export default function App(): JSX.Element {
                       setIsExpanded(true)
                       setIsWide(true)
                     }}
-                    className="flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all duration-150"
+                    className="pressable flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10"
                     aria-label="Notes"
                     aria-pressed={isNotesOpen}
                   >
@@ -3498,25 +3537,12 @@ export default function App(): JSX.Element {
       {(hasInitializedTerminal || mode === 'terminal') && (
         <motion.div
           key="terminal-container"
-          className="absolute inset-x-0 z-20 pointer-events-none flex justify-center"
-          initial={{ scaleY: 0.12, opacity: 0, height: terminalSurfaceHeight }}
-          animate={
-            enterReady && mode === 'terminal' && visible
-              ? {
-                  scaleY: 1,
-                  y: 0,
-                  opacity: 1,
-                  height: terminalSurfaceHeight
-                }
-              : { scaleY: 0.12, y: 0, opacity: 0, height: terminalSurfaceHeight }
-          }
-          transition={{
-            ...TERMINAL_SPRING,
-            height: { duration: 0.26, ease: [0.22, 1, 0.36, 1] }
-          }}
+          className="absolute inset-x-0 z-20 pointer-events-none flex justify-center overflow-hidden"
+          initial={{ height: terminalSurfaceHeight }}
+          animate={{ height: terminalSurfaceHeight }}
+          transition={{ height: { duration: 0.24, ease: EASE_OUT } }}
           style={{
             pointerEvents: 'none',
-            transformOrigin: 'bottom center',
             bottom: (barHeight > 0 ? barHeight + 28 : 112) + updateBannerOffset
           }}
           aria-hidden={mode !== 'terminal' || !visible}
@@ -3524,9 +3550,16 @@ export default function App(): JSX.Element {
           <motion.div
             className={`relative flex h-full max-w-full flex-col overflow-hidden rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10 texture-surface`}
             data-interactive-surface
-            initial={false}
-            animate={{ width: isWide ? wideWidth : 750 }}
-            transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+            initial={{ width: isWide ? wideWidth : 750, y: 18, opacity: 0 }}
+            animate={{
+              width: isWide ? wideWidth : 750,
+              y: enterReady && mode === 'terminal' && visible ? 0 : 18,
+              opacity: enterReady && mode === 'terminal' && visible ? 1 : 0
+            }}
+            transition={{
+              ...(enterReady && mode === 'terminal' && visible ? TERMINAL_SPRING : FADE_FAST),
+              width: PANEL_TRANSITION
+            }}
             style={{ pointerEvents: mode === 'terminal' && visible ? 'auto' : 'none' }}
           >
             <div className="flex h-full min-h-0 w-full">

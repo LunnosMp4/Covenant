@@ -480,7 +480,7 @@ function TerminalView({
           <button
             type="button"
             onClick={onTogglePin}
-            className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
+            className={`pressable flex h-8 w-8 items-center justify-center rounded-lg border ${
               isPinned
                 ? 'border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] text-[color:var(--chat-accent)]'
                 : 'border-white/10 text-neutral-400 hover:border-white/20 hover:bg-white/10 hover:text-neutral-200'
@@ -502,7 +502,7 @@ function TerminalView({
             type="button"
             onClick={copySelection}
             disabled={!hasSelection}
-            className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
+            className={`pressable flex h-8 w-8 items-center justify-center rounded-lg border ${
               hasSelection
                 ? 'border-white/10 text-neutral-400 hover:border-white/20 hover:bg-white/10 hover:text-neutral-200'
                 : 'border-white/10 text-neutral-600 cursor-not-allowed'
@@ -529,7 +529,7 @@ function TerminalView({
             return (
               <div
                 key={tab.sessionId}
-                className={`flex items-center gap-1 shrink-0 rounded-t-md px-2.5 py-1 text-xs cursor-pointer select-none transition-colors ${
+                className={`pressable-soft flex items-center gap-1 shrink-0 rounded-t-md px-2.5 py-1 text-xs cursor-pointer select-none ${
                   isActive
                     ? 'bg-white/10 text-neutral-200 border border-white/10 border-b-transparent'
                     : 'text-neutral-500 hover:text-neutral-300 hover:bg-white/5'
@@ -550,7 +550,7 @@ function TerminalView({
                       e.stopPropagation()
                       void closeTab(tab.sessionId)
                     }}
-                    className="flex items-center justify-center w-4 h-4 rounded hover:bg-white/15 transition-colors shrink-0 text-neutral-500 hover:text-neutral-200"
+                    className="pressable flex items-center justify-center w-4 h-4 rounded hover:bg-white/15 shrink-0 text-neutral-500 hover:text-neutral-200"
                     aria-label={`Close ${tab.shell} tab`}
                   >
                     <CloseTabIcon />
@@ -562,7 +562,7 @@ function TerminalView({
           <button
             type="button"
             onClick={() => void addTab()}
-            className="flex items-center justify-center w-6 h-6 shrink-0 rounded-md text-neutral-500 hover:text-neutral-200 hover:bg-white/10 transition-colors"
+            className="pressable flex items-center justify-center w-6 h-6 shrink-0 rounded-md text-neutral-500 hover:text-neutral-200 hover:bg-white/10"
             aria-label="Add terminal tab"
           >
             <PlusIcon />

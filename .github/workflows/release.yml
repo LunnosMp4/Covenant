@@ -102,7 +102,9 @@ jobs:
   publish-macos:
     name: macOS
     needs: prepare
-    runs-on: macos-14
+    # macos-15 is the current Intel (x64) GitHub-hosted image. macos-14 was
+    # retired on 2026-11-02 — see actions/runner-images#13518.
+    runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v4

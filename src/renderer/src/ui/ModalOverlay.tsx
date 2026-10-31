@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { FADE_FAST, SPRING_POPOVER } from '../constants/motion'
 
 interface ModalOverlayProps {
   children: ReactNode
@@ -72,7 +73,7 @@ export default function ModalOverlay({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.16 }}
+      transition={FADE_FAST}
       className={`fixed z-[100] flex items-center justify-center p-4 ${
         withBackdrop ? backdropClass : scoped ? 'rounded-2xl overflow-hidden' : ''
       }`}
@@ -87,8 +88,8 @@ export default function ModalOverlay({
       <motion.div
         initial={{ opacity: 0, y: 10, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 8, scale: 0.98 }}
-        transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+        exit={{ opacity: 0, y: 10, scale: 0.98, transition: FADE_FAST }}
+        transition={SPRING_POPOVER}
         className={`modal-scroll w-full max-h-full overflow-y-auto ${resolvedContentClassName}`}
         onMouseDown={(event) => event.stopPropagation()}
       >

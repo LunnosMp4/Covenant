@@ -79,8 +79,11 @@ export default function CodeInfoSidebar({
             {contextLimit ? (
               <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
                 <div
-                  className="h-full rounded-full transition-all duration-300"
-                  style={{ width: `${percent}%`, background: 'var(--chat-accent)' }}
+                  className="progress-fill h-full rounded-full"
+                  style={{
+                    transform: `scaleX(${percent / 100})`,
+                    background: 'var(--chat-accent)'
+                  }}
                 />
               </div>
             ) : null}

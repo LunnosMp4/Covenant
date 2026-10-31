@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion'
+import { FADE_FAST, SPRING_POPOVER } from '../constants/motion'
 import type { RefObject } from 'react'
 import type { ReasoningEffort } from '../../../shared/config'
 import {
@@ -175,7 +176,7 @@ function SettingsPopup({
         <button
           type="button"
           onClick={onOpenFullSettings}
-          className="flex w-full items-center justify-center gap-2 rounded-xl p-2.5 text-xs text-neutral-500 transition-colors duration-150 hover:text-neutral-300"
+          className="pressable-soft flex w-full items-center justify-center gap-2 rounded-xl p-2.5 text-xs text-neutral-500 hover:text-neutral-300"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
             <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
@@ -227,10 +228,11 @@ export default function ModulePopup({
   return (
     <motion.div
       ref={popupRef}
-      initial={{ opacity: 0, scale: 0.95, y: 10 }}
+      initial={{ opacity: 0, scale: 0.96, y: 10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95, y: 10 }}
-      transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+      exit={{ opacity: 0, scale: 0.96, y: 10, transition: FADE_FAST }}
+      transition={SPRING_POPOVER}
+      style={{ transformOrigin: anchorSide === 'left' ? 'bottom left' : 'bottom right' }}
       className={`absolute bottom-full ${anchorClass} z-30 mb-3 ${popupWidthClass} rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} p-3 surface-shadow texture-surface`}
       data-interactive-surface
     >
@@ -276,7 +278,7 @@ export default function ModulePopup({
                 key={item.id}
                 type="button"
                 onClick={() => onSelectItem(item)}
-                className="flex w-full items-center gap-3 rounded-xl p-3 text-left text-sm transition-colors duration-150 cursor-pointer text-neutral-200 hover:bg-white/5"
+                className="pressable-soft flex w-full items-center gap-3 rounded-xl p-3 text-left text-sm cursor-pointer text-neutral-200 hover:bg-white/5"
               >
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-xs font-semibold uppercase tracking-[0.08em] text-neutral-200">
                   <ItemIcon icon={item.icon} />
@@ -295,7 +297,7 @@ export default function ModulePopup({
         <button
           type="button"
           onClick={onAddNew}
-          className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-neutral-700 bg-neutral-800/40 p-3 text-sm text-neutral-500 transition-colors duration-150 hover:border-neutral-500 hover:text-neutral-300"
+          className="pressable-soft mt-2 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-neutral-700 bg-neutral-800/40 p-3 text-sm text-neutral-500 hover:border-neutral-500 hover:text-neutral-300"
         >
           <PlusIcon />
           <span>Add new...</span>

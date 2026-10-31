@@ -535,7 +535,7 @@ export default function NotesSurface({
           <button
             type="button"
             onClick={onTogglePin}
-            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors ${
+            className={`pressable flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
               isPinned
                 ? 'border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] text-[color:var(--chat-accent)]'
                 : 'border-white/10 text-neutral-400 hover:border-white/20 hover:bg-white/10 hover:text-neutral-200'
@@ -556,14 +556,14 @@ export default function NotesSurface({
               <button
                 type="button"
                 onClick={() => void handleNewNote()}
-                className="flex h-8 items-center gap-1 rounded-lg border border-white/10 px-2.5 text-xs text-neutral-300 transition-colors hover:bg-white/10 hover:text-white"
+                className="pressable flex h-8 items-center gap-1 rounded-lg border border-white/10 px-2.5 text-xs text-neutral-300 hover:bg-white/10 hover:text-white"
               >
                 + Note
               </button>
               <button
                 type="button"
                 onClick={() => void handleNewMeeting()}
-                className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs transition-colors ${
+                className={`pressable flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs ${
                   meeting.isRecording
                     ? 'border-red-400/30 bg-red-500/15 text-red-300'
                     : 'border-white/10 text-neutral-300 hover:bg-white/10 hover:text-white'
@@ -577,7 +577,7 @@ export default function NotesSurface({
                 onClick={() => setAiOpen((open) => !open)}
                 disabled={!aiAvailable}
                 title={aiAvailable ? 'Toggle note AI' : 'Open a note or switch to Recap to use AI'}
-                className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                className={`pressable flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs disabled:cursor-not-allowed disabled:opacity-40 ${
                   aiOpen && aiAvailable
                     ? 'border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] text-[color:var(--chat-accent)]'
                     : 'border-white/10 text-neutral-300 hover:bg-white/10 hover:text-white'
@@ -905,8 +905,8 @@ function MeetingWorkBanner({
       {progress !== null && (
         <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
           <div
-            className="h-full rounded-full bg-[color:var(--chat-accent)] transition-all duration-300"
-            style={{ width: `${Math.round(progress * 100)}%` }}
+            className="progress-fill h-full rounded-full bg-[color:var(--chat-accent)]"
+            style={{ transform: `scaleX(${progress})` }}
           />
         </div>
       )}

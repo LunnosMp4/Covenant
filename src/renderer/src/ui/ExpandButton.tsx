@@ -32,7 +32,7 @@ export default function ExpandButton({
     <button
       type="button"
       onClick={onClick}
-      className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
+      className={`pressable flex h-8 w-8 items-center justify-center rounded-lg border ${
         expanded
           ? 'border-white/20 bg-white/10 text-neutral-200'
           : 'border-white/10 text-neutral-400 hover:border-white/20 hover:bg-white/10 hover:text-neutral-200'

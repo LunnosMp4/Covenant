@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import type { PopupItem } from '../launcher/ModulePopup'
+import { SPRING_UI } from '../constants/motion'
 import type { WorkflowExecutionState } from '../types/renderer'
 import MeasuredCollapse from '../ui/MeasuredCollapse'
 
@@ -42,17 +43,17 @@ const statusAnimation = {
   running: { x: 0, scale: 1 },
   success: {
     x: 0,
-    scale: [1, 1.025, 1],
+    scale: [1, 1.02, 1],
     transition: {
-      duration: 0.45,
+      duration: 0.4,
       times: [0, 0.45, 1]
     }
   },
   error: {
-    x: [0, -5, 5, -4, 4, 0],
+    x: [0, -3, 3, -2, 2, 0],
     scale: 1,
     transition: {
-      duration: 0.35
+      duration: 0.3
     }
   }
 }
@@ -106,7 +107,7 @@ export default function WorkflowList({
               <button
                 type="button"
                 onClick={() => onRunWorkflow(item)}
-                className="relative z-10 flex w-full items-center gap-3 p-3 text-left text-sm transition-colors duration-150 hover:bg-white/5"
+                className="pressable-soft relative z-10 flex w-full items-center gap-3 p-3 text-left text-sm hover:bg-white/5"
               >
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-neutral-950/20 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-300">
                   <WorkflowIcon />
@@ -129,7 +130,8 @@ export default function WorkflowList({
                       initial={{ opacity: 0, x: 8 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: 8 }}
-                      transition={{ duration: 0.18 }}
+                      whileTap={{ scale: 0.97 }}
+                      transition={SPRING_UI}
                       onClick={(event) => {
                         event.stopPropagation()
                         onToggleLogs(item.id)

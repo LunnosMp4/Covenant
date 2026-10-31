@@ -283,8 +283,10 @@ function ServiceBreakdown({ metrics }: { metrics: UsageMetrics }): JSX.Element {
             <div className="mt-1.5 flex items-center gap-2">
               <div className="h-1 flex-1 overflow-hidden rounded-full bg-neutral-800">
                 <div
-                  className="h-full rounded-full bg-neutral-500/80"
-                  style={{ width: `${Math.max(Math.min(share, 100), share > 0 ? 2 : 0)}%` }}
+                  className="progress-fill h-full rounded-full bg-neutral-500/80"
+                  style={{
+                    transform: `scaleX(${Math.max(Math.min(share, 100), share > 0 ? 2 : 0) / 100})`
+                  }}
                 />
               </div>
               <span className="w-10 text-right text-[10px] tabular-nums text-neutral-500">

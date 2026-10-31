@@ -139,7 +139,7 @@ export default function MeetingRecorderPanel({
                 {bars.map((on, index) => (
                   <span
                     key={index}
-                    className={`w-[3px] rounded-full transition-all duration-100 ${
+                    className={`w-[3px] rounded-full transition-colors duration-100 ${
                       on ? 'bg-red-400' : 'bg-white/10'
                     }`}
                     style={{ height: `${5 + ((index * 7) % 18)}px` }}

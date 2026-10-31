@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import type { LauncherItem } from '../../../shared/launcher/launcher'
+import { SPRING_POPOVER } from '../constants/motion'
 import { getAppBadgeText } from '../utils/helpers'
 
 interface LauncherResultsProps {
@@ -58,7 +59,8 @@ export default function LauncherResults({
       initial={{ opacity: 0, scale: 0.98, y: 10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.98, y: 10 }}
-      transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+      transition={SPRING_POPOVER}
+      style={{ transformOrigin: 'bottom center' }}
       className={`absolute inset-x-0 bottom-full z-40 mb-3 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} p-2 surface-shadow texture-surface`}
       data-interactive-surface
     >
@@ -73,7 +75,7 @@ export default function LauncherResults({
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => onSelect(item)}
               aria-selected={isSelected}
-              className={`group relative flex w-full items-center gap-3 overflow-hidden rounded-xl py-2 pl-3.5 pr-3 text-left text-sm transition-all duration-150 ${
+              className={`pressable-soft group relative flex w-full items-center gap-3 overflow-hidden rounded-xl py-2 pl-3.5 pr-3 text-left text-sm ${
                 isSelected
                   ? 'bg-white/[0.06] text-neutral-50 ring-1 ring-inset ring-white/10'
                   : 'text-neutral-500 hover:bg-white/[0.04] hover:text-neutral-300'

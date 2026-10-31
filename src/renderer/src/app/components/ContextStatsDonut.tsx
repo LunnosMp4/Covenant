@@ -28,12 +28,12 @@ export default function ContextStatsDonut({
       <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 cursor-default">
         <svg width="20" height="20" viewBox="0 0 28 28" className="-rotate-90">
           <circle cx="14" cy="14" r={radius} fill="none" className="stroke-white/10" strokeWidth="2" />
-          <circle cx="14" cy="14" r={radius} fill="none" className={progressClass} strokeWidth="2"
+          <circle cx="14" cy="14" r={radius} fill="none" className={`${progressClass} transition-[stroke-dashoffset] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none`} strokeWidth="2"
             strokeDasharray={circumference} strokeDashoffset={dashOffset}
             strokeLinecap="round" />
         </svg>
       </div>
-      <div className="absolute right-0 top-full mt-1 z-50 min-w-[240px] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150">
+      <div className="pointer-events-none absolute right-0 top-full z-50 mt-1 min-w-[240px] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
         <div className="rounded-xl border border-white/10 bg-neutral-900 p-3 shadow-lg">
           <div className="mb-2">
             <div className="mb-1 flex items-center justify-between text-[11px] text-neutral-400">
@@ -41,7 +41,10 @@ export default function ContextStatsDonut({
               <span>{Math.round(fillPercent * 100)}%</span>
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-              <div className="h-full rounded-full bg-white/40 transition-all" style={{ width: `${Math.round(fillPercent * 100)}%` }} />
+              <div
+                className="progress-fill h-full rounded-full bg-white/40"
+                style={{ transform: `scaleX(${fillPercent})` }}
+              />
             </div>
           </div>
           <div className="space-y-0.5 text-[11px] text-neutral-400">

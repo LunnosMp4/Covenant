@@ -63,7 +63,7 @@ export default function PrepromptFormModal({
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-2 text-sm font-medium text-neutral-200 transition-colors hover:border-neutral-600 hover:bg-neutral-700"
+            className="pressable rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-2 text-sm font-medium text-neutral-200 hover:border-neutral-600 hover:bg-neutral-700"
           >
             Cancel
           </button>
@@ -71,7 +71,7 @@ export default function PrepromptFormModal({
             type="button"
             disabled={isDisabled}
             onClick={() => onSave({ id: initialData?.id, title, content })}
-            className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+            className="pressable rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
           >
             Save
           </button>

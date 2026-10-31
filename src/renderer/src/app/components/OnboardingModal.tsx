@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion'
+import { FADE_FAST, SPRING_POPOVER } from '../../constants/motion'
 
 interface OnboardingModalProps {
   apiKey: string
@@ -19,13 +20,15 @@ export default function OnboardingModal({
       data-interactive-surface
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+      exit={{ opacity: 0, transition: FADE_FAST }}
+      transition={FADE_FAST}
     >
       <div className="absolute inset-0 bg-black/60" />
       <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
+        initial={{ scale: 0.97, opacity: 0, y: 8 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.97, opacity: 0, y: 8, transition: FADE_FAST }}
+        transition={SPRING_POPOVER}
         className="relative w-full max-w-md rounded-2xl border border-neutral-700 bg-neutral-900 p-6 shadow-2xl"
       >
         <h2 className="text-lg font-semibold text-neutral-100">Welcome to Covenant</h2>
@@ -74,14 +77,14 @@ export default function OnboardingModal({
           <button
             type="button"
             onClick={onSkip}
-            className="rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-2 text-sm font-medium text-neutral-200 transition-colors hover:border-neutral-600"
+            className="pressable rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-2 text-sm font-medium text-neutral-200 hover:border-neutral-600"
           >
             Skip
           </button>
           <button
             type="button"
             onClick={onComplete}
-            className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-white"
+            className="pressable rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-white"
           >
             Get started
           </button>

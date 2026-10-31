@@ -133,7 +133,7 @@ export default function PasteDetail({
                   type="button"
                   disabled={!text.trim()}
                   onClick={() => askAi(action.id)}
-                  className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-xs text-neutral-300 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  className="pressable rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-xs text-neutral-300 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {action.label}
                 </button>
@@ -190,7 +190,7 @@ function ActionButton({
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs transition-colors ${
+      className={`pressable flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs ${
         danger
           ? 'border-red-500/20 bg-red-500/5 text-red-300 hover:bg-red-500/15 hover:text-red-200'
           : 'border-white/10 bg-white/[0.04] text-neutral-300 hover:bg-white/10 hover:text-white'

@@ -5,6 +5,7 @@ import { formatSourceUrl, formatUsageSummary } from '../utils/chat/chatUsage'
 import { AssistantMarkdown, CopyButton, ToolStepRow, WebSearchStepRow } from './AssistantMarkdown'
 import ExcalidrawEmbed from './ExcalidrawEmbed'
 import { Favicon } from './Favicon'
+import MeasuredCollapse from '../ui/MeasuredCollapse'
 
 interface ChatTranscriptProps {
   messages: ChatMessage[]
@@ -27,6 +28,7 @@ interface ChatMessageRowProps {
   onToggleThinking: (messageId: string) => void
   onToggleSources: (messageId: string) => void
   fullWidthBubbles: boolean
+  isLatest: boolean
 }
 
 /**
@@ -43,7 +45,8 @@ function ChatMessageRow({
   showSources,
   onToggleThinking,
   onToggleSources,
-  fullWidthBubbles
+  fullWidthBubbles,
+  isLatest
 }: ChatMessageRowProps): JSX.Element {
   const isAssistant = message.role === 'assistant'
   const isUser = message.role === 'user'
@@ -68,7 +71,7 @@ function ChatMessageRow({
   return (
     <div
       data-message-id={message.id}
-      className={`flex ${rowJustify}`}
+      className={`flex ${rowJustify} ${isLatest ? 'chat-message-enter' : ''}`}
     >
       <div
         className={`chat-message ${bubbleWidth} rounded-2xl border px-3 py-2 text-[13px] leading-relaxed select-text ${
@@ -151,7 +154,7 @@ function ChatMessageRow({
               <div className="chat-sources-wrapper">
                 <button
                   type="button"
-                  className="chat-sources-toggle"
+                  className="pressable chat-sources-toggle"
                   onClick={() => onToggleSources(message.id)}
                 >
                   <svg
@@ -170,42 +173,44 @@ function ChatMessageRow({
                   <span className="chat-sources-count">{message.sources.length}</span>
                 </button>
 
-                {showSources && (
-                  <div className="chat-sources-panel">
-                    <div className="chat-sources-panel-header">
-                      <span className="font-medium">Sources</span>
-                      <button
-                        type="button"
-                        className="chat-sources-panel-close"
-                        onClick={() => onToggleSources(message.id)}
-                        aria-label="Close sources"
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M18 6 6 18M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                    <div className="chat-sources-panel-list">
-                      {message.sources.map((source, idx) => (
-                        <a
-                          key={`${source.url}-${idx}`}
-                          href={source.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="chat-source-item"
+                <MeasuredCollapse open={showSources}>
+                  <div className="pt-1.5">
+                    <div className="chat-sources-panel">
+                      <div className="chat-sources-panel-header">
+                        <span className="font-medium">Sources</span>
+                        <button
+                          type="button"
+                          className="pressable chat-sources-panel-close"
+                          onClick={() => onToggleSources(message.id)}
+                          aria-label="Close sources"
                         >
-                          <Favicon url={source.url} className="chat-source-favicon" />
-                          <div className="chat-source-text">
-                            <span className="chat-source-title">
-                              {source.title || formatSourceUrl(source.url)}
-                            </span>
-                            <span className="chat-source-url">{formatSourceUrl(source.url)}</span>
-                          </div>
-                        </a>
-                      ))}
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 6 6 18M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                      <div className="chat-sources-panel-list">
+                        {message.sources.map((source, idx) => (
+                          <a
+                            key={`${source.url}-${idx}`}
+                            href={source.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="pressable-soft chat-source-item"
+                          >
+                            <Favicon url={source.url} className="chat-source-favicon" />
+                            <div className="chat-source-text">
+                              <span className="chat-source-title">
+                                {source.title || formatSourceUrl(source.url)}
+                              </span>
+                              <span className="chat-source-url">{formatSourceUrl(source.url)}</span>
+                            </div>
+                          </a>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                )}
+                </MeasuredCollapse>
               </div>
             ) : null}
             <AssistantMarkdown content={message.content} />
@@ -238,7 +243,7 @@ function ChatMessageRow({
             {metaLabel ? <span>{metaLabel}</span> : null}
             <CopyButton
               text={message.content}
-              className="flex items-center justify-center h-6 w-6 rounded-md text-neutral-500 hover:text-neutral-200 hover:bg-white/10 transition-colors"
+              className="pressable flex items-center justify-center h-6 w-6 rounded-md text-neutral-500 hover:text-neutral-200 hover:bg-white/10"
             />
           </div>
         ) : null}
@@ -271,7 +276,7 @@ export default function ChatTranscript({
 
   return (
     <>
-      {messages.map((message) => {
+      {messages.map((message, index) => {
         const isStreaming =
           message.role === 'assistant' && isLoading && activeStreamMessageId === message.id
 
@@ -285,6 +290,7 @@ export default function ChatTranscript({
             onToggleThinking={onToggleThinking}
             onToggleSources={onToggleSources}
             fullWidthBubbles={fullWidthBubbles}
+            isLatest={index === messages.length - 1}
           />
         )
       })}

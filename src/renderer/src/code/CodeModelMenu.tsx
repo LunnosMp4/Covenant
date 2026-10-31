@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import type { CodeModel } from '../../../shared/code/code'
+import { SPRING_POPOVER } from '../constants/motion'
 import { ChevronDownIcon } from '../ui/icons'
 
 interface CodeModelMenuProps {
@@ -45,7 +47,7 @@ export default function CodeModelMenu({
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className={`flex h-8 min-w-0 items-center gap-2 rounded-lg border px-2.5 text-xs transition-colors ${
+        className={`pressable flex h-8 min-w-0 items-center gap-2 rounded-lg border px-2.5 text-xs ${
           open
             ? 'border-white/20 bg-white/10 text-neutral-100'
             : 'border-white/10 text-neutral-200 hover:border-white/20 hover:bg-white/10'
@@ -62,8 +64,15 @@ export default function CodeModelMenu({
         <ChevronDownIcon />
       </button>
 
+      <AnimatePresence>
       {open && (
-        <div className="surface-shadow absolute right-0 top-10 z-30 w-72 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/95">
+        <motion.div
+          initial={{ opacity: 0, y: -4, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -4, scale: 0.98, pointerEvents: 'none' }}
+          transition={SPRING_POPOVER}
+          style={{ transformOrigin: 'top right' }}
+          className="surface-shadow absolute right-0 top-10 z-30 w-72 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/95">
           <div className="flex gap-1 border-b border-white/5 p-1.5">
             {(['models', 'effort'] as Tab[]).map((value) => (
               <button
@@ -137,8 +146,9 @@ export default function CodeModelMenu({
               </>
             )}
           </div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   )
 }

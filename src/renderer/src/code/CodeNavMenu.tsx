@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import type { CodeProject, CodeSession } from '../../../shared/code/code'
+import { SPRING_POPOVER } from '../constants/motion'
 import { ChevronDownIcon, TrashIcon } from '../ui/icons'
 import { FolderIcon, PlusIcon, SessionIcon } from './icons'
 
@@ -54,7 +56,7 @@ export default function CodeNavMenu({
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className={`flex h-8 min-w-0 items-center gap-2 rounded-lg border px-2.5 text-xs transition-colors ${
+        className={`pressable flex h-8 min-w-0 items-center gap-2 rounded-lg border px-2.5 text-xs ${
           open
             ? 'border-white/20 bg-white/10 text-neutral-100'
             : 'border-white/10 text-neutral-200 hover:border-white/20 hover:bg-white/10'
@@ -69,8 +71,15 @@ export default function CodeNavMenu({
         <ChevronDownIcon />
       </button>
 
+      <AnimatePresence>
       {open && (
-        <div className="surface-shadow absolute left-0 top-10 z-30 w-80 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/95">
+        <motion.div
+          initial={{ opacity: 0, y: -4, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -4, scale: 0.98, pointerEvents: 'none' }}
+          transition={SPRING_POPOVER}
+          style={{ transformOrigin: 'top left' }}
+          className="surface-shadow absolute left-0 top-10 z-30 w-80 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/95">
           <div className="max-h-72 overflow-y-auto p-1 chat-scrollbar">
             <div className="flex items-center justify-between px-2 pb-1 pt-2">
               <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-600">
@@ -195,8 +204,9 @@ export default function CodeNavMenu({
               )
             })}
           </div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { MotionConfig } from 'framer-motion'
 import App from './App'
 import Settings from './Settings'
 import './assets/index.css'
@@ -20,7 +21,13 @@ document.body.setAttribute('data-window', windowKind)
 
 const RootComponent = windowKind === 'settings' ? Settings : App
 
-const app = <RootComponent />
+// `reducedMotion="user"` makes Framer Motion honour the OS setting: transform
+// and layout animations are skipped while opacity/colour feedback is kept.
+const app = (
+  <MotionConfig reducedMotion="user">
+    <RootComponent />
+  </MotionConfig>
+)
 
 // StrictMode double-invokes mount effects in development which re-plays
 // entry animations and makes flicker hard to reason about. Keep it for dev

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion, useAnimationControls, type Transition } from 'framer-motion'
-import { WINDOW_ENTER_TRANSITION, WINDOW_EXIT_TRANSITION } from './constants/motion'
+import { FADE_FAST, WINDOW_ENTER_TRANSITION, WINDOW_EXIT_TRANSITION } from './constants/motion'
 import ConfirmDeleteModal from './ui/ConfirmDeleteModal'
 import CustomSelect from './ui/CustomSelect'
 import McpServerFormModal from './settings/modals/McpServerFormModal'
@@ -947,7 +947,7 @@ const handleMinimizeWindow = (): void => {
           key="settings-window"
           initial={{ opacity: 0, scale: 0.96, y: 8 }}
           animate={windowControls}
-          exit={{ opacity: 0, scale: 0.97, y: 6, transition: SETTINGS_WINDOW_EXIT_TRANSITION }}
+          exit={{ opacity: 0, scale: 0.96, y: 8, transition: SETTINGS_WINDOW_EXIT_TRANSITION }}
           className="h-screen w-screen bg-transparent font-sans text-neutral-200"
         >
       <div className={`relative h-full overflow-hidden rounded-xl border border-neutral-800/85 bg-gradient-to-br ${selectedTheme} texture-surface`}>
@@ -964,7 +964,7 @@ const handleMinimizeWindow = (): void => {
                 type="button"
                 aria-label="Minimize settings window"
                 onClick={handleMinimizeWindow}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
+                className="pressable flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
               >
                 <MinimizeIcon />
               </button>
@@ -973,7 +973,7 @@ const handleMinimizeWindow = (): void => {
                 type="button"
                 aria-label="Close settings window"
                 onClick={handleCloseWindow}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-red-500/20 hover:text-red-300"
+                className="pressable flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-red-500/20 hover:text-red-300"
               >
                 <CloseIcon />
               </button>
@@ -999,7 +999,7 @@ const handleMinimizeWindow = (): void => {
                           type="button"
                           onClick={() => setActiveTab(item.id)}
                           aria-current={isActive ? 'page' : undefined}
-                          className={`group flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors ${
+                          className={`pressable-soft group flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm ${
                             isActive
                               ? 'border-neutral-700 bg-neutral-800 text-neutral-100'
                               : 'border-transparent text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-200'
@@ -1022,6 +1022,12 @@ const handleMinimizeWindow = (): void => {
           </aside>
 
           <main className="flex-1 overflow-y-auto p-8">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={FADE_FAST}
+            >
             <header className="mb-6">
               <p className="text-xs text-neutral-500">Preferences</p>
               <h2 className="mt-2 text-2xl font-semibold text-neutral-100">{pageTitle}</h2>
@@ -1156,6 +1162,7 @@ const handleMinimizeWindow = (): void => {
                 onOpenLogs={() => void window.api?.code?.openLogs()}
               />
             )}
+            </motion.div>
           </main>
         </div>
       </div>

@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { SPRING_POPOVER } from '../constants/motion'
 
 interface SelectOption {
   value: string
@@ -24,7 +26,9 @@ function ChevronIcon({ open }: { open: boolean }): JSX.Element {
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
-      className={`transition-transform ${open ? 'rotate-180' : ''}`}
+      className={`transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+        open ? 'rotate-180' : ''
+      }`}
       aria-hidden
     >
       <path d="m6 9 6 6 6-6" />
@@ -45,8 +49,8 @@ export default function CustomSelect({
   const selected = options.find((opt) => opt.value === value)
 
   const buttonClassName = compact
-    ? 'flex h-8 w-full items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 px-2.5 text-xs text-neutral-200 transition-colors hover:border-white/20 hover:bg-white/10 focus:outline-none disabled:cursor-not-allowed'
-    : 'flex w-full items-center justify-between gap-2 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100 transition-colors focus:border-neutral-600 focus:outline-none disabled:cursor-not-allowed'
+    ? 'pressable flex h-8 w-full items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 px-2.5 text-xs text-neutral-200 hover:border-white/20 hover:bg-white/10 focus:outline-none disabled:cursor-not-allowed'
+    : 'pressable flex w-full items-center justify-between gap-2 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100 focus:border-neutral-600 focus:outline-none disabled:cursor-not-allowed'
 
   useEffect(() => {
     if (!open) return
@@ -90,46 +94,56 @@ export default function CustomSelect({
         {!disabled && <ChevronIcon open={open} />}
       </button>
 
-      {open && !disabled && (
-        <div className="surface-shadow absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900">
-          <div className="max-h-48 overflow-y-auto py-1 scrollbar-hidden">
-            {options.map((option) => {
-              const isActive = option.value === value
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => {
-                    onChange(option.value)
-                    setOpen(false)
-                  }}
-                  className={`flex w-full items-center px-3 py-2 text-left text-sm transition-colors ${
-                    isActive
-                      ? 'bg-white/10 text-neutral-100'
-                      : 'text-neutral-300 hover:bg-white/5 hover:text-neutral-100'
-                  }`}
-                >
-                  <span className="truncate">{option.label}</span>
-                  {isActive && (
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      className="ml-auto shrink-0 text-neutral-400"
-                      aria-hidden
-                    >
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {open && !disabled && (
+          <motion.div
+            key="select-menu"
+            initial={{ opacity: 0, y: -4, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.98, pointerEvents: 'none' }}
+            transition={SPRING_POPOVER}
+            style={{ transformOrigin: 'top', pointerEvents: open ? 'auto' : 'none' }}
+            className="surface-shadow absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900"
+          >
+            <div className="max-h-48 overflow-y-auto py-1 scrollbar-hidden">
+              {options.map((option) => {
+                const isActive = option.value === value
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => {
+                      onChange(option.value)
+                      setOpen(false)
+                    }}
+                    className={`pressable-soft flex w-full items-center px-3 py-2 text-left text-sm ${
+                      isActive
+                        ? 'bg-white/10 text-neutral-100'
+                        : 'text-neutral-300 hover:bg-white/5 hover:text-neutral-100'
+                    }`}
+                  >
+                    <span className="truncate">{option.label}</span>
+                    {isActive && (
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        className="ml-auto shrink-0 text-neutral-400"
+                        aria-hidden
+                      >
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

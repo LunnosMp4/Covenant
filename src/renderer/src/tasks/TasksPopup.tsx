@@ -5,6 +5,7 @@ import type { GamificationState, XpToastState } from '../types/renderer'
 import { getRankTitle, getXpForLevel } from '../../../shared/tasks/gamification'
 import { getThemePalette } from '../constants/theme'
 import { getTierLabel, hexToRgba } from '../utils/tasks/gamification'
+import { FADE_FAST, SPRING_POPOVER, SPRING_UI } from '../constants/motion'
 
 interface TasksPopupProps {
   tasks: Task[]
@@ -167,9 +168,9 @@ export default function TasksPopup({
           </div>
           <div className="h-1 overflow-hidden rounded-full" style={{ backgroundColor: rgba(levelColor, 0.16) }}>
             <div
-              className="h-full rounded-full transition-all duration-500 ease-out"
+              className="progress-fill h-full rounded-full"
               style={{
-                width: `${progressPct}%`,
+                transform: `scaleX(${progressPct / 100})`,
                 background: `linear-gradient(90deg, ${levelColor}, ${rgba(levelColor, 0.65)})`
               }}
             />
@@ -196,7 +197,7 @@ export default function TasksPopup({
           type="button"
           onClick={handleSubmit}
           disabled={!draft.trim()}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-neutral-300 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          className="pressable flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-neutral-300 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
           aria-label="Add task"
         >
           <PlusIcon />
@@ -208,10 +209,16 @@ export default function TasksPopup({
           Nothing to do. Add your first task above.
         </div>
       ) : (
-        <div className="chat-scrollbar max-h-56 space-y-1 overflow-y-auto pr-1">
+        <motion.div layoutScroll className="chat-scrollbar max-h-56 space-y-1 overflow-y-auto pr-1">
+          <AnimatePresence initial={false}>
           {tasks.map((task) => (
-            <div
+            <motion.div
               key={task.id}
+              layout="position"
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4, scale: 0.98, transition: FADE_FAST }}
+              transition={SPRING_UI}
               onDragOver={(e) => handleDragOver(e, task.id)}
               onDragLeave={() => handleDragLeave(task.id)}
               onDrop={(e) => handleDrop(e, task.id)}
@@ -235,7 +242,7 @@ export default function TasksPopup({
               <button
                 type="button"
                 onClick={() => onToggle(task.id)}
-                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors ${
+                className={`pressable flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
                   task.done
                     ? ''
                     : 'border-white/20 text-transparent hover:border-white/40'
@@ -285,14 +292,15 @@ export default function TasksPopup({
               <button
                 type="button"
                 onClick={() => onDelete(task.id)}
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-neutral-600 opacity-0 transition-all hover:bg-white/10 hover:text-neutral-200 group-hover:opacity-100"
+                className="pressable flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-neutral-600 opacity-0 transition-opacity hover:bg-white/10 hover:text-neutral-200 group-hover:opacity-100"
                 aria-label="Delete task"
               >
                 <TrashIcon />
               </button>
-            </div>
+            </motion.div>
           ))}
-        </div>
+          </AnimatePresence>
+        </motion.div>
       )}
 
       {tasks.length > 0 && (
@@ -304,7 +312,7 @@ export default function TasksPopup({
             <button
               type="button"
               onClick={onClearCompleted}
-              className="text-[11px] text-neutral-500 transition-colors hover:text-neutral-300"
+              className="pressable text-[11px] text-neutral-500 hover:text-neutral-300"
             >
               Clear completed
             </button>
@@ -319,7 +327,7 @@ export default function TasksPopup({
             initial={{ opacity: 0, y: 10, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.96 }}
-            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            transition={SPRING_POPOVER}
             className="pointer-events-none absolute inset-x-0 bottom-1 z-10 flex justify-center"
           >
             <div

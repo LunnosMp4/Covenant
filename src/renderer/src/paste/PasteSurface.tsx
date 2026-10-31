@@ -283,7 +283,7 @@ export default function PasteSurface({
           <button
             type="button"
             onClick={onTogglePin}
-            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors ${
+            className={`pressable flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
               isPinned
                 ? 'border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent-soft)] text-[color:var(--chat-accent)]'
                 : 'border-white/10 text-neutral-400 hover:border-white/20 hover:bg-white/10 hover:text-neutral-200'
@@ -345,7 +345,7 @@ export default function PasteSurface({
                     key={filter.id}
                     type="button"
                     onClick={() => setTypeFilter(filter.id)}
-                    className={`rounded-md px-2 py-1 text-[11px] transition-colors ${
+                    className={`pressable rounded-md px-2 py-1 text-[11px] ${
                       typeFilter === filter.id
                         ? 'bg-white/10 text-neutral-100'
                         : 'text-neutral-500 hover:bg-white/5 hover:text-neutral-300'
@@ -372,7 +372,7 @@ export default function PasteSurface({
                       data-id={item.id}
                       onClick={() => setSelectedId(item.id)}
                       onDoubleClick={() => void handleCopy(item.id)}
-                      className={`mb-1 flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${
+                      className={`pressable-soft mb-1 flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left ${
                         activeItem ? 'bg-white/[0.06] ring-1 ring-white/10' : 'hover:bg-white/5'
                       }`}
                     >

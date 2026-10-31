@@ -70,7 +70,7 @@ export default function CodeRuntimeStatus({ progress, onRetry }: CodeRuntimeStat
           <button
             type="button"
             onClick={onRetry}
-            className="shrink-0 rounded-lg border border-white/10 px-2.5 py-1 text-[11px] font-medium text-neutral-200 transition-colors hover:bg-white/10"
+            className="pressable shrink-0 rounded-lg border border-white/10 px-2.5 py-1 text-[11px] font-medium text-neutral-200 hover:bg-white/10"
           >
             Retry
           </button>
@@ -81,8 +81,11 @@ export default function CodeRuntimeStatus({ progress, onRetry }: CodeRuntimeStat
         <div className="mt-2.5 h-1 w-full overflow-hidden rounded-full bg-white/10">
           {percent !== null ? (
             <div
-              className="h-full rounded-full transition-all duration-200"
-              style={{ width: `${percent}%`, background: 'var(--chat-accent)' }}
+              className="progress-fill h-full rounded-full"
+              style={{
+                transform: `scaleX(${percent / 100})`,
+                background: 'var(--chat-accent)'
+              }}
             />
           ) : (
             <div

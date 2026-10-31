@@ -1,5 +1,6 @@
 import { AnimatePresence, motion, type Transition } from 'framer-motion'
 import type { ReactNode } from 'react'
+import { EASE_OUT } from '../constants/motion'
 import { useMeasuredHeight } from '../utils/hooks/useMeasuredHeight'
 
 interface MeasuredCollapseProps {
@@ -18,10 +19,10 @@ export default function MeasuredCollapse({
   open,
   children,
   className,
-  duration = 0.22
+  duration = 0.2
 }: MeasuredCollapseProps): JSX.Element {
   const { ref, height } = useMeasuredHeight<HTMLDivElement>()
-  const transition: Transition = { duration, ease: [0.22, 1, 0.36, 1] }
+  const transition: Transition = { duration, ease: EASE_OUT }
 
   return (
     <AnimatePresence initial={false}>

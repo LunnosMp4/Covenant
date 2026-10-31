@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { isLocalConnectionId } from '../../../shared/code/connection'
 import type { CodeTranscriptItem } from '../../../shared/code/code'
 import { CHAT_SCROLL_HEIGHT } from '../app/constants'
+import { PANEL_TRANSITION } from '../constants/motion'
 import ContextStatsDonut from '../app/components/ContextStatsDonut'
 import type { ContextStats } from '../utils/chat/chatUsage'
 import ConfirmDeleteModal from '../ui/ConfirmDeleteModal'
@@ -36,7 +37,7 @@ interface CodePanelProps {
 }
 
 const ICON_BUTTON =
-  'flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-neutral-400 transition-colors hover:border-white/20 hover:bg-white/10 hover:text-neutral-200'
+  'pressable flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-neutral-400 hover:border-white/20 hover:bg-white/10 hover:text-neutral-200'
 const ICON_BUTTON_ACTIVE = 'border-white/20 bg-white/10 text-neutral-100'
 
 export default function CodePanel({
@@ -318,7 +319,7 @@ export default function CodePanel({
       <motion.div
         initial={false}
         animate={{ height: bodyHeight }}
-        transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+        transition={PANEL_TRANSITION}
         className="mt-3 overflow-hidden rounded-xl transition-colors"
       >
         {connectionModalOpen ? (

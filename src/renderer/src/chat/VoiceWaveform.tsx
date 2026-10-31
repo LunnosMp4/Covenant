@@ -28,13 +28,25 @@ export default function VoiceWaveform({ stream, barCount = 64 }: VoiceWaveformPr
   }, [stream, barCount])
 
   useEffect(() => {
+    const bars = canvasRef.current!.children as HTMLCollectionOf<HTMLDivElement>
+    const reducedMotion =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+    // The mic button already pulses while recording, so a static waveform is
+    // enough of a cue when motion is reduced.
+    if (reducedMotion) {
+      for (let i = 0; i < bars.length; i++) {
+        bars[i].style.transform = 'scaleY(0.28)'
+      }
+      return
+    }
+
     initAudio()
 
     const analyser = analyserRef.current!
     const bufferLength = analyser.frequencyBinCount
     const dataArray = new Uint8Array(bufferLength)
-
-    const bars = canvasRef.current!.children as HTMLCollectionOf<HTMLDivElement>
 
     // We only compute values for half the bars, then mirror them.
     const halfCount = Math.ceil(barCount / 2)
@@ -65,9 +77,8 @@ export default function VoiceWaveform({ stream, barCount = 64 }: VoiceWaveformPr
         const prevR = heightsRef.current![rightIndex]
         const smoothedR = prevR * 0.6 + normalized * 0.4
         heightsRef.current![rightIndex] = smoothedR
-        const heightPxR = Math.max(3, smoothedR * 28)
         if (bars[rightIndex]) {
-          bars[rightIndex].style.height = `${heightPxR}px`
+          bars[rightIndex].style.transform = `scaleY(${Math.max(0.08, Math.min(1, smoothedR))})`
         }
 
         // Smooth + apply for the left side (mirror)
@@ -75,8 +86,9 @@ export default function VoiceWaveform({ stream, barCount = 64 }: VoiceWaveformPr
           const prevL = heightsRef.current![leftIndex]
           const smoothedL = prevL * 0.6 + normalized * 0.4
           heightsRef.current![leftIndex] = smoothedL
-          const heightPxL = Math.max(3, smoothedL * 28)
-          bars[leftIndex].style.height = `${heightPxL}px`
+          if (bars[leftIndex]) {
+            bars[leftIndex].style.transform = `scaleY(${Math.max(0.08, Math.min(1, smoothedL))})`
+          }
         }
       }
 
@@ -108,9 +120,9 @@ export default function VoiceWaveform({ stream, barCount = 64 }: VoiceWaveformPr
             className="rounded-full bg-white/70"
             style={{
               width: '3px',
-              height: '3px',
-              minHeight: '3px',
-              transition: 'height 50ms ease-out'
+              height: '28px',
+              transform: 'scaleY(0.08)',
+              transformOrigin: 'center'
             }}
           />
         ))}

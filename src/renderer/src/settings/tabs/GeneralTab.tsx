@@ -9,6 +9,7 @@ import PrepromptFormModal from '../modals/PrepromptFormModal'
 import WorkflowFormModal from '../../workflow/WorkflowFormModal'
 import PasteSettingsTab from '../../paste/PasteSettingsTab'
 import UsageTab from './UsageTab'
+import MeasuredCollapse from '../../ui/MeasuredCollapse'
 import {
   DEFAULT_TERMINAL_FONT,
   normalizeTerminalFont
@@ -120,7 +121,7 @@ export default function GeneralTab({
               type="button"
               onClick={onSaveOpenAISettings}
               disabled={isSavingApiKey || !isConfigLoaded}
-              className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+              className="pressable rounded-xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSavingApiKey ? 'Saving...' : 'Save'}
             </button>
@@ -129,7 +130,7 @@ export default function GeneralTab({
           <button
             type="button"
             onClick={onToggleAdvanced}
-            className="mt-3 inline-flex items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-neutral-100"
+            className="pressable mt-3 inline-flex items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-neutral-300 hover:border-neutral-600 hover:text-neutral-100"
           >
             <svg
               width="12"
@@ -138,7 +139,9 @@ export default function GeneralTab({
               fill="none"
               stroke="currentColor"
               strokeWidth="2"
-              className={isAdvancedOpen ? 'rotate-90 transition-transform' : 'transition-transform'}
+              className={`transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+                isAdvancedOpen ? 'rotate-90' : ''
+              }`}
               aria-hidden
             >
               <path d="m9 18 6-6-6-6" />
@@ -146,8 +149,8 @@ export default function GeneralTab({
             <span>Advanced settings</span>
           </button>
 
-          {isAdvancedOpen ? (
-            <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950/70 p-3">
+          <MeasuredCollapse open={isAdvancedOpen} className="mt-3">
+            <div className="rounded-xl border border-neutral-800 bg-neutral-950/70 p-3">
               <label htmlFor="openai-proxy-url" className="mb-2 block text-xs font-medium uppercase tracking-[0.08em] text-neutral-400">
                 Proxy URL
               </label>
@@ -165,7 +168,7 @@ export default function GeneralTab({
                 server connections. Leave empty for direct access.
               </p>
             </div>
-          ) : null}
+          </MeasuredCollapse>
 
           <p className="mt-2 text-xs text-neutral-500">Saved locally in the native user data folder as part of config.json.</p>
           {saveFeedbackMessage ? <p className="mt-2 text-xs text-emerald-300">{saveFeedbackMessage}</p> : null}
@@ -234,10 +237,12 @@ export default function GeneralTab({
               <div className="mt-3">
                 <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-800">
                   <div
-                    className={`h-full rounded-full transition-all duration-200 ${
+                    className={`progress-fill h-full rounded-full ${
                       updateStatus.state === 'downloaded' ? 'bg-emerald-400' : 'bg-amber-400'
                     }`}
-                    style={{ width: `${Math.min(Math.max(updateStatus.percent, 0), 100)}%` }}
+                    style={{
+                      transform: `scaleX(${Math.min(Math.max(updateStatus.percent, 0), 100) / 100})`
+                    }}
                   />
                 </div>
                 <p className="mt-1 text-xs text-neutral-500">

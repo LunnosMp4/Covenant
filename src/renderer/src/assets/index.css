@@ -467,6 +467,23 @@ body[data-window='settings'] [contenteditable='true'] {
   word-break: break-word;
 }
 
+/* Only the newest row animates in, so loading a long conversation does not
+   replay a cascade of entrances. */
+.chat-message-enter {
+  animation: chat-message-enter 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes chat-message-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .chat-message--user {
   background: var(--chat-user-bg);
   border-color: var(--chat-user-border);
@@ -539,7 +556,7 @@ body[data-window='settings'] [contenteditable='true'] {
   justify-content: center;
   color: var(--chat-meta-text);
   opacity: 0.6;
-  transition: transform 0.2s ease;
+  transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
   transform: rotate(0deg);
 }
 
@@ -748,7 +765,6 @@ body[data-window='settings'] [contenteditable='true'] {
 }
 
 .chat-sources-panel {
-  margin-top: 6px;
   border-radius: 10px;
   border: 1px solid rgb(var(--n-50) / 0.08);
   background: rgb(var(--n-950) / 0.45);
@@ -1268,4 +1284,85 @@ body[data-window='settings'] [contenteditable='true'] {
 .code-diff-more {
   padding: 4px 10px;
   color: var(--chat-meta-text);
+}
+
+/* ── Shared motion & interaction primitives ──
+   Kept unlayered so they win over Tailwind's `transition-*` utilities: a
+   control either gets the shared tactile response or an explicit override. */
+
+.pressable {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition-property: transform, background-color, border-color, color, opacity;
+  transition-duration: 140ms;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pressable:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+/* Full-width list rows read better with a surface press than with scaling. */
+.pressable-soft {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition-property: transform, background-color, border-color, color, opacity;
+  transition-duration: 140ms;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pressable-soft:active:not(:disabled) {
+  background-color: rgb(var(--ui-fg) / 0.08);
+  transform: scale(0.995);
+}
+
+/* Progress bars animate their transform instead of their width so updates
+   never trigger layout. The track must clip the fill. */
+.progress-fill {
+  width: 100%;
+  transform-origin: left center;
+  transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pressable,
+  .pressable-soft {
+    transition-duration: 1ms;
+  }
+
+  .pressable:active:not(:disabled),
+  .pressable-soft:active:not(:disabled) {
+    transform: none;
+  }
+
+  .progress-fill {
+    transition-duration: 1ms;
+    will-change: auto;
+  }
+
+  /* A moving highlight is decorative; fall back to quiet, readable text. */
+  .chat-thinking-title--streaming,
+  .task-shimmer {
+    animation: none;
+    background: none;
+    -webkit-text-fill-color: currentColor;
+  }
+
+  .chat-thinking-cursor {
+    animation: none;
+    opacity: 0.8;
+  }
+
+  .chat-message-enter {
+    animation: none;
+  }
+
+  .chat-thinking-chevron {
+    transition: none;
+  }
+
+  .texture-surface::after {
+    transition: none;
+  }
 }

@@ -240,8 +240,8 @@ export default function NoteAudioPlayer({
           >
             <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
               <div
-                className="h-full rounded-full bg-[color:var(--chat-accent)] opacity-80 group-hover:opacity-100"
-                style={{ width: `${progress * 100}%` }}
+                className="h-full w-full origin-left rounded-full bg-[color:var(--chat-accent)] opacity-80 group-hover:opacity-100"
+                style={{ transform: `scaleX(${progress})` }}
               />
             </div>
             <span
