@@ -1,9 +1,10 @@
 import { motion } from 'framer-motion'
 import { FADE_FAST, SPRING_POPOVER } from '../constants/motion'
 import type { RefObject } from 'react'
-import type { ReasoningEffort } from '../../../shared/config'
+import type { AiModelOption, ChatProviderId, ReasoningEffort } from '../../../shared/config'
 import {
   CHAT_MODEL_OPTIONS,
+  CHAT_PROVIDERS,
   DEFAULT_CHAT_MODEL,
   DEFAULT_REASONING_EFFORT,
   REASONING_EFFORT_OPTIONS,
@@ -48,7 +49,10 @@ interface ModulePopupProps {
   themeGradient: string
 
   chatModel?: string
+  chatProvider?: ChatProviderId
+  modelOptions?: AiModelOption[]
   onSelectChatModel?: (model: string) => void
+  onSelectChatProvider?: (provider: ChatProviderId) => void
   onOpenFullSettings?: () => void
   reasoningEffort?: ReasoningEffort
   onSelectReasoningEffort?: (effort: ReasoningEffort) => void
@@ -127,27 +131,59 @@ function ItemIcon({ icon }: { icon: PopupIcon }): JSX.Element {
 function SettingsPopup({
   onOpenFullSettings,
   chatModel,
+  chatProvider,
+  modelOptions,
   onSelectChatModel,
+  onSelectChatProvider,
   reasoningEffort,
   onSelectReasoningEffort
 }: {
   onOpenFullSettings?: () => void
   chatModel: string
+  chatProvider: ChatProviderId
+  modelOptions: AiModelOption[]
   onSelectChatModel?: (model: string) => void
+  onSelectChatProvider?: (provider: ChatProviderId) => void
   reasoningEffort: ReasoningEffort
   onSelectReasoningEffort?: (effort: ReasoningEffort) => void
 }): JSX.Element {
-  const supportsExtended = modelSupportsExtendedParams(chatModel || DEFAULT_CHAT_MODEL)
+  const activeModel = modelOptions.find((model) => model.id === chatModel)
+  const supportsExtended = activeModel?.supportsExtendedParams ?? modelSupportsExtendedParams(chatModel || DEFAULT_CHAT_MODEL)
 
   return (
     <div className="flex flex-col">
       <div className="space-y-3 px-1">
         <div>
           <label className="mb-2 block text-xs font-medium uppercase tracking-[0.08em] text-neutral-400">
+            Provider
+          </label>
+          <div className="inline-flex w-full rounded-xl border border-neutral-800 bg-neutral-900/70 p-1">
+            {CHAT_PROVIDERS.map((provider) => {
+              const isActive = chatProvider === provider.id
+              return (
+                <button
+                  key={provider.id}
+                  type="button"
+                  onClick={() => onSelectChatProvider?.(provider.id)}
+                  className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors ${
+                    isActive
+                      ? 'bg-neutral-800 text-neutral-100'
+                      : 'text-neutral-400 hover:text-neutral-200'
+                  }`}
+                >
+                  {provider.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-xs font-medium uppercase tracking-[0.08em] text-neutral-400">
             Chat Model
           </label>
           <CustomSelect
-            options={CHAT_MODEL_OPTIONS.map((option) => ({
+            options={(modelOptions.length > 0 ? modelOptions : CHAT_MODEL_OPTIONS).map((option) => ({
               value: option.id,
               label: option.label
             }))}
@@ -202,7 +238,10 @@ export default function ModulePopup({
   anchorSide = 'right',
   themeGradient,
   chatModel = DEFAULT_CHAT_MODEL,
+  chatProvider = 'openai',
+  modelOptions = [],
   onSelectChatModel,
+  onSelectChatProvider,
   onOpenFullSettings,
   reasoningEffort = DEFAULT_REASONING_EFFORT,
   onSelectReasoningEffort,
@@ -242,7 +281,10 @@ export default function ModulePopup({
         <SettingsPopup
           onOpenFullSettings={onOpenFullSettings}
           chatModel={chatModel}
+          chatProvider={chatProvider}
+          modelOptions={modelOptions}
           onSelectChatModel={onSelectChatModel}
+          onSelectChatProvider={onSelectChatProvider}
           reasoningEffort={reasoningEffort}
           onSelectReasoningEffort={onSelectReasoningEffort}
         />

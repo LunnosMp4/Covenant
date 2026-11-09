@@ -1,5 +1,5 @@
 import type { ChatMessage } from '../../../../shared/chat/chat'
-import { CHAT_MODEL_OPTIONS } from '../../../../shared/config'
+import { CHAT_MODEL_OPTIONS, OPENCODE_MODEL_OPTIONS } from '../../../../shared/config'
 import { CHAT_MODEL_PRICING } from '../../../../shared/system/usage'
 
 // Intl formatters are expensive to construct and were previously rebuilt for
@@ -96,7 +96,19 @@ export function computeContextStats(
     totalOutputTokens += completionTokens
     totalTokens += usage.totalTokens ?? promptTokens + completionTokens
 
-    const pricing = msg.model ? CHAT_MODEL_PRICING[msg.model.trim()] : undefined
+    const openCodePricing = msg.model
+      ? OPENCODE_MODEL_OPTIONS.find((model) => model.id === msg.model?.trim())?.pricing
+      : undefined
+    const pricing =
+      (msg.model ? CHAT_MODEL_PRICING[msg.model.trim()] : undefined) ??
+      (openCodePricing
+        ? {
+            inputPerMillion: openCodePricing.inputPerMillion,
+            cachedInputPerMillion: openCodePricing.cachedInputPerMillion,
+            cacheWritePerMillion: 0,
+            outputPerMillion: openCodePricing.outputPerMillion
+          }
+        : undefined)
     if (pricing) {
       const inputTokens = Math.max(promptTokens - cachedPromptTokens - cacheWritePromptTokens, 0)
       const inputCost = (inputTokens * pricing.inputPerMillion) / 1_000_000
@@ -107,7 +119,10 @@ export function computeContextStats(
     }
   }
 
-  const maxTokens = CHAT_MODEL_OPTIONS.find((m) => m.id === currentModel)?.maxContextTokens ?? 0
+  const maxTokens =
+    CHAT_MODEL_OPTIONS.find((m) => m.id === currentModel)?.maxContextTokens ??
+    OPENCODE_MODEL_OPTIONS.find((m) => m.id === currentModel)?.maxContextTokens ??
+    1_000_000
 
   return {
     totalTokens,

@@ -110,6 +110,10 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     updateButtonVisibility: (buttonVisibility: Partial<ButtonVisibility>) => void
     updateLauncherShowSystemApps: (showSystemApps: boolean) => void
     updateChatModel: (chatModel: string) => void
+    updateChatProvider: (provider: string) => void
+    updateOpencodeChatModel: (model: string) => void
+    updateOpencodePlan: (plan: string) => void
+    updateWebSearchSettings: (settings: Record<string, unknown>) => void
     updateReasoningEffort: (reasoningEffort: ReasoningEffort) => void
     updateWebSearch: (enableWebSearch: boolean) => void
     updateAutoCollapseReasoning: (autoCollapseReasoning: boolean) => void
@@ -128,24 +132,47 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     onButtonVisibilityUpdated: (callback: (buttonVisibility: ButtonVisibility) => void) => () => void
     onLauncherShowSystemAppsUpdated: (callback: (showSystemApps: boolean) => void) => () => void
     onChatModelUpdated: (callback: (chatModel: string) => void) => () => void
+    onChatProviderUpdated: (callback: (provider: string) => void) => () => void
+    onOpencodeChatModelUpdated: (callback: (model: string) => void) => () => void
+    onWebSearchSettingsUpdated: (callback: (settings: Record<string, unknown>) => void) => () => void
     onReasoningEffortUpdated: (callback: (reasoningEffort: ReasoningEffort) => void) => () => void
     onAutoCollapseReasoningUpdated: (callback: (autoCollapseReasoning: boolean) => void) => () => void
     onTextureIntensityUpdated: (callback: (textureIntensity: number) => void) => () => void
     onNotesSettingsUpdated: (callback: (settings: NotesSettings) => void) => () => void
     onShortcutsUpdated: (callback: (shortcuts: ShortcutConfig) => void) => () => void
   }
+  ai: {
+    listModels: (provider: string) => Promise<{ ok: true; models: Array<Record<string, unknown>> }>
+    refreshModels: () => Promise<{ ok: true; models: Array<Record<string, unknown>> }>
+    getKeyStatus: () => Promise<{
+      openai: boolean
+      opencode: boolean
+      search: { provider: string; hasSecret: boolean; searxngConfigured: boolean }
+    }>
+    setOpencodeKey: (key: string) => Promise<{ ok: true } | { ok: false; error: string }>
+    clearOpencodeKey: () => Promise<{ ok: true }>
+    testOpencodeKey: () => Promise<{ ok: boolean; error?: string }>
+    setSearchSecret: (
+      provider: string,
+      secret: string
+    ) => Promise<{ ok: true } | { ok: false; error: string }>
+    clearSearchSecret: (provider: string) => Promise<{ ok: true }>
+    testWebSearch: () => Promise<{ ok: boolean; message: string; resultCount?: number }>
+  }
   usage: {
-    getMetrics: (rangeDays?: number, projectId?: string) => Promise<UsageMetricsResult>
+    getMetrics: (rangeDays?: number, projectId?: string, provider?: string) => Promise<UsageMetricsResult>
     getProjects: () => Promise<UsageProjectsResult>
+    getLocalMetrics: (rangeDays?: number) => Promise<UsageMetricsResult>
+    clearLocal: () => void
   }
   chat: {
     askCovenant: (
       messages: Array<{ role: ChatRole; content: string | InputContent[] }>,
-      options?: { terminalSessionId?: string }
+      options?: { terminalSessionId?: string; conversationId?: string }
     ) => Promise<string>
     askCovenantStream: (
       messages: Array<{ role: ChatRole; content: string | InputContent[] }>,
-      options?: { terminalSessionId?: string }
+      options?: { terminalSessionId?: string; conversationId?: string }
     ) => Promise<{ id: string }>
     onStreamEvent: (callback: (event: ChatStreamEvent) => void) => () => void
     cancelStream: (streamId: string) => void

@@ -526,6 +526,20 @@ export function sanitizeResponseOutputForInput(
   })
 }
 
+/**
+ * OpenCode's gateway translates non-native APIs and may reject response items
+ * it cannot round-trip (reasoning blocks, native web-search calls). Keep only
+ * the items needed to continue a tool-call loop.
+ */
+export function sanitizeResponseOutputForProvider(
+  output: Array<Record<string, unknown>>,
+  provider: 'openai' | 'opencode'
+): Array<Record<string, unknown>> {
+  const sanitized = sanitizeResponseOutputForInput(output)
+  if (provider === 'openai') return sanitized
+  return sanitized.filter((item) => item.type === 'message' || item.type === 'function_call')
+}
+
 export interface McpConnectionTestResult {
   ok: boolean
   message: string

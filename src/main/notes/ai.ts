@@ -6,9 +6,11 @@ import type { NoteAiRequest } from '../../shared/notes/prompts'
 import { buildNoteAiInput, NOTE_AI_INSTRUCTIONS } from '../../shared/notes/prompts'
 import { readConfig } from '../config/configStore'
 import { getNote } from '../features/notes'
-import { createOpenAIClient } from '../openai/client'
+import { resolveChatProvider } from '../ai/provider'
 import { buildResponseParams, buildResponsesInput } from '../openai/messages'
 import { runStreamingChat } from '../openai/streaming'
+import { recordAiUsage } from '../ai/usageLedger'
+import { log } from '../logger'
 
 const activeStreams = new Map<string, AbortController>()
 
@@ -76,18 +78,18 @@ export async function runNoteAi(
   if (!note) throw new Error('Note not found.')
 
   const config = readConfig()
-  const apiKey = config.apiKey || process.env.OPENAI_API_KEY
-  if (!apiKey) {
-    throw new Error('OpenAI API key is missing. Add it in Settings > General.')
-  }
+  const provider = resolveChatProvider(config, { sessionId: request.noteId })
 
-  const model = config.chatModel
-  const client = createOpenAIClient(apiKey, config.proxyUrl)
+  const model = provider.model
+  const client = provider.client
   const streamId = randomUUID()
   const controller = new AbortController()
   activeStreams.set(streamId, controller)
 
-  const params = buildResponseParams(config, model)
+  const params = buildResponseParams(config, model, {
+    provider: provider.provider,
+    modelOption: provider.modelOption
+  })
   params.instructions = NOTE_AI_INSTRUCTIONS
   const input = buildResponsesInput([
     { role: 'user', content: buildNoteAiInput(request, note) }
@@ -99,13 +101,27 @@ export async function runNoteAi(
   }
 
   void runStreamingChat(
-    { client, streamId, sender, model, sendStreamEvent, signal: controller.signal },
+    {
+      client,
+      streamId,
+      sender,
+      model,
+      provider: provider.provider,
+      sendStreamEvent,
+      signal: controller.signal,
+      onUsage: (usage) =>
+        recordAiUsage({ provider: provider.provider, model, kind: 'note', usage })
+    },
     input,
     [],
     params,
     [],
     []
-  ).finally(() => {
+  ).catch((error) => {
+    const message = error instanceof Error ? error.message : 'Unable to generate note AI response.'
+    log.error('Note AI stream failed', error)
+    sendStreamEvent({ id: streamId, type: 'error', error: message })
+  }).finally(() => {
     activeStreams.delete(streamId)
   })
 

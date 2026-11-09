@@ -172,6 +172,11 @@ const api = {
     updateLauncherShowSystemApps: (showSystemApps: boolean) =>
       ipcRenderer.send('update-launcher-show-system-apps', showSystemApps),
     updateChatModel: (chatModel: string) => ipcRenderer.send('update-chat-model', chatModel),
+    updateChatProvider: (provider: string) => ipcRenderer.send('update-chat-provider', provider),
+    updateOpencodeChatModel: (model: string) => ipcRenderer.send('update-opencode-chat-model', model),
+    updateOpencodePlan: (plan: string) => ipcRenderer.send('update-opencode-plan', plan),
+    updateWebSearchSettings: (settings: Record<string, unknown>) =>
+      ipcRenderer.send('update-web-search-settings', settings),
     updateReasoningEffort: (reasoningEffort: ReasoningEffort) =>
       ipcRenderer.send('update-reasoning-effort', reasoningEffort),
     updateWebSearch: (enableWebSearch: boolean) =>
@@ -265,6 +270,33 @@ const api = {
         ipcRenderer.removeListener('chat-model-updated', listener)
       }
     },
+    onChatProviderUpdated: (callback: (provider: string) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, provider: string) => {
+        callback(provider)
+      }
+      ipcRenderer.on('chat-provider-updated', listener)
+      return () => {
+        ipcRenderer.removeListener('chat-provider-updated', listener)
+      }
+    },
+    onOpencodeChatModelUpdated: (callback: (model: string) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, model: string) => {
+        callback(model)
+      }
+      ipcRenderer.on('opencode-chat-model-updated', listener)
+      return () => {
+        ipcRenderer.removeListener('opencode-chat-model-updated', listener)
+      }
+    },
+    onWebSearchSettingsUpdated: (callback: (settings: Record<string, unknown>) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, settings: Record<string, unknown>) => {
+        callback(settings)
+      }
+      ipcRenderer.on('web-search-settings-updated', listener)
+      return () => {
+        ipcRenderer.removeListener('web-search-settings-updated', listener)
+      }
+    },
     onReasoningEffortUpdated: (callback: (reasoningEffort: ReasoningEffort) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, reasoningEffort: ReasoningEffort) => {
         callback(reasoningEffort)
@@ -311,20 +343,61 @@ const api = {
     },
     getTerminalFonts: () => ipcRenderer.invoke('get-terminal-fonts') as Promise<string[]>
   },
+  ai: {
+    listModels: (provider: string) =>
+      ipcRenderer.invoke('ai:list-models', provider) as Promise<{
+        ok: true
+        models: Array<Record<string, unknown>>
+      }>,
+    refreshModels: () =>
+      ipcRenderer.invoke('ai:refresh-models') as Promise<{
+        ok: true
+        models: Array<Record<string, unknown>>
+      }>,
+    getKeyStatus: () =>
+      ipcRenderer.invoke('ai:key-status') as Promise<{
+        openai: boolean
+        opencode: boolean
+        search: { provider: string; hasSecret: boolean; searxngConfigured: boolean }
+      }>,
+    setOpencodeKey: (key: string) =>
+      ipcRenderer.invoke('ai:opencode-key:set', key) as Promise<
+        { ok: true } | { ok: false; error: string }
+      >,
+    clearOpencodeKey: () =>
+      ipcRenderer.invoke('ai:opencode-key:clear') as Promise<{ ok: true }>,
+    testOpencodeKey: () =>
+      ipcRenderer.invoke('ai:opencode-key:test') as Promise<{ ok: boolean; error?: string }>,
+    setSearchSecret: (provider: string, secret: string) =>
+      ipcRenderer.invoke('ai:web-search:set-secret', { provider, secret }) as Promise<
+        { ok: true } | { ok: false; error: string }
+      >,
+    clearSearchSecret: (provider: string) =>
+      ipcRenderer.invoke('ai:web-search:clear-secret', provider) as Promise<{ ok: true }>,
+    testWebSearch: () =>
+      ipcRenderer.invoke('ai:web-search:test') as Promise<{
+        ok: boolean
+        message: string
+        resultCount?: number
+      }>
+  },
   usage: {
-    getMetrics: (rangeDays?: number, projectId?: string) =>
-      ipcRenderer.invoke('usage:get-metrics', { rangeDays, projectId }) as Promise<UsageMetricsResult>,
-    getProjects: () => ipcRenderer.invoke('usage:get-projects') as Promise<UsageProjectsResult>
+    getMetrics: (rangeDays?: number, projectId?: string, provider?: string) =>
+      ipcRenderer.invoke('usage:get-metrics', { rangeDays, projectId, provider }) as Promise<UsageMetricsResult>,
+    getProjects: () => ipcRenderer.invoke('usage:get-projects') as Promise<UsageProjectsResult>,
+    getLocalMetrics: (rangeDays?: number) =>
+      ipcRenderer.invoke('usage:get-local-metrics', rangeDays) as Promise<UsageMetricsResult>,
+    clearLocal: () => ipcRenderer.send('usage:clear-local')
   },
   chat: {
     askCovenant: (
       messages: Array<{ role: ChatRole; content: string | InputContent[] }>,
-      options?: { terminalSessionId?: string }
+      options?: { terminalSessionId?: string; conversationId?: string }
     ) =>
       ipcRenderer.invoke('covenant:chat', { messages, ...options }) as Promise<string>,
     askCovenantStream: (
       messages: Array<{ role: ChatRole; content: string | InputContent[] }>,
-      options?: { terminalSessionId?: string }
+      options?: { terminalSessionId?: string; conversationId?: string }
     ) =>
       ipcRenderer.invoke('covenant:chat-stream', { messages, ...options }) as Promise<{ id: string }>,
     onStreamEvent: (callback: (event: ChatStreamEvent) => void) => {

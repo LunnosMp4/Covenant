@@ -54,12 +54,16 @@ import {
   normalizeThemeGradient
 } from './constants/theme'
 import { applyThemeToDocument } from './utils/themeDom'
-import type { ButtonVisibility, ReasoningEffort } from '../../shared/config'
+import type { AiModelOption, ButtonVisibility, ChatProviderId, ReasoningEffort } from '../../shared/config'
 import {
   DEFAULT_CHAT_MODEL,
+  DEFAULT_OPENCODE_CHAT_MODEL,
   DEFAULT_REASONING_EFFORT,
   DEFAULT_TEXTURE_INTENSITY,
-  TEXTURE_MAX_OPACITY
+  OPENCODE_MODEL_OPTIONS,
+  TEXTURE_MAX_OPACITY,
+  getActiveChatModel,
+  getModelOptionsForProvider
 } from '../../shared/config'
 import type { UpdateStatus } from '../../shared/system/update'
 import type { TerminalApprovalRequest } from '../../shared/terminal/terminal'
@@ -179,6 +183,8 @@ export default function App(): JSX.Element {
   const [activePopup, setActivePopup] = useState<ActivePopup | null>(null)
   const [buttonVisibility, setButtonVisibility] = useState<ButtonVisibility>({ workflow: true, tasks: true, notes: true, code: true })
   const [chatModel, setChatModel] = useState<string>(DEFAULT_CHAT_MODEL)
+  const [chatProvider, setChatProvider] = useState<ChatProviderId>('openai')
+  const [opencodeModels, setOpencodeModels] = useState<AiModelOption[]>(OPENCODE_MODEL_OPTIONS)
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT)
   const [autoCollapseReasoning, setAutoCollapseReasoning] = useState(true)
   const [textureIntensity, setTextureIntensity] = useState(DEFAULT_TEXTURE_INTENSITY)
@@ -451,9 +457,14 @@ export default function App(): JSX.Element {
           if (config.buttonVisibility) {
             setButtonVisibility(config.buttonVisibility)
           }
-          if (config.chatModel) {
-            setChatModel(config.chatModel)
-          }
+          const provider = config.chatProvider === 'opencode' ? 'opencode' : 'openai'
+          setChatProvider(provider)
+          setChatModel(getActiveChatModel({ ...config, chatProvider: provider }))
+          void window.api?.ai?.listModels?.('opencode').then((result) => {
+            if (result?.ok && Array.isArray(result.models) && result.models.length > 0) {
+              setOpencodeModels(result.models as unknown as AiModelOption[])
+            }
+          })
           if (config.reasoningEffort) {
             setReasoningEffort(config.reasoningEffort)
           }
@@ -490,6 +501,10 @@ export default function App(): JSX.Element {
       setChatModel(newChatModel)
     })
 
+    const unsubscribeChatProviderListener = window.api?.config.onChatProviderUpdated?.((provider) => {
+      setChatProvider(provider === 'opencode' ? 'opencode' : 'openai')
+    })
+
     const unsubscribeReasoningEffortListener = window.api?.config.onReasoningEffortUpdated?.((newReasoningEffort) => {
       setReasoningEffort(newReasoningEffort)
     })
@@ -515,6 +530,9 @@ export default function App(): JSX.Element {
       }
       if (typeof unsubscribeChatModelListener === 'function') {
         unsubscribeChatModelListener()
+      }
+      if (typeof unsubscribeChatProviderListener === 'function') {
+        unsubscribeChatProviderListener()
       }
       if (typeof unsubscribeReasoningEffortListener === 'function') {
         unsubscribeReasoningEffortListener()
@@ -1916,7 +1934,8 @@ export default function App(): JSX.Element {
       if (window.api.chat.askCovenantStream) {
         const streamResponse = await window.api.chat.askCovenantStream(requestMessages, {
           terminalSessionId:
-            isTerminalLinked && terminalLinkedSessionId ? terminalLinkedSessionId : undefined
+            isTerminalLinked && terminalLinkedSessionId ? terminalLinkedSessionId : undefined,
+          conversationId: placeholderConversation.id
         })
         setActiveStreamId(streamResponse.id)
         setActiveStreamMessageId(assistantMessageId)
@@ -3164,9 +3183,19 @@ export default function App(): JSX.Element {
                   onSelectItem={handlePopupItemSelect}
                   anchorSide={activePopup === 'settings' ? 'left' : 'right'}
                   chatModel={chatModel}
+                  chatProvider={chatProvider}
+                  modelOptions={
+                    chatProvider === 'opencode'
+                      ? opencodeModels
+                      : getModelOptionsForProvider('openai')
+                  }
                   onSelectChatModel={(model) => {
                     setChatModel(model)
                     window.api?.config.updateChatModel?.(model)
+                  }}
+                  onSelectChatProvider={(provider) => {
+                    setChatProvider(provider)
+                    window.api?.config.updateChatProvider?.(provider)
                   }}
                   onOpenFullSettings={() => {
                     setActivePopup(null)

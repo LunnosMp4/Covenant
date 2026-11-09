@@ -18,7 +18,8 @@ CI runs typecheck, tests, and a build on Windows/macOS/Linux (`.github/workflows
 ### Main process (`src/main/`)
 
 - `index.ts` — thin bootstrap only: module side effects (paste protocol), `whenReady` lifecycle, window/tray creation, paste-manager init, `registerIpc()`.
-- `ipc/` — one module per domain (`window`, `config`, `usage`, `mcp`, `store`, `terminal`, `dialog`, `excalidraw`, `paste`, `chat`, `index`). `registerIpc()` registers every `ipcMain` handler.
+- `ipc/` — one module per domain (`window`, `config`, `ai`, `usage`, `mcp`, `store`, `terminal`, `dialog`, `excalidraw`, `paste`, `chat`, `index`). `registerIpc()` registers every `ipcMain` handler.
+- `ai/` — provider abstraction (`provider.ts`), OpenCode model catalog, web search adapters (`search/*`), live OpenCode usage client, and local usage ledger.
 - `windows/` — `index.ts` owns all `BrowserWindow`/`Tray` state and window ops (create/show/hide/position/tray/shortcuts/paste protocol); `broadcast.ts` is the injected event bus so features can push to windows without importing window state.
 - `chat/` (as `openai/`) — `client`, `messages` (sanitize/build params), `streaming`, `completion`, `title`.
 - `features/` — domain CRUD/behavior: `preprompts`, `tasks`, `conversations`, `workflows`, `appLauncher`.
@@ -40,6 +41,11 @@ CI runs typecheck, tests, and a build on Windows/macOS/Linux (`.github/workflows
 ## Gotchas
 
 - OpenAI API key is main-process-only (loaded from `.env` via dotenv at `process.cwd()`). Never expose it to the renderer.
+- AI provider selection lives in `chatProvider` (`openai` / `opencode`) and is resolved by `src/main/ai/provider.ts`. The OpenCode key is encrypted with Electron `safeStorage` in `userData/code/auth.enc` and shared with Covenant Code. Never return it to the renderer.
+- OpenCode models are fetched from `https://opencode.ai/inference/{go|}/v1/models` and cached in `src/main/ai/modelCatalog.ts`; the static fallback lives in `src/shared/ai/models.ts`.
+- Web search defaults to OpenAI. Optional providers are SearXNG (custom endpoint), Tavily, and Exa. Search credentials are encrypted under `userData/ai/`. The Raspberry Pi SearXNG guide is `docs/searxng-raspberry-pi.md`.
+- Microphone and meeting transcription always use OpenAI, regardless of `chatProvider`. Do not gate chat on the OpenAI key when OpenCode is selected.
+- OpenCode usage is read from the Console web API (`/console/api/activity/usage`, `/activity/go`, `/go/status`) with a local ledger fallback in `src/main/ai/usageLedger.ts`.
 - `src/main/assets` is copied to `out/main/assets` at build time by a custom vite plugin (`copyAssetsPlugin`) — apply `build` only. The tray icon is loaded from `out/main/assets/tray-icon-light.png` / `tray-icon-dark.png` (macOS picks per menu bar appearance; other platforms always use `light`); adding assets requires a rebuild.
 - Config (`AppConfig`) is persisted to `userData/config.json` via `readConfig`/`writeConfig`/`normalizeConfig` in `src/main/config/configStore.ts`. New settings must be added to `DEFAULT_CONFIG` and `normalizeConfig`; new app data must be added to the electron-store `schema`/`defaults` in `src/main/store/appStore.ts` (store name `preprompts`).
 - Renderer IPC payloads are untrusted: main normalizes/sanitizes everything (see the `normalize*` helpers). Follow that pattern for new handlers.

@@ -39,6 +39,7 @@ export function createTerminalToolHandlers(sessionId: string): BuiltinToolHandle
   return [
     {
       name: TERMINAL_TOOL_NAMES.getState,
+      toolType: 'terminal',
       async execute(): Promise<BuiltinToolResult> {
         const state = terminalManager.getState(sessionId)
         if (!state) {
@@ -49,6 +50,7 @@ export function createTerminalToolHandlers(sessionId: string): BuiltinToolHandle
     },
     {
       name: TERMINAL_TOOL_NAMES.read,
+      toolType: 'terminal',
       async execute(rawArguments): Promise<BuiltinToolResult> {
         const args = parseArguments(rawArguments)
         const rawLines = args.lines
@@ -62,6 +64,7 @@ export function createTerminalToolHandlers(sessionId: string): BuiltinToolHandle
     },
     {
       name: TERMINAL_TOOL_NAMES.run,
+      toolType: 'terminal',
       async execute(rawArguments, ctx): Promise<BuiltinToolResult> {
         if (ctx.signal.aborted) {
           return errorResult('The request was cancelled.')

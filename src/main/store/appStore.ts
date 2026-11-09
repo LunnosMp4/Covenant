@@ -7,6 +7,7 @@ import type { Workflow } from '../../shared/domain/workflow'
 import type { CodeProject } from '../../shared/code/code'
 import type { CodeConnection } from '../../shared/code/connection'
 import type { NoteMeta } from '../../shared/notes/note'
+import type { AiUsageEntry } from '../../shared/ai/usage'
 
 export interface AppStoreSchema {
   preprompts: Preprompt[]
@@ -19,6 +20,7 @@ export interface AppStoreSchema {
   codeProjects: CodeProject[]
   codeConnections: CodeConnection[]
   codeActiveConnectionId: string
+  aiUsageEntries: AiUsageEntry[]
 }
 
 const StoreClass =
@@ -37,7 +39,8 @@ export const appStore = new StoreClass<AppStoreSchema>({
     notes: [],
     codeProjects: [],
     codeConnections: [],
-    codeActiveConnectionId: 'local'
+    codeActiveConnectionId: 'local',
+    aiUsageEntries: []
   },
   schema: {
     preprompts: {
@@ -291,6 +294,10 @@ export const appStore = new StoreClass<AppStoreSchema>({
     codeActiveConnectionId: {
       type: 'string',
       default: 'local'
+    },
+    aiUsageEntries: {
+      type: 'array',
+      default: []
     }
   }
 })

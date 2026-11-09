@@ -12,11 +12,25 @@ import {
   fetchOrganizationCosts,
   fetchOrganizationProjects
 } from '../services/usageClient'
+import { fetchOpenCodeUsage } from '../ai/opencodeUsageClient'
+import { buildLocalUsageMetrics } from '../../shared/ai/usage'
+import { getAiUsageEntries, clearAiUsageEntries } from '../ai/usageLedger'
 
 export function registerUsageIpc(): void {
-  ipcMain.handle('usage:get-metrics', async (_event, payload?: { rangeDays?: unknown; projectId?: unknown }) => {
+  ipcMain.handle('usage:get-metrics', async (_event, payload?: { rangeDays?: unknown; projectId?: unknown; provider?: unknown }) => {
     const rangeDays = normalizeUsageRangeDays(payload?.rangeDays)
     const storedConfig = readConfig()
+
+    if (payload?.provider === 'opencode') {
+      try {
+        const metrics = await fetchOpenCodeUsage(storedConfig, rangeDays)
+        return { ok: true, metrics }
+      } catch {
+        const metrics = buildLocalUsageMetrics(getAiUsageEntries(), rangeDays)
+        return { ok: true, metrics }
+      }
+    }
+
     const adminKey = typeof storedConfig.adminApiKey === 'string' ? storedConfig.adminApiKey.trim() : ''
 
     if (!adminKey) {
@@ -85,5 +99,16 @@ export function registerUsageIpc(): void {
 
   ipcMain.on('update-usage-project', (_event, projectId: unknown) => {
     updateConfig({ usageProjectId: normalizeUsageProjectId(projectId) })
+  })
+
+  ipcMain.handle('usage:get-local-metrics', (_event, rangeDays: unknown) => {
+    return {
+      ok: true as const,
+      metrics: buildLocalUsageMetrics(getAiUsageEntries(), normalizeUsageRangeDays(rangeDays))
+    }
+  })
+
+  ipcMain.on('usage:clear-local', () => {
+    clearAiUsageEntries()
   })
 }

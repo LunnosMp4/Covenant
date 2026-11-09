@@ -10,7 +10,8 @@ import {
 } from '../../shared/tasks/gamification'
 import type { ClearCompletedResult, Task } from '../../shared/tasks/task'
 import { readConfig } from '../config/configStore'
-import { evaluateTask, evaluateTaskHeuristically } from '../services/taskEvaluator'
+import { evaluateTaskHeuristically, evaluateTaskWithProvider } from '../services/taskEvaluator'
+import { hasProviderKey } from '../ai/provider'
 import { appStore } from '../store/appStore'
 import { sendToMain } from '../windows/broadcast'
 
@@ -88,7 +89,7 @@ export function addTask(title: string): Task[] {
   }
 
   const storedConfig = readConfig()
-  const apiKey = storedConfig.apiKey || process.env.OPENAI_API_KEY
+  const hasAi = hasProviderKey(storedConfig)
 
   // Populate a heuristic estimate immediately so the task always carries a
   // resolvable XP reward (even if cleared before the LLM responds), and mark it
@@ -100,7 +101,7 @@ export function addTask(title: string): Task[] {
       title: normalizedTitle,
       done: false,
       createdAt: Date.now(),
-      evaluating: Boolean(apiKey)
+      evaluating: hasAi
     },
     heuristic
   )
@@ -108,21 +109,17 @@ export function addTask(title: string): Task[] {
   const nextTasks = [...getTasks(), created]
   appStore.set('tasks', nextTasks)
 
-  if (apiKey) {
-    void refineTaskEvaluation(created.id, normalizedTitle, apiKey, storedConfig.proxyUrl)
+  if (hasAi) {
+    void refineTaskEvaluation(created.id, normalizedTitle)
   }
 
   return nextTasks
 }
 
-async function refineTaskEvaluation(
-  taskId: string,
-  title: string,
-  apiKey: string,
-  proxyUrl?: string
-): Promise<void> {
+async function refineTaskEvaluation(taskId: string, title: string): Promise<void> {
   try {
-    const evaluation = await evaluateTask(title, apiKey, proxyUrl)
+    const config = readConfig()
+    const evaluation = await evaluateTaskWithProvider(title, config)
     const nextTasks = getTasks().map((item) =>
       item.id === taskId
         ? { ...applyTaskEvaluation(item, evaluation), evaluating: false }

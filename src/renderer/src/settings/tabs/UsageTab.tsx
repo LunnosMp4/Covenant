@@ -6,6 +6,7 @@ import {
   type UsageMetrics,
   type UsageProject
 } from '../../../../shared/system/usage'
+import type { ChatProviderId } from '../../../../shared/config'
 import CustomSelect from '../../ui/CustomSelect'
 
 interface UsageTabProps {
@@ -18,6 +19,7 @@ interface UsageTabProps {
   refreshSignal: number
   projectId: string
   onProjectChange: (projectId: string) => void
+  chatProvider: ChatProviderId
 }
 
 interface UsageError {
@@ -323,8 +325,10 @@ export default function UsageTab({
   adminKeyFeedback,
   refreshSignal,
   projectId,
-  onProjectChange
+  onProjectChange,
+  chatProvider
 }: UsageTabProps): JSX.Element {
+  const [usageProvider, setUsageProvider] = useState<ChatProviderId>(chatProvider)
   const [rangeDays, setRangeDays] = useState<number>(30)
   const [metrics, setMetrics] = useState<UsageMetrics | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -333,10 +337,17 @@ export default function UsageTab({
   const [projects, setProjects] = useState<UsageProject[]>([])
 
   useEffect(() => {
+    setUsageProvider(chatProvider)
+  }, [chatProvider])
+
+  useEffect(() => {
     let cancelled = false
 
     const loadProjects = async (): Promise<void> => {
-      if (!window.api?.usage?.getProjects) return
+      if (usageProvider !== 'openai' || !window.api?.usage?.getProjects) {
+        setProjects([])
+        return
+      }
       try {
         const result = await window.api.usage.getProjects()
         if (cancelled || !result.ok) return
@@ -351,7 +362,7 @@ export default function UsageTab({
     return () => {
       cancelled = true
     }
-  }, [refreshSignal])
+  }, [refreshSignal, usageProvider])
 
   useEffect(() => {
     let cancelled = false
@@ -364,7 +375,7 @@ export default function UsageTab({
 
       setIsLoading(true)
       try {
-        const result = await window.api.usage.getMetrics(rangeDays, projectId)
+        const result = await window.api.usage.getMetrics(rangeDays, projectId, usageProvider)
         if (cancelled) return
         if (result.ok) {
           setMetrics(result.metrics)
@@ -390,7 +401,7 @@ export default function UsageTab({
     return () => {
       cancelled = true
     }
-  }, [rangeDays, reloadToken, refreshSignal, projectId])
+  }, [rangeDays, reloadToken, refreshSignal, projectId, usageProvider])
 
   const projectOptions = useMemo(() => {
     const options = [{ value: '', label: 'All projects' }, ...projects.map((project) => ({ value: project.id, label: project.name || project.id }))]
@@ -405,30 +416,52 @@ export default function UsageTab({
 
   return (
     <div className="space-y-6">
-      <Card
-        title="Admin API Key"
-        description="Organization admin key (sk-admin-…) used only to read usage and cost data. Stored locally, never sent anywhere else."
-      >
-        <div className="flex items-center gap-3">
-          <input
-            type="password"
-            value={adminKey}
-            onChange={(event) => onAdminKeyChange(event.target.value)}
-            placeholder="sk-admin-..."
-            autoComplete="off"
-            className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-neutral-500 focus:outline-none"
-          />
-          <button
-            type="button"
-            onClick={onSaveAdminKey}
-            disabled={isSavingAdminKey || !isConfigLoaded}
-            className="pressable btn-primary flex-shrink-0 rounded-xl px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isSavingAdminKey ? 'Saving…' : 'Save'}
-          </button>
-        </div>
-        {adminKeyFeedback ? <p className="mt-2 text-xs text-emerald-300">{adminKeyFeedback}</p> : null}
-      </Card>
+      <div className="inline-flex rounded-xl border border-neutral-800 bg-neutral-900/70 p-1">
+        {(['openai', 'opencode'] as ChatProviderId[]).map((provider) => {
+          const isActive = usageProvider === provider
+          return (
+            <button
+              key={provider}
+              type="button"
+              onClick={() => setUsageProvider(provider)}
+              className={`rounded-lg px-4 py-1.5 text-xs font-medium transition-colors ${
+                isActive
+                  ? 'bg-neutral-800 text-neutral-100'
+                  : 'text-neutral-400 hover:text-neutral-200'
+              }`}
+            >
+              {provider === 'openai' ? 'OpenAI' : 'OpenCode'}
+            </button>
+          )
+        })}
+      </div>
+
+      {usageProvider === 'openai' ? (
+        <Card
+          title="Admin API Key"
+          description="Organization admin key (sk-admin-…) used only to read usage and cost data. Stored locally, never sent anywhere else."
+        >
+          <div className="flex items-center gap-3">
+            <input
+              type="password"
+              value={adminKey}
+              onChange={(event) => onAdminKeyChange(event.target.value)}
+              placeholder="sk-admin-..."
+              autoComplete="off"
+              className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-neutral-500 focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={onSaveAdminKey}
+              disabled={isSavingAdminKey || !isConfigLoaded}
+              className="pressable btn-primary flex-shrink-0 rounded-xl px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isSavingAdminKey ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+          {adminKeyFeedback ? <p className="mt-2 text-xs text-emerald-300">{adminKeyFeedback}</p> : null}
+        </Card>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="inline-flex rounded-xl border border-neutral-800 bg-neutral-900/70 p-1">
@@ -451,14 +484,16 @@ export default function UsageTab({
           })}
         </div>
 
-        <div className="w-full min-w-[180px] sm:w-56">
-          <CustomSelect
-            options={projectOptions}
-            value={projectId}
-            onChange={onProjectChange}
-            disabled={projects.length === 0}
-          />
-        </div>
+        {usageProvider === 'openai' ? (
+          <div className="w-full min-w-[180px] sm:w-56">
+            <CustomSelect
+              options={projectOptions}
+              value={projectId}
+              onChange={onProjectChange}
+              disabled={projects.length === 0}
+            />
+          </div>
+        ) : null}
 
         <div className="ml-auto flex items-center gap-3">
           {metrics ? (
@@ -499,12 +534,19 @@ export default function UsageTab({
 
       {metrics && !isLoading ? (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className={`grid grid-cols-2 gap-3 ${metrics.allowance ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}>
             <StatCard
-              label="Total spend"
+              label={usageProvider === 'opencode' ? 'Recorded cost' : 'Total spend'}
               value={formatMoney(metrics.totalCost)}
               hint={`${metrics.rangeDays}-day total`}
             />
+            {metrics.allowance ? (
+              <StatCard
+                label="Go allowance"
+                value={formatMoney(metrics.allowance)}
+                hint="Counted toward Go limits"
+              />
+            ) : null}
             <StatCard
               label="Requests"
               value={formatTokens(metrics.totalRequests)}
@@ -533,7 +575,14 @@ export default function UsageTab({
             <ModelTable metrics={metrics} />
           </Card>
 
-          <Card title="By service" description="Exact billed cost per line item from OpenAI.">
+          <Card
+            title="By service"
+            description={
+              usageProvider === 'openai'
+                ? 'Exact billed cost per line item from OpenAI.'
+                : 'Usage grouped by Covenant feature.'
+            }
+          >
             <ServiceBreakdown metrics={metrics} />
           </Card>
         </>

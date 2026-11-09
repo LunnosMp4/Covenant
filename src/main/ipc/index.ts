@@ -10,10 +10,12 @@ import { registerStoreIpc } from './store'
 import { registerTerminalIpc } from './terminal'
 import { registerUsageIpc } from './usage'
 import { registerWindowIpc } from './window'
+import { registerAiIpc } from './ai'
 
 export function registerIpc(): void {
   registerWindowIpc()
   registerConfigIpc()
+  registerAiIpc()
   registerUsageIpc()
   registerMcpIpc()
   registerStoreIpc()

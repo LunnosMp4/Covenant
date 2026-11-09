@@ -19,7 +19,7 @@ import {
 } from './constants/theme'
 import { applyThemeToDocument } from './utils/themeDom'
 import type { AppConfig, ButtonVisibility, NotesSettings, ReasoningEffort, ShortcutConfig } from '../../shared/config'
-import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_NOTES_SETTINGS, DEFAULT_REASONING_EFFORT, DEFAULT_SHORTCUTS, DEFAULT_TEXTURE_INTENSITY, MAX_TEXTURE_INTENSITY, REASONING_EFFORT_OPTIONS, TEXTURE_MAX_OPACITY, modelSupportsExtendedParams, modelSupportsWebSearch, normalizeNotesSettings } from '../../shared/config'
+import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_NOTES_SETTINGS, DEFAULT_OPENCODE_CHAT_MODEL, DEFAULT_REASONING_EFFORT, DEFAULT_SHORTCUTS, DEFAULT_TEXTURE_INTENSITY, DEFAULT_WEB_SEARCH_PROVIDER, DEFAULT_WEB_SEARCH_TIMEOUT_MS, MAX_TEXTURE_INTENSITY, OPENCODE_MODEL_OPTIONS, REASONING_EFFORT_OPTIONS, TEXTURE_MAX_OPACITY, getModelOptionsForProvider, modelSupportsExtendedParams, modelSupportsWebSearch, normalizeNotesSettings, type AiModelOption, type ChatProviderId, type OpenCodePlan, type WebSearchProviderId } from '../../shared/config'
 import type { UpdateStatus } from '../../shared/system/update'
 import {
   DEFAULT_PASTE_SETTINGS,
@@ -43,6 +43,7 @@ import { MinimalistToggle, SectionCard } from './settings/primitives'
 import { ShortcutRecorder } from './settings/shortcutRecorder'
 import AppearanceTab from './settings/tabs/AppearanceTab'
 import GeneralTab from './settings/tabs/GeneralTab'
+import ProvidersTab from './settings/tabs/ProvidersTab'
 import TerminalTab from './settings/tabs/TerminalTab'
 import WorkflowsTab from './settings/tabs/WorkflowsTab'
 import PrepromptsTab from './settings/tabs/PrepromptsTab'
@@ -79,6 +80,25 @@ export default function Settings(): JSX.Element {
   const [isSavingAdminKey, setIsSavingAdminKey] = useState(false)
   const [adminKeyFeedbackMessage, setAdminKeyFeedbackMessage] = useState('')
   const [chatModel, setChatModel] = useState(DEFAULT_CHAT_MODEL)
+  const [chatProvider, setChatProvider] = useState<ChatProviderId>('openai')
+  const [opencodeChatModel, setOpencodeChatModel] = useState(DEFAULT_OPENCODE_CHAT_MODEL)
+  const [opencodePlan, setOpencodePlan] = useState<OpenCodePlan>('go')
+  const [opencodeModels, setOpencodeModels] = useState<AiModelOption[]>(OPENCODE_MODEL_OPTIONS)
+  const [hasOpenCodeKey, setHasOpenCodeKey] = useState(false)
+  const [opencodeKey, setOpencodeKey] = useState('')
+  const [opencodeFeedback, setOpencodeFeedback] = useState('')
+  const [opencodeTesting, setOpencodeTesting] = useState(false)
+  const [webSearchProvider, setWebSearchProvider] = useState<WebSearchProviderId>(DEFAULT_WEB_SEARCH_PROVIDER)
+  const [webSearchSearxngUrl, setWebSearchSearxngUrl] = useState('')
+  const [webSearchSearxngAuthType, setWebSearchSearxngAuthType] = useState<'none' | 'basic' | 'bearer'>('none')
+  const [webSearchSearxngUsername, setWebSearchSearxngUsername] = useState('')
+  const [webSearchSearxngSecret, setWebSearchSearxngSecret] = useState('')
+  const [webSearchSearxngAllowInsecure, setWebSearchSearxngAllowInsecure] = useState(false)
+  const [webSearchBypassProxyForLocal, setWebSearchBypassProxyForLocal] = useState(true)
+  const [webSearchFallbackProvider, setWebSearchFallbackProvider] = useState('none')
+  const [webSearchTimeoutMs, setWebSearchTimeoutMs] = useState(DEFAULT_WEB_SEARCH_TIMEOUT_MS)
+  const [webSearchFeedback, setWebSearchFeedback] = useState('')
+  const [webSearchTesting, setWebSearchTesting] = useState(false)
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT)
   const [enableWebSearch, setEnableWebSearch] = useState(true)
   const [autoCollapseReasoning, setAutoCollapseReasoning] = useState(true)
@@ -161,6 +181,25 @@ export default function Settings(): JSX.Element {
         setPreferredShell(typeof config.preferredShell === 'string' ? config.preferredShell : undefined)
         setMcpServers(Array.isArray(config.mcpServers) ? config.mcpServers : [])
         setChatModel(typeof config.chatModel === 'string' && config.chatModel.trim() ? config.chatModel : DEFAULT_CHAT_MODEL)
+        setChatProvider(config.chatProvider === 'opencode' ? 'opencode' : 'openai')
+        setOpencodeChatModel(config.opencodeChatModel || DEFAULT_OPENCODE_CHAT_MODEL)
+        setOpencodePlan(config.opencodePlan === 'payg' ? 'payg' : 'go')
+        setWebSearchProvider(config.webSearchProvider ?? DEFAULT_WEB_SEARCH_PROVIDER)
+        setWebSearchSearxngUrl(config.webSearchSearxngUrl ?? '')
+        setWebSearchSearxngAuthType(config.webSearchSearxngAuthType ?? 'none')
+        setWebSearchSearxngUsername(config.webSearchSearxngUsername ?? '')
+        setWebSearchSearxngAllowInsecure(config.webSearchSearxngAllowInsecure === true)
+        setWebSearchBypassProxyForLocal(config.webSearchBypassProxyForLocal !== false)
+        setWebSearchFallbackProvider(config.webSearchFallbackProvider ?? 'none')
+        setWebSearchTimeoutMs(config.webSearchTimeoutMs ?? DEFAULT_WEB_SEARCH_TIMEOUT_MS)
+        void window.api?.ai?.getKeyStatus?.().then((status) => {
+          if (status) setHasOpenCodeKey(status.opencode)
+        })
+        void window.api?.ai?.listModels?.('opencode').then((result) => {
+          if (result?.ok && Array.isArray(result.models) && result.models.length > 0) {
+            setOpencodeModels(result.models as unknown as AiModelOption[])
+          }
+        })
         setReasoningEffort(
           typeof config.reasoningEffort === 'string' && ['low', 'medium', 'high'].includes(config.reasoningEffort)
             ? (config.reasoningEffort as ReasoningEffort)
@@ -203,6 +242,29 @@ export default function Settings(): JSX.Element {
       setChatModel(newChatModel)
     })
 
+    const unsubChatProvider = window.api?.config.onChatProviderUpdated?.((provider) => {
+      setChatProvider(provider === 'opencode' ? 'opencode' : 'openai')
+    })
+
+    const unsubOpencodeChatModel = window.api?.config.onOpencodeChatModelUpdated?.((model) => {
+      setOpencodeChatModel(model)
+    })
+
+    const unsubWebSearchSettings = window.api?.config.onWebSearchSettingsUpdated?.((settings) => {
+      if (typeof settings.webSearchProvider === 'string') {
+        setWebSearchProvider(settings.webSearchProvider as WebSearchProviderId)
+      }
+      if (typeof settings.webSearchSearxngUrl === 'string') setWebSearchSearxngUrl(settings.webSearchSearxngUrl)
+      if (typeof settings.webSearchSearxngAuthType === 'string') {
+        setWebSearchSearxngAuthType(settings.webSearchSearxngAuthType as 'none' | 'basic' | 'bearer')
+      }
+      if (typeof settings.webSearchSearxngUsername === 'string') setWebSearchSearxngUsername(settings.webSearchSearxngUsername)
+      if (typeof settings.webSearchSearxngAllowInsecure === 'boolean') setWebSearchSearxngAllowInsecure(settings.webSearchSearxngAllowInsecure)
+      if (typeof settings.webSearchBypassProxyForLocal === 'boolean') setWebSearchBypassProxyForLocal(settings.webSearchBypassProxyForLocal)
+      if (typeof settings.webSearchFallbackProvider === 'string') setWebSearchFallbackProvider(settings.webSearchFallbackProvider)
+      if (typeof settings.webSearchTimeoutMs === 'number') setWebSearchTimeoutMs(settings.webSearchTimeoutMs)
+    })
+
     const unsubReasoningEffort = window.api?.config.onReasoningEffortUpdated?.((newEffort) => {
       setReasoningEffort(newEffort)
     })
@@ -234,6 +296,9 @@ export default function Settings(): JSX.Element {
     return () => {
       isMounted = false
       if (typeof unsubChatModel === 'function') unsubChatModel()
+      if (typeof unsubChatProvider === 'function') unsubChatProvider()
+      if (typeof unsubOpencodeChatModel === 'function') unsubOpencodeChatModel()
+      if (typeof unsubWebSearchSettings === 'function') unsubWebSearchSettings()
       if (typeof unsubReasoningEffort === 'function') unsubReasoningEffort()
       if (typeof unsubButtonVisibility === 'function') unsubButtonVisibility()
       if (typeof unsubShortcuts === 'function') unsubShortcuts()
@@ -676,6 +741,130 @@ const handleMinimizeWindow = (): void => {
     window.api?.config.updateChatModel?.(model)
   }
 
+  const handleChatProviderChange = (provider: ChatProviderId): void => {
+    setChatProvider(provider)
+    window.api?.config.updateChatProvider?.(provider)
+    const nextModel =
+      provider === 'opencode' ? opencodeChatModel : chatModel
+    setChatModel(nextModel)
+  }
+
+  const handleOpencodeChatModelChange = (model: string): void => {
+    setOpencodeChatModel(model)
+    window.api?.config.updateOpencodeChatModel?.(model)
+    if (chatProvider === 'opencode') setChatModel(model)
+  }
+
+  const handleOpencodePlanChange = (plan: OpenCodePlan): void => {
+    setOpencodePlan(plan)
+    window.api?.config.updateOpencodePlan?.(plan)
+  }
+
+  const handleRefreshOpencodeModels = (): void => {
+    void window.api?.ai?.refreshModels?.().then((result) => {
+      if (result?.ok && Array.isArray(result.models) && result.models.length > 0) {
+        setOpencodeModels(result.models as unknown as AiModelOption[])
+      }
+    })
+  }
+
+  const handleSaveOpencodeKey = (): void => {
+    if (!opencodeKey.trim()) return
+    setOpencodeFeedback('Saving…')
+    void window.api?.ai?.setOpencodeKey?.(opencodeKey.trim()).then((result) => {
+      if (result?.ok) {
+        setHasOpenCodeKey(true)
+        setOpencodeKey('')
+        setOpencodeFeedback('Key saved.')
+        handleRefreshOpencodeModels()
+      } else {
+        setOpencodeFeedback(result && !result.ok ? result.error : 'Failed to save key.')
+      }
+    })
+  }
+
+  const handleClearOpencodeKey = (): void => {
+    void window.api?.ai?.clearOpencodeKey?.().then(() => {
+      setHasOpenCodeKey(false)
+      setOpencodeFeedback('Key removed.')
+    })
+  }
+
+  const handleTestOpencodeKey = (): void => {
+    setOpencodeTesting(true)
+    setOpencodeFeedback('')
+    void window.api?.ai?.testOpencodeKey?.().then((result) => {
+      setOpencodeTesting(false)
+      setOpencodeFeedback(result?.ok ? 'Connection successful.' : result?.error ?? 'Connection failed.')
+    })
+  }
+
+  const updateWebSearchSettings = (patch: Record<string, unknown>): void => {
+    window.api?.config.updateWebSearchSettings?.(patch)
+  }
+
+  const handleWebSearchProviderChange = (provider: WebSearchProviderId): void => {
+    setWebSearchProvider(provider)
+    updateWebSearchSettings({ webSearchProvider: provider })
+  }
+
+  const handleWebSearchSearxngUrlChange = (value: string): void => {
+    setWebSearchSearxngUrl(value)
+    updateWebSearchSettings({ webSearchSearxngUrl: value })
+  }
+
+  const handleWebSearchSearxngAuthTypeChange = (value: 'none' | 'basic' | 'bearer'): void => {
+    setWebSearchSearxngAuthType(value)
+    updateWebSearchSettings({ webSearchSearxngAuthType: value })
+  }
+
+  const handleWebSearchSearxngUsernameChange = (value: string): void => {
+    setWebSearchSearxngUsername(value)
+    updateWebSearchSettings({ webSearchSearxngUsername: value })
+  }
+
+  const handleWebSearchSearxngAllowInsecureChange = (value: boolean): void => {
+    setWebSearchSearxngAllowInsecure(value)
+    updateWebSearchSettings({ webSearchSearxngAllowInsecure: value })
+  }
+
+  const handleWebSearchBypassProxyForLocalChange = (value: boolean): void => {
+    setWebSearchBypassProxyForLocal(value)
+    updateWebSearchSettings({ webSearchBypassProxyForLocal: value })
+  }
+
+  const handleWebSearchFallbackProviderChange = (value: string): void => {
+    setWebSearchFallbackProvider(value)
+    updateWebSearchSettings({ webSearchFallbackProvider: value })
+  }
+
+  const handleWebSearchTimeoutMsChange = (value: number): void => {
+    setWebSearchTimeoutMs(value)
+    updateWebSearchSettings({ webSearchTimeoutMs: value })
+  }
+
+  const handleSaveSearchSecret = (): void => {
+    if (!webSearchSearxngSecret.trim()) return
+    setWebSearchFeedback('Saving…')
+    void window.api?.ai?.setSearchSecret?.(webSearchProvider, webSearchSearxngSecret.trim()).then((result) => {
+      if (result?.ok) {
+        setWebSearchSearxngSecret('')
+        setWebSearchFeedback('Credential saved.')
+      } else {
+        setWebSearchFeedback(result && !result.ok ? result.error : 'Failed to save credential.')
+      }
+    })
+  }
+
+  const handleTestWebSearch = (): void => {
+    setWebSearchTesting(true)
+    setWebSearchFeedback('')
+    void window.api?.ai?.testWebSearch?.().then((result) => {
+      setWebSearchTesting(false)
+      setWebSearchFeedback(result?.message ?? 'Search test failed.')
+    })
+  }
+
   const handleReasoningEffortChange = (effort: ReasoningEffort): void => {
     setReasoningEffort(effort)
     window.api?.config.updateReasoningEffort?.(effort)
@@ -929,6 +1118,7 @@ const handleMinimizeWindow = (): void => {
 
   const pageTitle = useMemo(() => {
     if (activeTab === 'general') return 'General'
+    if (activeTab === 'providers') return 'AI Provider'
     if (activeTab === 'usage') return 'Usage & Cost'
     if (activeTab === 'appearance') return 'Appearance'
     if (activeTab === 'terminal') return 'Terminal'
@@ -1064,6 +1254,55 @@ const handleMinimizeWindow = (): void => {
                 onShortcutChange={handleShortcutChange}
               />
             )}
+            {activeTab === 'providers' && (
+              <ProvidersTab
+                chatProvider={chatProvider}
+                onChatProviderChange={handleChatProviderChange}
+                chatModel={chatModel}
+                onChatModelChange={handleChatModelChange}
+                opencodeChatModel={opencodeChatModel}
+                onOpencodeChatModelChange={handleOpencodeChatModelChange}
+                opencodePlan={opencodePlan}
+                onOpencodePlanChange={handleOpencodePlanChange}
+                opencodeModels={opencodeModels}
+                onRefreshModels={handleRefreshOpencodeModels}
+                hasOpenCodeKey={hasOpenCodeKey}
+                opencodeKey={opencodeKey}
+                onOpencodeKeyChange={setOpencodeKey}
+                onSaveOpencodeKey={handleSaveOpencodeKey}
+                onClearOpencodeKey={handleClearOpencodeKey}
+                onTestOpencodeKey={handleTestOpencodeKey}
+                opencodeFeedback={opencodeFeedback}
+                opencodeTesting={opencodeTesting}
+                reasoningEffort={reasoningEffort}
+                onReasoningEffortChange={handleReasoningEffortChange}
+                enableWebSearch={enableWebSearch}
+                onWebSearchChange={handleWebSearchChange}
+                webSearchProvider={webSearchProvider}
+                onWebSearchProviderChange={handleWebSearchProviderChange}
+                webSearchSearxngUrl={webSearchSearxngUrl}
+                onWebSearchSearxngUrlChange={handleWebSearchSearxngUrlChange}
+                webSearchSearxngAuthType={webSearchSearxngAuthType}
+                onWebSearchSearxngAuthTypeChange={handleWebSearchSearxngAuthTypeChange}
+                webSearchSearxngUsername={webSearchSearxngUsername}
+                onWebSearchSearxngUsernameChange={handleWebSearchSearxngUsernameChange}
+                webSearchSearxngSecret={webSearchSearxngSecret}
+                onWebSearchSearxngSecretChange={setWebSearchSearxngSecret}
+                webSearchSearxngAllowInsecure={webSearchSearxngAllowInsecure}
+                onWebSearchSearxngAllowInsecureChange={handleWebSearchSearxngAllowInsecureChange}
+                webSearchBypassProxyForLocal={webSearchBypassProxyForLocal}
+                onWebSearchBypassProxyForLocalChange={handleWebSearchBypassProxyForLocalChange}
+                webSearchFallbackProvider={webSearchFallbackProvider}
+                onWebSearchFallbackProviderChange={handleWebSearchFallbackProviderChange}
+                webSearchTimeoutMs={webSearchTimeoutMs}
+                onWebSearchTimeoutMsChange={handleWebSearchTimeoutMsChange}
+                onSaveSearchSecret={handleSaveSearchSecret}
+                onTestWebSearch={handleTestWebSearch}
+                webSearchFeedback={webSearchFeedback}
+                webSearchTesting={webSearchTesting}
+                isConfigLoaded={isConfigLoaded}
+              />
+            )}
             {activeTab === 'usage' && (
               <UsageTab
                 adminKey={adminApiKey}
@@ -1075,6 +1314,7 @@ const handleMinimizeWindow = (): void => {
                 refreshSignal={usageRefreshSignal}
                 projectId={usageProjectId}
                 onProjectChange={handleUsageProjectChange}
+                chatProvider={chatProvider}
               />
             )}
             {activeTab === 'appearance' && (
@@ -1147,7 +1387,15 @@ const handleMinimizeWindow = (): void => {
               />
             )}
             {activeTab === 'notes' && (
-              <NotesTab settings={notesSettings} onChange={handleNotesSettingChange} />
+              <NotesTab
+                settings={notesSettings}
+                onChange={handleNotesSettingChange}
+                modelOptions={
+                  chatProvider === 'opencode'
+                    ? opencodeModels
+                    : getModelOptionsForProvider('openai')
+                }
+              />
             )}
             {activeTab === 'code' && (
               <CodeTab

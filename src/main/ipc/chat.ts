@@ -1,6 +1,12 @@
 import { randomUUID } from 'crypto'
 import { ipcMain, type WebContents } from 'electron'
-import { DEFAULT_CHAT_MODEL, DEFAULT_ENABLE_WEB_SEARCH, modelSupportsWebSearch } from '../../shared/config'
+import {
+  DEFAULT_CHAT_MODEL,
+  DEFAULT_ENABLE_WEB_SEARCH,
+  getActiveChatModel,
+  getModelOptionFor,
+  modelSupportsWebSearchFor
+} from '../../shared/config'
 import {
   buildTerminalToolDefinitions,
   TERMINAL_TOOL_INSTRUCTIONS
@@ -9,12 +15,27 @@ import { readConfig } from '../config/configStore'
 import { getActiveMcpToolRegistry } from '../mcp/registry'
 import { createOpenAIClient } from '../openai/client'
 import { completeChatWithMcp } from '../openai/completion'
-import { buildResponseParams, buildResponsesInput, sanitizeMessages } from '../openai/messages'
+import {
+  buildResponseParams,
+  buildResponsesInput,
+  buildWebSearchToolDefinition,
+  sanitizeMessages
+} from '../openai/messages'
 import { runStreamingChat } from '../openai/streaming'
 import { buildOpenAIToolDefinitions } from '../services/mcpClient'
 import { terminalManager } from '../terminalManager'
 import { createTerminalToolHandlers } from '../terminal/tools'
 import { setVoiceRecordingActive } from '../windows'
+import {
+  getOpenAIKey,
+  hasProviderKey,
+  providerKeyError,
+  resolveChatProvider
+} from '../ai/provider'
+import { createWebSearchHandler, shouldUseNativeWebSearch } from '../ai/webSearch'
+import { recordAiUsage } from '../ai/usageLedger'
+import type { BuiltinToolHandler } from '../services/builtinTools'
+import { log } from '../logger'
 
 const activeChatStreams = new Map<string, AbortController>()
 
@@ -104,13 +125,21 @@ export function registerChatIpc(): void {
   })
 
   ipcMain.handle('covenant:chat-stream', async (event, rawPayload: unknown) => {
-    const payload = rawPayload as { messages?: unknown; terminalSessionId?: unknown } | undefined
+    const payload = rawPayload as
+      | { messages?: unknown; terminalSessionId?: unknown; conversationId?: unknown }
+      | undefined
     const rawMessages = Array.isArray(rawPayload) ? rawPayload : payload?.messages
     const terminalSessionId =
       !Array.isArray(rawPayload) &&
       typeof payload?.terminalSessionId === 'string' &&
       payload.terminalSessionId.length > 0
         ? payload.terminalSessionId
+        : undefined
+    const conversationId =
+      !Array.isArray(rawPayload) &&
+      typeof payload?.conversationId === 'string' &&
+      payload.conversationId.length > 0
+        ? payload.conversationId
         : undefined
 
     const sanitized = Array.isArray(rawMessages) ? sanitizeMessages(rawMessages) : []
@@ -120,12 +149,7 @@ export function registerChatIpc(): void {
     }
 
     const storedConfig = readConfig()
-    const apiKey = storedConfig.apiKey || process.env.OPENAI_API_KEY
-    if (!apiKey) {
-      throw new Error('OpenAI API key is missing. Add it in Settings > General or set OPENAI_API_KEY.')
-    }
-
-    const client = createOpenAIClient(apiKey, storedConfig.proxyUrl)
+    const provider = resolveChatProvider(storedConfig, { sessionId: conversationId })
 
     const streamId = randomUUID()
     const sender = event.sender
@@ -133,44 +157,80 @@ export function registerChatIpc(): void {
     const sendStreamEvent = streamSender.send
 
     const toolRegistry = getActiveMcpToolRegistry()
-    const chatModel = storedConfig.chatModel || DEFAULT_CHAT_MODEL
+    const chatModel = provider.model
+    const modelOption = provider.modelOption
     const enableWebSearch = storedConfig.enableWebSearch ?? DEFAULT_ENABLE_WEB_SEARCH
-    const doesWebSearch = enableWebSearch && modelSupportsWebSearch(chatModel)
+    const webSearchEnabled = enableWebSearch && modelOption.webSearch !== false
     const terminalSession =
       terminalSessionId && terminalManager.hasSession(terminalSessionId)
         ? terminalSessionId
         : undefined
 
     const tools: Array<Record<string, unknown>> = []
-    if (doesWebSearch) {
-      tools.push({ type: 'web_search' })
+    const builtinTools: BuiltinToolHandler[] = terminalSession
+      ? createTerminalToolHandlers(terminalSession)
+      : []
+
+    if (webSearchEnabled) {
+      const useNativeOpenAI =
+        provider.provider === 'openai' &&
+        storedConfig.webSearchProvider === 'openai' &&
+        modelOption.webSearch === 'native'
+      const useNativeOpenCode = shouldUseNativeWebSearch(storedConfig, modelOption)
+      if (useNativeOpenAI || useNativeOpenCode) {
+        tools.push({ type: 'web_search' })
+      } else {
+        tools.push(buildWebSearchToolDefinition())
+        builtinTools.push(createWebSearchHandler(storedConfig))
+      }
     }
+
     tools.push(...buildOpenAIToolDefinitions(toolRegistry))
     if (terminalSession) {
       tools.push(...(buildTerminalToolDefinitions() as unknown as Array<Record<string, unknown>>))
     }
 
     const input = buildResponsesInput(sanitized)
-    const params = buildResponseParams(storedConfig, chatModel)
+    const params = buildResponseParams(storedConfig, chatModel, {
+      provider: provider.provider,
+      modelOption
+    })
 
     if (terminalSession) {
       const base = typeof params.instructions === 'string' ? params.instructions : ''
       params.instructions = `${base}\n\n${TERMINAL_TOOL_INSTRUCTIONS}`.trim()
     }
 
-    const builtinTools = terminalSession ? createTerminalToolHandlers(terminalSession) : []
-
     const controller = new AbortController()
     activeChatStreams.set(streamId, controller)
 
     void runStreamingChat(
-      { client, streamId, sender, model: chatModel, sendStreamEvent, signal: controller.signal },
+      {
+        client: provider.client,
+        streamId,
+        sender,
+        model: chatModel,
+        provider: provider.provider,
+        sendStreamEvent,
+        signal: controller.signal,
+        onUsage: (usage) =>
+          recordAiUsage({
+            provider: provider.provider,
+            model: chatModel,
+            kind: 'chat',
+            usage
+          })
+      },
       input,
       tools,
       params,
       toolRegistry,
       builtinTools
-    ).finally(() => {
+    ).catch((error) => {
+      const message = error instanceof Error ? error.message : 'Unable to fetch AI response.'
+      log.error('Chat stream failed', error)
+      sendStreamEvent({ id: streamId, type: 'error', error: message })
+    }).finally(() => {
       streamSender.flush()
       activeChatStreams.delete(streamId)
     })
@@ -189,24 +249,48 @@ export function registerChatIpc(): void {
     }
 
     const storedConfig = readConfig()
-    const apiKey = storedConfig.apiKey || process.env.OPENAI_API_KEY
-    if (!apiKey) {
-      throw new Error('OpenAI API key is missing. Add it in Settings > General or set OPENAI_API_KEY.')
+    const provider = resolveChatProvider(storedConfig)
+    const toolRegistry = getActiveMcpToolRegistry()
+    const chatModel = provider.model
+    const modelOption = provider.modelOption
+    const enableWebSearch = storedConfig.enableWebSearch ?? DEFAULT_ENABLE_WEB_SEARCH
+    const webSearchEnabled = enableWebSearch && modelOption.webSearch !== false
+
+    const extraTools: Array<Record<string, unknown>> = []
+    const builtinTools: BuiltinToolHandler[] = []
+    if (webSearchEnabled) {
+      const useNativeOpenAI =
+        provider.provider === 'openai' &&
+        storedConfig.webSearchProvider === 'openai' &&
+        modelOption.webSearch === 'native'
+      const useNativeOpenCode = shouldUseNativeWebSearch(storedConfig, modelOption)
+      if (useNativeOpenAI || useNativeOpenCode) {
+        extraTools.push({ type: 'web_search' })
+      } else {
+        extraTools.push(buildWebSearchToolDefinition())
+        builtinTools.push(createWebSearchHandler(storedConfig))
+      }
     }
 
-    const client = createOpenAIClient(apiKey, storedConfig.proxyUrl)
-    const toolRegistry = getActiveMcpToolRegistry()
-    const chatModel = storedConfig.chatModel || DEFAULT_CHAT_MODEL
-    if (toolRegistry.length > 0) {
-      return completeChatWithMcp(client, sanitized, toolRegistry, chatModel)
+    if (toolRegistry.length > 0 || builtinTools.length > 0) {
+      return completeChatWithMcp(provider.client, sanitized, toolRegistry, chatModel, {
+        provider: provider.provider,
+        modelOption,
+        builtinTools,
+        extraTools
+      })
     }
 
     const input = buildResponsesInput(sanitized)
-    const params = buildResponseParams(storedConfig, chatModel)
+    const params = buildResponseParams(storedConfig, chatModel, {
+      provider: provider.provider,
+      modelOption
+    })
 
-    const response = await client.responses.create({
+    const response = await provider.client.responses.create({
       model: chatModel,
       input: input as unknown[],
+      ...(extraTools.length > 0 ? { tools: extraTools as unknown[] } : {}),
       ...(params as Record<string, unknown>)
     } as any)
     return (response as any).output_text?.trim() || 'No response from model.'
@@ -218,9 +302,9 @@ export function registerChatIpc(): void {
 
   ipcMain.handle('voice:transcribe', async (_event, audioBuffer: ArrayBuffer) => {
     const storedConfig = readConfig()
-    const apiKey = storedConfig.apiKey || process.env.OPENAI_API_KEY
+    const apiKey = getOpenAIKey(storedConfig)
     if (!apiKey) {
-      throw new Error('OpenAI API key is missing. Add it in Settings > General or set OPENAI_API_KEY.')
+      throw new Error('OpenAI API key is required for microphone transcription. Add it in Settings > General.')
     }
 
     const client = createOpenAIClient(apiKey, storedConfig.proxyUrl)

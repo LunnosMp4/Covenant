@@ -150,6 +150,7 @@ export interface UsageModelBreakdown {
   cachedInputTokens: number
   outputTokens: number
   estimatedCost: number | null
+  allowance?: number
 }
 
 export interface UsageMetrics {
@@ -165,6 +166,7 @@ export interface UsageMetrics {
   daily: UsageCostPoint[]
   byService: UsageServiceBreakdown[]
   byModel: UsageModelBreakdown[]
+  allowance?: number
 }
 
 export type UsageMetricsResult =

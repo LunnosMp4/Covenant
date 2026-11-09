@@ -1,4 +1,4 @@
-import { CHAT_MODEL_OPTIONS } from '../../../../shared/config'
+import { CHAT_MODEL_OPTIONS, OPENCODE_MODEL_OPTIONS } from '../../../../shared/config'
 import { formatCurrency, formatTokenCount, type ContextStats } from '../../utils/chat/chatUsage'
 
 interface ContextStatsDonutProps {
@@ -49,7 +49,7 @@ export default function ContextStatsDonut({
           </div>
           <div className="space-y-0.5 text-[11px] text-neutral-400">
             <p className="font-medium text-neutral-300">
-              {modelLabel ?? CHAT_MODEL_OPTIONS.find(m => m.id === chatModel)?.label ?? chatModel}
+              {modelLabel ?? CHAT_MODEL_OPTIONS.find(m => m.id === chatModel)?.label ?? OPENCODE_MODEL_OPTIONS.find(m => m.id === chatModel)?.label ?? chatModel}
             </p>
             <p>Cost: {formatCurrency(stats.totalCost)}</p>
             <p>{stats.messageCount} messages &middot; {'>'}{formatTokenCount(stats.totalInputTokens)}tk &middot; {formatTokenCount(stats.totalOutputTokens)}tk</p>

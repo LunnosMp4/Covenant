@@ -2,6 +2,21 @@ import type { McpServer } from './mcp/mcp'
 import { DEFAULT_PASTE_SETTINGS, normalizePasteManagerSettings, type PasteManagerSettings } from './paste/paste'
 import { DEFAULT_CODE_SETTINGS, type CodeSettings } from './code/code'
 import { normalizeCodeSettings } from './code/codeNormalizers'
+import {
+  DEFAULT_CHAT_PROVIDER,
+  DEFAULT_OPENCODE_CHAT_MODEL,
+  DEFAULT_WEB_SEARCH_PROVIDER,
+  DEFAULT_WEB_SEARCH_TIMEOUT_MS,
+  OPENCODE_MODEL_OPTIONS,
+  findAiModelOption,
+  normalizeChatProvider,
+  normalizeOpenCodePlan,
+  normalizeWebSearchProvider,
+  type AiModelOption,
+  type ChatProviderId,
+  type OpenCodePlan,
+  type WebSearchProviderId
+} from './ai/models'
 
 export interface ButtonVisibility {
   workflow: boolean
@@ -85,6 +100,52 @@ export function modelSupportsWebSearch(modelId: string): boolean {
   const lower = modelId.toLowerCase()
   return REASONING_MODEL_PREFIXES.some((prefix) => lower.startsWith(prefix)) ||
     lower.startsWith('gpt-4o')
+}
+
+export function getModelOptionsForProvider(provider: ChatProviderId): AiModelOption[] {
+  if (provider === 'opencode') return OPENCODE_MODEL_OPTIONS
+  return CHAT_MODEL_OPTIONS.map((option) => ({
+    provider: 'openai' as const,
+    id: option.id,
+    label: option.label,
+    maxContextTokens: option.maxContextTokens,
+    supportsExtendedParams: option.supportsExtendedParams,
+    supportsTools: true,
+    supportsReasoning: option.supportsExtendedParams,
+    reasoningEfforts: option.supportsExtendedParams ? [...REASONING_EFFORT_OPTIONS] : [],
+    supportsTemperature: modelSupportsTemperature(option.id),
+    supportsVision: true,
+    webSearch: modelSupportsWebSearch(option.id) ? 'native' : false,
+    nativeApi: 'responses' as const
+  }))
+}
+
+export function getModelOptionFor(
+  provider: ChatProviderId,
+  modelId: string
+): AiModelOption | undefined {
+  const direct = findAiModelOption(provider, modelId)
+  if (direct) return direct
+  return getModelOptionsForProvider(provider).find((option) => option.id === modelId)
+}
+
+export function modelSupportsExtendedParamsFor(provider: ChatProviderId, modelId: string): boolean {
+  return getModelOptionFor(provider, modelId)?.supportsExtendedParams ?? false
+}
+
+export function modelDoesReasoningFor(provider: ChatProviderId, modelId: string): boolean {
+  return getModelOptionFor(provider, modelId)?.supportsReasoning ?? false
+}
+
+export function modelSupportsTemperatureFor(provider: ChatProviderId, modelId: string): boolean {
+  const option = getModelOptionFor(provider, modelId)
+  return option ? option.supportsTemperature : modelSupportsTemperature(modelId)
+}
+
+export function modelSupportsWebSearchFor(provider: ChatProviderId, modelId: string): boolean {
+  const option = getModelOptionFor(provider, modelId)
+  if (option) return option.webSearch !== false
+  return modelSupportsWebSearch(modelId)
 }
 
 export type TranscriptionModel =
@@ -220,6 +281,13 @@ export function normalizeShortcuts(raw: unknown): ShortcutConfig {
   }
 }
 
+export function getActiveChatModel(config: Pick<AppConfig, 'chatProvider' | 'chatModel' | 'opencodeChatModel'>): string {
+  if (config.chatProvider === 'opencode') {
+    return config.opencodeChatModel || DEFAULT_OPENCODE_CHAT_MODEL
+  }
+  return config.chatModel || DEFAULT_CHAT_MODEL
+}
+
 export interface AppConfig {
   apiKey: string
   adminApiKey?: string
@@ -232,6 +300,17 @@ export interface AppConfig {
   mcpServers: McpServer[]
   buttonVisibility: ButtonVisibility
   chatModel: string
+  chatProvider: ChatProviderId
+  opencodeChatModel: string
+  opencodePlan: OpenCodePlan
+  webSearchProvider: WebSearchProviderId
+  webSearchSearxngUrl?: string
+  webSearchSearxngAuthType?: 'none' | 'basic' | 'bearer'
+  webSearchSearxngUsername?: string
+  webSearchSearxngAllowInsecure?: boolean
+  webSearchBypassProxyForLocal?: boolean
+  webSearchFallbackProvider?: WebSearchProviderId | 'none'
+  webSearchTimeoutMs?: number
   reasoningEffort: ReasoningEffort
   enableWebSearch: boolean
   autoCollapseReasoning: boolean
@@ -249,3 +328,22 @@ export { DEFAULT_PASTE_SETTINGS, normalizePasteManagerSettings }
 export type { PasteManagerSettings }
 export { DEFAULT_CODE_SETTINGS, normalizeCodeSettings }
 export type { CodeSettings }
+export {
+  CHAT_PROVIDERS,
+  DEFAULT_CHAT_PROVIDER,
+  DEFAULT_OPENCODE_CHAT_MODEL,
+  DEFAULT_WEB_SEARCH_PROVIDER,
+  DEFAULT_WEB_SEARCH_TIMEOUT_MS,
+  OPENCODE_MODEL_OPTIONS,
+  WEB_SEARCH_PROVIDERS,
+  normalizeChatProvider,
+  normalizeOpenCodePlan,
+  normalizeWebSearchProvider
+} from './ai/models'
+export type {
+  AiModelOption,
+  ChatProviderId,
+  NativeApiFamily,
+  OpenCodePlan,
+  WebSearchProviderId
+} from './ai/models'

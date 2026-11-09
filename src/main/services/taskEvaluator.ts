@@ -10,7 +10,9 @@ import {
   type TaskEvaluation,
   type TaskTier
 } from '../../shared/tasks/gamification'
-import { modelSupportsTemperature } from '../../shared/config'
+import type { AppConfig } from '../../shared/config'
+import { getActiveChatModel, modelSupportsTemperature } from '../../shared/config'
+import { resolveChatProvider } from '../ai/provider'
 
 const EVALUATION_MODEL = 'gpt-6-luna'
 const EVALUATION_TIMEOUT_MS = 8000
@@ -234,6 +236,64 @@ export async function evaluateTaskWithOpenAI(
     return evaluateTaskHeuristically(title)
   } finally {
     clearTimeout(timeout)
+  }
+}
+
+async function evaluateTaskWithOpenCode(
+  title: string,
+  config: AppConfig
+): Promise<TaskEvaluation> {
+  const provider = resolveChatProvider(config, { model: getActiveChatModel(config) })
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), EVALUATION_TIMEOUT_MS)
+
+  const baseRequest = {
+    model: provider.model,
+    messages: [
+      { role: 'system' as const, content: SYSTEM_PROMPT },
+      { role: 'user' as const, content: title }
+    ],
+    ...(provider.modelOption.supportsTemperature ? { temperature: 0.2 } : {})
+  }
+
+  try {
+    let completion
+    try {
+      completion = await provider.client.chat.completions.create(
+        {
+          ...baseRequest,
+          response_format: { type: 'json_object' }
+        } as never,
+        { signal: controller.signal }
+      )
+    } catch {
+      completion = await provider.client.chat.completions.create(baseRequest as never, {
+        signal: controller.signal
+      })
+    }
+
+    const content = completion.choices[0]?.message?.content ?? ''
+    return parseEvaluationContent(content) ?? evaluateTaskHeuristically(title)
+  } catch {
+    return evaluateTaskHeuristically(title)
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+export async function evaluateTaskWithProvider(
+  title: string,
+  config: AppConfig
+): Promise<TaskEvaluation> {
+  if (config.chatProvider === 'opencode') {
+    return evaluateTaskWithOpenCode(title, config)
+  }
+  const apiKey = config.apiKey || process.env.OPENAI_API_KEY
+  if (!apiKey) return evaluateTaskHeuristically(title)
+  try {
+    return await evaluateTaskWithOpenAI(title, apiKey, config.proxyUrl)
+  } catch {
+    return evaluateTaskHeuristically(title)
   }
 }
 

@@ -27,9 +27,9 @@ import type { McpServer } from '../../../shared/mcp/mcp'
 import type { Preprompt } from '../types/renderer'
 import type { Workflow } from '../types/renderer'
 
-export type SettingsTab = 'general' | 'appearance' | 'terminal' | 'workflow' | 'preprompts' | 'mcp' | 'paste' | 'notes' | 'usage' | 'code'
+export type SettingsTab = 'general' | 'providers' | 'appearance' | 'terminal' | 'workflow' | 'preprompts' | 'mcp' | 'paste' | 'notes' | 'usage' | 'code'
 
-export const VALID_SETTINGS_TABS: readonly SettingsTab[] = ['general', 'appearance', 'terminal', 'workflow', 'preprompts', 'mcp', 'paste', 'notes', 'usage', 'code']
+export const VALID_SETTINGS_TABS: readonly SettingsTab[] = ['general', 'providers', 'appearance', 'terminal', 'workflow', 'preprompts', 'mcp', 'paste', 'notes', 'usage', 'code']
 
 export interface SettingsNavGroup {
   label: string
@@ -48,6 +48,7 @@ export const SETTINGS_NAV_GROUPS: readonly SettingsNavGroup[] = [
   {
     label: 'AI & Automation',
     items: [
+      { id: 'providers', label: 'AI Provider' },
       { id: 'preprompts', label: 'Instructions' },
       { id: 'mcp', label: 'MCP Servers' },
       { id: 'workflow', label: 'Workflows' }

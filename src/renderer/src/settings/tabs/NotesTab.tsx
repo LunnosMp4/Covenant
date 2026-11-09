@@ -1,4 +1,4 @@
-import type { NotesSettings, TranscriptionModel } from '../../../../shared/config'
+import type { AiModelOption, NotesSettings, TranscriptionModel } from '../../../../shared/config'
 import {
   CHAT_MODEL_OPTIONS,
   DEFAULT_NOTES_SETTINGS,
@@ -10,6 +10,7 @@ import { MinimalistToggle, SectionCard } from '../primitives'
 interface NotesTabProps {
   settings: NotesSettings
   onChange: (patch: Partial<NotesSettings>) => void
+  modelOptions?: AiModelOption[]
 }
 
 const LANGUAGE_OPTIONS = [
@@ -25,7 +26,8 @@ const LANGUAGE_OPTIONS = [
   { value: 'zh', label: 'Chinese' }
 ]
 
-export default function NotesTab({ settings, onChange }: NotesTabProps): JSX.Element {
+export default function NotesTab({ settings, onChange, modelOptions }: NotesTabProps): JSX.Element {
+  const summaryModels = modelOptions && modelOptions.length > 0 ? modelOptions : CHAT_MODEL_OPTIONS
   return (
     <div className="space-y-6">
       <SectionCard
@@ -106,7 +108,7 @@ export default function NotesTab({ settings, onChange }: NotesTabProps): JSX.Ele
               onChange={(value) => onChange({ summaryModel: value })}
               options={[
                 { value: '', label: 'Use current chat model' },
-                ...CHAT_MODEL_OPTIONS.map((option) => ({
+                ...summaryModels.map((option) => ({
                   value: option.id,
                   label: option.label
                 }))

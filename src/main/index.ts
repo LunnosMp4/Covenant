@@ -121,13 +121,7 @@ app.whenReady().then(() => {
     saveSettings: (settings) => {
       updateConfig({ pasteManager: settings })
     },
-    getOpenAIConfig: () => {
-      const current = readConfig()
-      return {
-        apiKey: current.apiKey || process.env.OPENAI_API_KEY || '',
-        proxyUrl: resolveOpenAIProxyUrl(current.proxyUrl)
-      }
-    },
+    getAppConfig: () => readConfig(),
     onChanged: () => {
       // The paste surface lives in the main window; refresh it live when it is
       // open. On show the renderer reloads the full list anyway.

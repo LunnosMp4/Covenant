@@ -99,7 +99,7 @@ export default function GeneralTab({
     <div className="space-y-6">
       <SectionCard
         title="OpenAI API Key"
-        description="Stored in your local OS user data directory. This key is used by Covenant chat requests."
+        description="Stored in your local OS user data directory. Required for microphone and meeting transcription. Also used when the OpenAI chat provider or OpenAI web search is selected."
       >
         <div>
           <label htmlFor="openai-key" className="mb-2 block text-sm font-medium text-neutral-300">
@@ -258,59 +258,15 @@ export default function GeneralTab({
       </SectionCard>
 
       <SectionCard
-        title="Chat Model"
-        description="Select which OpenAI model to use for AI conversations. Changes apply immediately."
+        title="Reasoning display"
+        description="Controls how the reasoning panel behaves after a response completes."
       >
-        <div className="space-y-4">
-          <div>
-            <label className="mb-2 block text-sm font-medium text-neutral-300">
-              Model
-            </label>
-            <CustomSelect
-              options={CHAT_MODEL_OPTIONS.map((option) => ({
-                value: option.id,
-                label: option.label
-              }))}
-              value={chatModel || DEFAULT_CHAT_MODEL}
-              onChange={onChatModelChange}
-            />
-          </div>
-
-          <div>
-            <label className={`mb-2 block text-sm font-medium ${modelSupportsExtendedParams(chatModel || DEFAULT_CHAT_MODEL) ? 'text-neutral-300' : 'text-neutral-600'}`}>
-              Reasoning Effort
-            </label>
-            <CustomSelect
-              options={REASONING_EFFORT_OPTIONS.map((effort) => ({
-                value: effort,
-                label: effort.charAt(0).toUpperCase() + effort.slice(1)
-              }))}
-              value={reasoningEffort || DEFAULT_REASONING_EFFORT}
-              onChange={(value) => onReasoningEffortChange(value as ReasoningEffort)}
-              disabled={!modelSupportsExtendedParams(chatModel || DEFAULT_CHAT_MODEL)}
-            />
-            <p className={`mt-2 text-xs ${modelSupportsExtendedParams(chatModel || DEFAULT_CHAT_MODEL) ? 'text-neutral-500' : 'text-neutral-600'}`}>
-              {modelSupportsExtendedParams(chatModel || DEFAULT_CHAT_MODEL)
-                ? 'Controls how much compute the model spends reasoning.'
-                : 'Not supported by this model.'}
-            </p>
-          </div>
-
-          <MinimalistToggle
-            checked={enableWebSearch}
-            onChange={onWebSearchChange}
-            label="Web Search"
-            description="Allow the model to search the web for up-to-date information. Requires Responses API support."
-            disabled={!modelSupportsWebSearch(chatModel || DEFAULT_CHAT_MODEL)}
-          />
-
-          <MinimalistToggle
-            checked={autoCollapseReasoning}
-            onChange={onAutoCollapseReasoningChange}
-            label="Auto-collapse Reasoning"
-            description="Automatically collapse the reasoning panel after the response completes."
-          />
-        </div>
+        <MinimalistToggle
+          checked={autoCollapseReasoning}
+          onChange={onAutoCollapseReasoningChange}
+          label="Auto-collapse Reasoning"
+          description="Automatically collapse the reasoning panel after the response completes."
+        />
       </SectionCard>
 
       <SectionCard

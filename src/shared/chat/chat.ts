@@ -36,6 +36,10 @@ export interface ChatUsage {
   completionTokens?: number
   totalTokens?: number
   reasoningTokens?: number
+  cost?: number
+  listCost?: number
+  allowance?: number
+  billingSource?: string
 }
 
 export interface ChatMessage {
