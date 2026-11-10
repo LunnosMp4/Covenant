@@ -216,6 +216,7 @@ export const appStore = new StoreClass<AppStoreSchema>({
                       text: { type: 'string' },
                       id: { type: 'string' },
                       name: { type: 'string' },
+                      provider: { type: 'string' },
                       serverName: { type: 'string' },
                       serverId: { type: 'string' },
                       query: { type: 'string' },

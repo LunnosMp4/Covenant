@@ -1627,6 +1627,7 @@ export default function App(): JSX.Element {
                 type: 'web_search',
                 id: event.itemId ?? createId('search_'),
                 query: event.query ?? '',
+                provider: event.provider,
                 status: 'searching',
                 sources: []
               }

@@ -17,7 +17,15 @@ export interface Source {
 
 export type ReasoningStep =
   | { type: 'reasoning'; text: string }
-  | { type: 'web_search'; id: string; query: string; status: 'searching' | 'done'; sources: Source[] }
+  | {
+      type: 'web_search'
+      id: string
+      query: string
+      status: 'searching' | 'done'
+      sources: Source[]
+      /** Which search backend handled the query (OpenAI, SearXNG, Tavily, ...). */
+      provider?: string
+    }
   | {
       type: 'tool'
       id: string
@@ -93,6 +101,7 @@ export interface ChatStreamEvent {
   title?: string
   toolType?: string
   toolName?: string
+  provider?: string
   actionType?: string
   query?: string
   serverName?: string

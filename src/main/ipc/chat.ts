@@ -161,6 +161,18 @@ export function registerChatIpc(): void {
     const modelOption = provider.modelOption
     const enableWebSearch = storedConfig.enableWebSearch ?? DEFAULT_ENABLE_WEB_SEARCH
     const webSearchEnabled = enableWebSearch && modelOption.webSearch !== false
+    const webSearchProviderLabel =
+      storedConfig.webSearchProvider === 'searxng'
+        ? 'SearXNG'
+        : storedConfig.webSearchProvider === 'tavily'
+          ? 'Tavily'
+          : storedConfig.webSearchProvider === 'exa'
+            ? 'Exa'
+            : storedConfig.webSearchProvider === 'native'
+              ? provider.provider === 'opencode'
+                ? 'OpenCode native'
+                : 'OpenAI'
+              : 'OpenAI'
     const terminalSession =
       terminalSessionId && terminalManager.hasSession(terminalSessionId)
         ? terminalSessionId
@@ -211,6 +223,7 @@ export function registerChatIpc(): void {
         sender,
         model: chatModel,
         provider: provider.provider,
+        webSearchProviderLabel,
         sendStreamEvent,
         signal: controller.signal,
         onUsage: (usage) =>

@@ -19,6 +19,7 @@ export interface StreamingChatContext {
   sender: WebContents
   model: string
   provider: 'openai' | 'opencode'
+  webSearchProviderLabel?: string
   sendStreamEvent: (payload: { id: string } & Record<string, unknown>) => void
   signal: AbortSignal
   onUsage?: (usage: ChatUsage) => void
@@ -75,6 +76,7 @@ export async function runStreamingChat(
                 itemId: item.id,
                 toolType: 'web_search',
                 toolName: 'Web Search',
+                provider: ctx.webSearchProviderLabel,
                 actionType: typeof action?.type === 'string' ? action.type : 'search',
                 query: extractWebSearchQuery(action)
               })
@@ -92,6 +94,8 @@ export async function runStreamingChat(
                 itemId,
                 toolType: builtin ? builtin.toolType ?? 'terminal' : 'mcp',
                 toolName: entry ? `${entry.server.name} › ${entry.tool.name}` : name,
+                provider:
+                  builtin?.toolType === 'web_search' ? ctx.webSearchProviderLabel : undefined,
                 serverName: entry?.server.name,
                 serverId: entry?.server.id,
                 query: builtin ? undefined : name,
