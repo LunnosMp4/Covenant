@@ -57,6 +57,7 @@ interface ProvidersTabProps {
   webSearchTimeoutMs: number
   onWebSearchTimeoutMsChange: (value: number) => void
   onSaveSearchSecret: () => void
+  onClearSearchSecret: () => void
   onTestWebSearch: () => void
   webSearchFeedback: string
   webSearchTesting: boolean
@@ -105,6 +106,7 @@ export default function ProvidersTab({
   webSearchTimeoutMs,
   onWebSearchTimeoutMsChange,
   onSaveSearchSecret,
+  onClearSearchSecret,
   onTestWebSearch,
   webSearchFeedback,
   webSearchTesting,
@@ -361,14 +363,33 @@ export default function ProvidersTab({
               ) : null}
 
               {webSearchSearxngAuthType !== 'none' ? (
-                <input
-                  type="password"
-                  value={webSearchSearxngSecret}
-                  onChange={(event) => onWebSearchSearxngSecretChange(event.target.value)}
-                  placeholder={webSearchSearxngAuthType === 'basic' ? 'Password' : 'Bearer token'}
-                  className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 placeholder:text-neutral-500 focus:border-neutral-500 focus:outline-none"
-                  autoComplete="off"
-                />
+                <div className="space-y-2">
+                  <input
+                    type="password"
+                    value={webSearchSearxngSecret}
+                    onChange={(event) => onWebSearchSearxngSecretChange(event.target.value)}
+                    placeholder={webSearchSearxngAuthType === 'basic' ? 'Password' : 'Bearer token'}
+                    className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 placeholder:text-neutral-500 focus:border-neutral-500 focus:outline-none"
+                    autoComplete="off"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={onSaveSearchSecret}
+                      disabled={!webSearchSearxngSecret.trim()}
+                      className="pressable rounded-lg border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 hover:border-neutral-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Save credential
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onClearSearchSecret}
+                      className="rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-500 hover:border-red-500/40 hover:text-red-400"
+                    >
+                      Remove saved credential
+                    </button>
+                  </div>
+                </div>
               ) : null}
 
               <MinimalistToggle
@@ -399,13 +420,23 @@ export default function ProvidersTab({
                 className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 placeholder:text-neutral-500 focus:border-neutral-500 focus:outline-none"
                 autoComplete="off"
               />
-              <button
-                type="button"
-                onClick={onSaveSearchSecret}
-                className="pressable rounded-lg border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 hover:border-neutral-500"
-              >
-                Save key
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onSaveSearchSecret}
+                  disabled={!webSearchSearxngSecret.trim()}
+                  className="pressable rounded-lg border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 hover:border-neutral-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Save key
+                </button>
+                <button
+                  type="button"
+                  onClick={onClearSearchSecret}
+                  className="rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-500 hover:border-red-500/40 hover:text-red-400"
+                >
+                  Remove saved key
+                </button>
+              </div>
             </div>
           ) : null}
 

@@ -1,12 +1,6 @@
 import { randomUUID } from 'crypto'
 import { ipcMain, type WebContents } from 'electron'
-import {
-  DEFAULT_CHAT_MODEL,
-  DEFAULT_ENABLE_WEB_SEARCH,
-  getActiveChatModel,
-  getModelOptionFor,
-  modelSupportsWebSearchFor
-} from '../../shared/config'
+import { DEFAULT_ENABLE_WEB_SEARCH } from '../../shared/config'
 import {
   buildTerminalToolDefinitions,
   TERMINAL_TOOL_INSTRUCTIONS
@@ -26,12 +20,7 @@ import { buildOpenAIToolDefinitions } from '../services/mcpClient'
 import { terminalManager } from '../terminalManager'
 import { createTerminalToolHandlers } from '../terminal/tools'
 import { setVoiceRecordingActive } from '../windows'
-import {
-  getOpenAIKey,
-  hasProviderKey,
-  providerKeyError,
-  resolveChatProvider
-} from '../ai/provider'
+import { getOpenAIKey, resolveChatProvider } from '../ai/provider'
 import { createWebSearchHandler, shouldUseNativeWebSearch } from '../ai/webSearch'
 import { recordAiUsage } from '../ai/usageLedger'
 import type { BuiltinToolHandler } from '../services/builtinTools'
@@ -251,7 +240,7 @@ export function registerChatIpc(): void {
     return { id: streamId }
   })
 
-  ipcMain.handle('covenant:chat', async (_event, rawPayload: unknown) => {
+  ipcMain.handle('covenant:chat', async (event, rawPayload: unknown) => {
     const rawMessages = Array.isArray(rawPayload)
       ? rawPayload
       : (rawPayload as { messages?: unknown } | undefined)?.messages
@@ -290,7 +279,8 @@ export function registerChatIpc(): void {
         provider: provider.provider,
         modelOption,
         builtinTools,
-        extraTools
+        extraTools,
+        sender: event.sender
       })
     }
 

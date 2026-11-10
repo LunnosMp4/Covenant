@@ -41,10 +41,6 @@ export function getSearchSecret(providerId: string): string | undefined {
   }
 }
 
-export function hasSearchSecret(providerId: string): boolean {
-  return typeof getSearchSecret(providerId) === 'string'
-}
-
 export function clearSearchSecret(providerId: string): void {
   try {
     rmSync(credentialFile(providerId), { force: true })

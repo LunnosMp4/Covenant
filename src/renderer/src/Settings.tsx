@@ -19,7 +19,7 @@ import {
 } from './constants/theme'
 import { applyThemeToDocument } from './utils/themeDom'
 import type { AppConfig, ButtonVisibility, NotesSettings, ReasoningEffort, ShortcutConfig } from '../../shared/config'
-import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_NOTES_SETTINGS, DEFAULT_OPENCODE_CHAT_MODEL, DEFAULT_REASONING_EFFORT, DEFAULT_SHORTCUTS, DEFAULT_TEXTURE_INTENSITY, DEFAULT_WEB_SEARCH_PROVIDER, DEFAULT_WEB_SEARCH_TIMEOUT_MS, MAX_TEXTURE_INTENSITY, OPENCODE_MODEL_OPTIONS, REASONING_EFFORT_OPTIONS, TEXTURE_MAX_OPACITY, getModelOptionsForProvider, modelSupportsExtendedParams, modelSupportsWebSearch, normalizeNotesSettings, type AiModelOption, type ChatProviderId, type OpenCodePlan, type WebSearchProviderId } from '../../shared/config'
+import { DEFAULT_CHAT_MODEL, DEFAULT_NOTES_SETTINGS, DEFAULT_OPENCODE_CHAT_MODEL, DEFAULT_REASONING_EFFORT, DEFAULT_SHORTCUTS, DEFAULT_TEXTURE_INTENSITY, DEFAULT_WEB_SEARCH_PROVIDER, DEFAULT_WEB_SEARCH_TIMEOUT_MS, MAX_TEXTURE_INTENSITY, OPENCODE_MODEL_OPTIONS, TEXTURE_MAX_OPACITY, getModelOptionsForProvider, normalizeNotesSettings, type AiModelOption, type ChatProviderId, type OpenCodePlan, type WebSearchProviderId } from '../../shared/config'
 import type { UpdateStatus } from '../../shared/system/update'
 import {
   DEFAULT_PASTE_SETTINGS,
@@ -856,6 +856,13 @@ const handleMinimizeWindow = (): void => {
     })
   }
 
+  const handleClearSearchSecret = (): void => {
+    void window.api?.ai?.clearSearchSecret?.(webSearchProvider).then((result) => {
+      if (result?.ok) setWebSearchSearxngSecret('')
+      setWebSearchFeedback(result?.ok ? 'Credential removed.' : result?.error ?? 'Failed to remove credential.')
+    })
+  }
+
   const handleTestWebSearch = (): void => {
     setWebSearchTesting(true)
     setWebSearchFeedback('')
@@ -1237,12 +1244,6 @@ const handleMinimizeWindow = (): void => {
                 saveFeedbackMessage={saveFeedbackMessage}
                 launchOnStartup={launchOnStartup}
                 onLaunchOnStartupChange={handleLaunchOnStartupChange}
-                chatModel={chatModel}
-                onChatModelChange={handleChatModelChange}
-                reasoningEffort={reasoningEffort}
-                onReasoningEffortChange={handleReasoningEffortChange}
-                enableWebSearch={enableWebSearch}
-                onWebSearchChange={handleWebSearchChange}
                 autoCollapseReasoning={autoCollapseReasoning}
                 onAutoCollapseReasoningChange={handleAutoCollapseReasoningChange}
                 autoUpdate={autoUpdate}
@@ -1297,6 +1298,7 @@ const handleMinimizeWindow = (): void => {
                 webSearchTimeoutMs={webSearchTimeoutMs}
                 onWebSearchTimeoutMsChange={handleWebSearchTimeoutMsChange}
                 onSaveSearchSecret={handleSaveSearchSecret}
+                onClearSearchSecret={handleClearSearchSecret}
                 onTestWebSearch={handleTestWebSearch}
                 webSearchFeedback={webSearchFeedback}
                 webSearchTesting={webSearchTesting}

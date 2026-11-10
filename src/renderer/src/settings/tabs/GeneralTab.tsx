@@ -1,37 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { AnimatePresence, motion, useAnimationControls, type Transition } from 'framer-motion'
-import { WINDOW_ENTER_TRANSITION, WINDOW_EXIT_TRANSITION } from '../../constants/motion'
-import ConfirmDeleteModal from '../../ui/ConfirmDeleteModal'
-import CustomSelect from '../../ui/CustomSelect'
-import McpServerFormModal from '../modals/McpServerFormModal'
-import McpServersTab, { type McpPreset } from './McpServersTab'
-import PrepromptFormModal from '../modals/PrepromptFormModal'
-import WorkflowFormModal from '../../workflow/WorkflowFormModal'
-import PasteSettingsTab from '../../paste/PasteSettingsTab'
-import UsageTab from './UsageTab'
-import MeasuredCollapse from '../../ui/MeasuredCollapse'
-import {
-  DEFAULT_TERMINAL_FONT,
-  normalizeTerminalFont
-} from '../../constants/terminalFonts'
-import {
-  DEFAULT_THEME_GRADIENT,
-  THEME_OPTIONS,
-  getThemeMode,
-  normalizeThemeGradient
-} from '../../constants/theme'
-import type { AppConfig, ButtonVisibility, ReasoningEffort, ShortcutConfig } from '../../../../shared/config'
-import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_REASONING_EFFORT, DEFAULT_SHORTCUTS, DEFAULT_TEXTURE_INTENSITY, MAX_TEXTURE_INTENSITY, REASONING_EFFORT_OPTIONS, TEXTURE_MAX_OPACITY, modelSupportsExtendedParams, modelSupportsWebSearch } from '../../../../shared/config'
+import type { ShortcutConfig } from '../../../../shared/config'
+import { DEFAULT_SHORTCUTS } from '../../../../shared/config'
 import type { UpdateStatus } from '../../../../shared/system/update'
-import {
-  DEFAULT_PASTE_SETTINGS,
-  normalizePasteManagerSettings,
-  type PasteManagerSettings
-} from '../../../../shared/paste/paste'
-import type { McpServer } from '../../../../shared/mcp/mcp'
-import type { Preprompt } from '../../types/renderer'
-import type { Workflow } from '../../types/renderer'
-import { getAppBadgeText } from '../../utils/helpers'
+import MeasuredCollapse from '../../ui/MeasuredCollapse'
 import { MinimalistToggle, SectionCard } from '../primitives'
 import { ShortcutRecorder } from '../shortcutRecorder'
 import { formatUpdateBytes, getUpdateStatusLabel } from '../helpers'
@@ -49,12 +19,6 @@ interface GeneralTabProps {
   saveFeedbackMessage: string
   launchOnStartup: boolean
   onLaunchOnStartupChange: (value: boolean) => void
-  chatModel: string
-  onChatModelChange: (value: string) => void
-  reasoningEffort: ReasoningEffort
-  onReasoningEffortChange: (value: ReasoningEffort) => void
-  enableWebSearch: boolean
-  onWebSearchChange: (value: boolean) => void
   autoCollapseReasoning: boolean
   onAutoCollapseReasoningChange: (value: boolean) => void
   autoUpdate: boolean
@@ -79,12 +43,6 @@ export default function GeneralTab({
   saveFeedbackMessage,
   launchOnStartup,
   onLaunchOnStartupChange,
-  chatModel,
-  onChatModelChange,
-  reasoningEffort,
-  onReasoningEffortChange,
-  enableWebSearch,
-  onWebSearchChange,
   autoCollapseReasoning,
   onAutoCollapseReasoningChange,
   autoUpdate,

@@ -2,7 +2,8 @@ import type { WebContents } from 'electron'
 
 export interface BuiltinToolCallContext {
   signal: AbortSignal
-  sender: WebContents
+  /** Present for streaming chats, absent for non-streaming completions. */
+  sender?: WebContents
 }
 
 export interface BuiltinToolSource {

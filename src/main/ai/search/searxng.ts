@@ -67,6 +67,16 @@ export async function searchSearxng(
   }
 
   const normalized = normalizeBaseUrl(baseUrl)
+  let endpoint: URL
+  try {
+    endpoint = new URL(normalized)
+  } catch {
+    throw new Error('SearXNG endpoint is not a valid URL. Add a full http(s) URL in Settings > AI Provider.')
+  }
+  if (endpoint.protocol !== 'http:' && endpoint.protocol !== 'https:') {
+    throw new Error('SearXNG endpoint must use http or https.')
+  }
+
   const url = new URL(`${normalized}/search`)
   url.searchParams.set('q', query)
   url.searchParams.set('format', 'json')
@@ -75,7 +85,11 @@ export async function searchSearxng(
 
   const timeoutMs = options.timeoutMs ?? config.webSearchTimeoutMs ?? 15_000
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(new Error('SearXNG search timed out.')), timeoutMs)
+  let timedOut = false
+  const timeout = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, timeoutMs)
   const onCallerAbort = (): void => controller.abort(options.signal?.reason)
   options.signal?.addEventListener('abort', onCallerAbort, { once: true })
 
@@ -131,6 +145,11 @@ export async function searchSearxng(
       })
       .filter((item): item is SearchResult => item !== null)
       .slice(0, 8)
+  } catch (error) {
+    if (timedOut) {
+      throw new Error(`SearXNG search timed out after ${Math.round(timeoutMs / 1000)}s.`)
+    }
+    throw error
   } finally {
     clearTimeout(timeout)
     options.signal?.removeEventListener('abort', onCallerAbort)

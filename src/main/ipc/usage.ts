@@ -101,13 +101,6 @@ export function registerUsageIpc(): void {
     updateConfig({ usageProjectId: normalizeUsageProjectId(projectId) })
   })
 
-  ipcMain.handle('usage:get-local-metrics', (_event, rangeDays: unknown) => {
-    return {
-      ok: true as const,
-      metrics: buildLocalUsageMetrics(getAiUsageEntries(), normalizeUsageRangeDays(rangeDays))
-    }
-  })
-
   ipcMain.on('usage:clear-local', () => {
     clearAiUsageEntries()
   })

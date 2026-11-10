@@ -2,8 +2,9 @@ import { app, ipcMain } from 'electron'
 import {
   DEFAULT_OPENCODE_CHAT_MODEL,
   getModelOptionsForProvider,
-  type ChatProviderId
+  normalizeChatProvider
 } from '../../shared/config'
+import { isWebSearchProvider } from '../../shared/ai/models'
 import { readConfig } from '../config/configStore'
 import {
   clearGoApiKey,
@@ -14,29 +15,19 @@ import {
 import { createOpenAIClient } from '../openai/client'
 import { resolveOpenAIProxyUrl } from '../proxy'
 import { clearOpenCodeModelCache, listOpenCodeModels } from '../ai/modelCatalog'
-import {
-  clearSearchSecret,
-  hasSearchSecret,
-  saveSearchSecret
-} from '../ai/search/credentials'
+import { getOpenCodeBaseUrl } from '../ai/provider'
+import { clearSearchSecret, saveSearchSecret } from '../ai/search/credentials'
 import { searchWithOpenAI } from '../ai/search/openai'
 import { searchSearxng } from '../ai/search/searxng'
 import { searchTavily } from '../ai/search/tavily'
 import { searchExa } from '../ai/search/exa'
-
-function normalizeProvider(value: unknown): ChatProviderId {
-  return value === 'opencode' ? 'opencode' : 'openai'
-}
 
 async function testOpenCodeKey(): Promise<{ ok: boolean; error?: string }> {
   const apiKey = getGoApiKey()
   if (!apiKey) return { ok: false, error: 'No OpenCode key is stored.' }
 
   const config = readConfig()
-  const baseURL =
-    config.opencodePlan === 'payg'
-      ? 'https://opencode.ai/inference/openai/v1'
-      : 'https://opencode.ai/inference/go/openai/v1'
+  const baseURL = getOpenCodeBaseUrl(config.opencodePlan)
   const client = createOpenAIClient(apiKey, resolveOpenAIProxyUrl(config.proxyUrl), {
     baseURL,
     timeout: 20_000,
@@ -100,7 +91,7 @@ async function testWebSearch(): Promise<{ ok: boolean; message: string; resultCo
 
 export function registerAiIpc(): void {
   ipcMain.handle('ai:list-models', async (_event, provider: unknown) => {
-    const normalized = normalizeProvider(provider)
+    const normalized = normalizeChatProvider(provider)
     if (normalized === 'opencode') {
       const config = readConfig()
       const models = await listOpenCodeModels(config.opencodePlan)
@@ -117,16 +108,7 @@ export function registerAiIpc(): void {
   })
 
   ipcMain.handle('ai:key-status', () => {
-    const config = readConfig()
-    return {
-      openai: Boolean(config.apiKey || process.env.OPENAI_API_KEY),
-      opencode: hasGoApiKey(),
-      search: {
-        provider: config.webSearchProvider,
-        hasSecret: hasSearchSecret(config.webSearchProvider),
-        searxngConfigured: Boolean(config.webSearchSearxngUrl)
-      }
-    }
+    return { opencode: hasGoApiKey() }
   })
 
   ipcMain.handle('ai:opencode-key:set', async (_event, key: unknown) => {
@@ -152,9 +134,11 @@ export function registerAiIpc(): void {
   ipcMain.handle('ai:web-search:set-secret', (_event, payload: unknown) => {
     try {
       const raw = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
-      const provider = typeof raw.provider === 'string' ? raw.provider : ''
+      const provider = raw.provider
       const secret = typeof raw.secret === 'string' ? raw.secret : ''
-      if (!provider) throw new Error('A search provider is required.')
+      if (!isWebSearchProvider(provider) || provider === 'openai' || provider === 'native') {
+        throw new Error('A search provider that uses credentials is required.')
+      }
       saveSearchSecret(provider, secret)
       return { ok: true as const }
     } catch (error) {
@@ -163,9 +147,10 @@ export function registerAiIpc(): void {
   })
 
   ipcMain.handle('ai:web-search:clear-secret', (_event, provider: unknown) => {
-    if (typeof provider === 'string' && provider.trim()) {
-      clearSearchSecret(provider.trim())
+    if (!isWebSearchProvider(provider) || provider === 'openai' || provider === 'native') {
+      return { ok: false as const, error: 'Unknown search provider.' }
     }
+    clearSearchSecret(provider)
     return { ok: true as const }
   })
 

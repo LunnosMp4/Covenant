@@ -1,6 +1,6 @@
-import type { ChatMessage } from '../../../../shared/chat/chat'
+import type { ChatMessage, ChatUsage } from '../../../../shared/chat/chat'
 import { CHAT_MODEL_OPTIONS, OPENCODE_MODEL_OPTIONS } from '../../../../shared/config'
-import { CHAT_MODEL_PRICING } from '../../../../shared/system/usage'
+import { resolveModelPricing, type ModelPricing } from '../../../../shared/system/usage'
 
 // Intl formatters are expensive to construct and were previously rebuilt for
 // every message on every render (including each streamed token).
@@ -18,6 +18,43 @@ export function formatTokenCount(tokens: number): string {
 
 export function formatCurrency(amount: number): string {
   return CURRENCY_FORMATTER.format(amount)
+}
+
+function resolveMessagePricing(model: string | undefined): ModelPricing | undefined {
+  const openAI = resolveModelPricing(model)
+  if (openAI) return openAI
+  const openCode = model
+    ? OPENCODE_MODEL_OPTIONS.find((option) => option.id === model.trim())?.pricing
+    : undefined
+  return openCode
+    ? {
+        inputPerMillion: openCode.inputPerMillion,
+        cachedInputPerMillion: openCode.cachedInputPerMillion,
+        cacheWritePerMillion: 0,
+        outputPerMillion: openCode.outputPerMillion
+      }
+    : undefined
+}
+
+function computeUsageCost(usage: ChatUsage, pricing: ModelPricing | undefined): number | undefined {
+  if (typeof usage.cost === 'number' && Number.isFinite(usage.cost)) return usage.cost
+  if (!pricing) return undefined
+
+  const promptTokens = usage.promptTokens ?? 0
+  const cachedPromptTokens = Math.min(usage.cachedPromptTokens ?? 0, promptTokens)
+  const cacheWritePromptTokens = Math.min(
+    usage.cacheWritePromptTokens ?? 0,
+    Math.max(promptTokens - cachedPromptTokens, 0)
+  )
+  const completionTokens = usage.completionTokens ?? 0
+  const inputTokens = Math.max(promptTokens - cachedPromptTokens - cacheWritePromptTokens, 0)
+
+  return (
+    (inputTokens * pricing.inputPerMillion) / 1_000_000 +
+    (cachedPromptTokens * pricing.cachedInputPerMillion) / 1_000_000 +
+    (cacheWritePromptTokens * pricing.cacheWritePerMillion) / 1_000_000 +
+    (completionTokens * pricing.outputPerMillion) / 1_000_000
+  )
 }
 
 export function formatConversationTimestamp(timestamp: number): string {
@@ -38,24 +75,15 @@ export function formatUsageSummary(message: ChatMessage): string | undefined {
   }
 
   const promptTokens = usage.promptTokens ?? 0
-  const cachedPromptTokens = Math.min(usage.cachedPromptTokens ?? 0, promptTokens)
-  const cacheWritePromptTokens = Math.min(usage.cacheWritePromptTokens ?? 0, Math.max(promptTokens - cachedPromptTokens, 0))
   const completionTokens = usage.completionTokens ?? 0
-  const pricing = message.model ? CHAT_MODEL_PRICING[message.model.trim()] : undefined
-
-  const inputTokens = Math.max(promptTokens - cachedPromptTokens - cacheWritePromptTokens, 0)
-  const inputCost = pricing ? (inputTokens * pricing.inputPerMillion) / 1_000_000 : 0
-  const cachedInputCost = pricing ? (cachedPromptTokens * pricing.cachedInputPerMillion) / 1_000_000 : 0
-  const cacheWriteCost = pricing ? (cacheWritePromptTokens * pricing.cacheWritePerMillion) / 1_000_000 : 0
-  const outputCost = pricing ? (completionTokens * pricing.outputPerMillion) / 1_000_000 : 0
-  const totalCost = inputCost + cachedInputCost + cacheWriteCost + outputCost
+  const totalCost = computeUsageCost(usage, resolveMessagePricing(message.model))
 
   const parts = [
     `>${formatTokenCount(promptTokens)}tk`,
     `${formatTokenCount(completionTokens)}tk`
   ]
 
-  if (pricing) {
+  if (totalCost !== undefined) {
     parts.push(formatCurrency(totalCost))
   } else {
     const totalTokens = usage.totalTokens ?? promptTokens + completionTokens
@@ -88,35 +116,14 @@ export function computeContextStats(
     if (!usage) continue
 
     const promptTokens = usage.promptTokens ?? 0
-    const cachedPromptTokens = Math.min(usage.cachedPromptTokens ?? 0, promptTokens)
-    const cacheWritePromptTokens = Math.min(usage.cacheWritePromptTokens ?? 0, Math.max(promptTokens - cachedPromptTokens, 0))
     const completionTokens = usage.completionTokens ?? 0
 
     totalInputTokens += promptTokens
     totalOutputTokens += completionTokens
     totalTokens += usage.totalTokens ?? promptTokens + completionTokens
 
-    const openCodePricing = msg.model
-      ? OPENCODE_MODEL_OPTIONS.find((model) => model.id === msg.model?.trim())?.pricing
-      : undefined
-    const pricing =
-      (msg.model ? CHAT_MODEL_PRICING[msg.model.trim()] : undefined) ??
-      (openCodePricing
-        ? {
-            inputPerMillion: openCodePricing.inputPerMillion,
-            cachedInputPerMillion: openCodePricing.cachedInputPerMillion,
-            cacheWritePerMillion: 0,
-            outputPerMillion: openCodePricing.outputPerMillion
-          }
-        : undefined)
-    if (pricing) {
-      const inputTokens = Math.max(promptTokens - cachedPromptTokens - cacheWritePromptTokens, 0)
-      const inputCost = (inputTokens * pricing.inputPerMillion) / 1_000_000
-      const cachedInputCost = (cachedPromptTokens * pricing.cachedInputPerMillion) / 1_000_000
-      const cacheWriteCost = (cacheWritePromptTokens * pricing.cacheWritePerMillion) / 1_000_000
-      const outputCost = (completionTokens * pricing.outputPerMillion) / 1_000_000
-      totalCost += inputCost + cachedInputCost + cacheWriteCost + outputCost
-    }
+    const cost = computeUsageCost(usage, resolveMessagePricing(msg.model))
+    if (cost !== undefined) totalCost += cost
   }
 
   const maxTokens =

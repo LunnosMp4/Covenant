@@ -136,14 +136,13 @@ export async function listOpenCodeModels(
   plan: OpenCodePlan,
   options: { force?: boolean } = {}
 ): Promise<AiModelOption[]> {
-  const key = plan
-  if (!options.force && cache && cache.key === key && Date.now() - cache.fetchedAt < CACHE_TTL_MS) {
-    return cache.models
-  }
-
   const config = readConfig()
   const apiKey = getGoApiKey()
   const proxyUrl = resolveOpenAIProxyUrl(config.proxyUrl)
+  const key = `${plan}:${proxyUrl ?? ''}`
+  if (!options.force && cache && cache.key === key && Date.now() - cache.fetchedAt < CACHE_TTL_MS) {
+    return cache.models
+  }
   const dispatcher = createDispatcher(proxyUrl)
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), FALLBACK_TIMEOUT_MS)

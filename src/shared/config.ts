@@ -3,15 +3,9 @@ import { DEFAULT_PASTE_SETTINGS, normalizePasteManagerSettings, type PasteManage
 import { DEFAULT_CODE_SETTINGS, type CodeSettings } from './code/code'
 import { normalizeCodeSettings } from './code/codeNormalizers'
 import {
-  DEFAULT_CHAT_PROVIDER,
   DEFAULT_OPENCODE_CHAT_MODEL,
-  DEFAULT_WEB_SEARCH_PROVIDER,
-  DEFAULT_WEB_SEARCH_TIMEOUT_MS,
   OPENCODE_MODEL_OPTIONS,
   findAiModelOption,
-  normalizeChatProvider,
-  normalizeOpenCodePlan,
-  normalizeWebSearchProvider,
   type AiModelOption,
   type ChatProviderId,
   type OpenCodePlan,
@@ -129,10 +123,6 @@ export function getModelOptionFor(
   return getModelOptionsForProvider(provider).find((option) => option.id === modelId)
 }
 
-export function modelSupportsExtendedParamsFor(provider: ChatProviderId, modelId: string): boolean {
-  return getModelOptionFor(provider, modelId)?.supportsExtendedParams ?? false
-}
-
 export function modelDoesReasoningFor(provider: ChatProviderId, modelId: string): boolean {
   return getModelOptionFor(provider, modelId)?.supportsReasoning ?? false
 }
@@ -140,12 +130,6 @@ export function modelDoesReasoningFor(provider: ChatProviderId, modelId: string)
 export function modelSupportsTemperatureFor(provider: ChatProviderId, modelId: string): boolean {
   const option = getModelOptionFor(provider, modelId)
   return option ? option.supportsTemperature : modelSupportsTemperature(modelId)
-}
-
-export function modelSupportsWebSearchFor(provider: ChatProviderId, modelId: string): boolean {
-  const option = getModelOptionFor(provider, modelId)
-  if (option) return option.webSearch !== false
-  return modelSupportsWebSearch(modelId)
 }
 
 export type TranscriptionModel =

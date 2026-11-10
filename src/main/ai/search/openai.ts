@@ -1,11 +1,11 @@
-import type { AppConfig } from '../../../shared/config'
+import { DEFAULT_WEB_SEARCH_TIMEOUT_MS, type AppConfig } from '../../../shared/config'
 import { createOpenAIClient } from '../../openai/client'
 import { resolveOpenAIProxyUrl } from '../../proxy'
 import type { SearchOptions, SearchResult } from './types'
 
 const SEARCH_MODEL = 'gpt-6-luna'
 const MAX_OUTPUT_TOKENS = 300
-const MIN_SEARCH_TIMEOUT_MS = 30_000
+const MIN_SEARCH_TIMEOUT_MS = 3000
 
 function extractSources(output: Array<Record<string, unknown>> | undefined): SearchResult[] {
   const sources: SearchResult[] = []
@@ -71,7 +71,7 @@ export async function searchWithOpenAI(
 
   const client = createOpenAIClient(apiKey, resolveOpenAIProxyUrl(config.proxyUrl), {
     timeout: Math.max(
-      options.timeoutMs ?? config.webSearchTimeoutMs ?? MIN_SEARCH_TIMEOUT_MS,
+      options.timeoutMs ?? config.webSearchTimeoutMs ?? DEFAULT_WEB_SEARCH_TIMEOUT_MS,
       MIN_SEARCH_TIMEOUT_MS
     ),
     maxRetries: 0

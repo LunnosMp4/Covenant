@@ -19,7 +19,12 @@ export async function searchTavily(
 
   const agent = dispatcher(config)
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? config.webSearchTimeoutMs ?? 15_000)
+  const timeoutMs = options.timeoutMs ?? config.webSearchTimeoutMs ?? 15_000
+  let timedOut = false
+  const timeout = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, timeoutMs)
   const onAbort = (): void => controller.abort(options.signal?.reason)
   options.signal?.addEventListener('abort', onAbort, { once: true })
 
@@ -62,6 +67,11 @@ export async function searchTavily(
       })
       .filter((item): item is SearchResult => item !== null)
       .slice(0, 8)
+  } catch (error) {
+    if (timedOut) {
+      throw new Error(`Tavily search timed out after ${Math.round(timeoutMs / 1000)}s.`)
+    }
+    throw error
   } finally {
     clearTimeout(timeout)
     options.signal?.removeEventListener('abort', onAbort)

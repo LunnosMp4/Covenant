@@ -5,7 +5,7 @@ import type {
   UsageServiceBreakdown
 } from '../system/usage'
 
-export type AiUsageKind = 'chat' | 'title' | 'note' | 'recap' | 'task' | 'ocr' | 'web-search'
+export type AiUsageKind = 'chat' | 'note' | 'recap' | 'ocr'
 
 export interface AiUsageEntry {
   id: string
@@ -87,19 +87,13 @@ export function buildLocalUsageMetrics(
     modelMap.set(entry.model, model)
 
     const serviceLabel =
-      entry.kind === 'web-search'
-        ? 'Web search'
-        : entry.kind === 'title'
-          ? 'Titles'
-          : entry.kind === 'note'
-            ? 'Notes'
-            : entry.kind === 'recap'
-              ? 'Meeting recaps'
-              : entry.kind === 'task'
-                ? 'Task evaluation'
-                : entry.kind === 'ocr'
-                  ? 'OCR'
-                  : 'Chat'
+      entry.kind === 'note'
+        ? 'Notes'
+        : entry.kind === 'recap'
+          ? 'Meeting recaps'
+          : entry.kind === 'ocr'
+            ? 'OCR'
+            : 'Chat'
     const service = serviceMap.get(serviceLabel) ?? { label: serviceLabel, amount: 0, quantity: 0 }
     service.amount += cost
     service.quantity = (service.quantity ?? 0) + 1

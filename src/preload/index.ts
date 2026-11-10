@@ -355,11 +355,7 @@ const api = {
         models: Array<Record<string, unknown>>
       }>,
     getKeyStatus: () =>
-      ipcRenderer.invoke('ai:key-status') as Promise<{
-        openai: boolean
-        opencode: boolean
-        search: { provider: string; hasSecret: boolean; searxngConfigured: boolean }
-      }>,
+      ipcRenderer.invoke('ai:key-status') as Promise<{ opencode: boolean }>,
     setOpencodeKey: (key: string) =>
       ipcRenderer.invoke('ai:opencode-key:set', key) as Promise<
         { ok: true } | { ok: false; error: string }
@@ -373,7 +369,9 @@ const api = {
         { ok: true } | { ok: false; error: string }
       >,
     clearSearchSecret: (provider: string) =>
-      ipcRenderer.invoke('ai:web-search:clear-secret', provider) as Promise<{ ok: true }>,
+      ipcRenderer.invoke('ai:web-search:clear-secret', provider) as Promise<
+        { ok: true } | { ok: false; error: string }
+      >,
     testWebSearch: () =>
       ipcRenderer.invoke('ai:web-search:test') as Promise<{
         ok: boolean
@@ -385,8 +383,6 @@ const api = {
     getMetrics: (rangeDays?: number, projectId?: string, provider?: string) =>
       ipcRenderer.invoke('usage:get-metrics', { rangeDays, projectId, provider }) as Promise<UsageMetricsResult>,
     getProjects: () => ipcRenderer.invoke('usage:get-projects') as Promise<UsageProjectsResult>,
-    getLocalMetrics: (rangeDays?: number) =>
-      ipcRenderer.invoke('usage:get-local-metrics', rangeDays) as Promise<UsageMetricsResult>,
     clearLocal: () => ipcRenderer.send('usage:clear-local')
   },
   chat: {
@@ -417,8 +413,8 @@ const api = {
       ipcRenderer.invoke('save-conversation', conversation) as Promise<ChatConversation[]>,
     deleteConversation: (id: string) =>
       ipcRenderer.invoke('delete-conversation', id) as Promise<ChatConversation[]>,
-    generateConversationTitle: (prompt: string) =>
-      ipcRenderer.invoke('generate-conversation-title', prompt) as Promise<string>
+    generateConversationTitle: (prompt: string, sessionId?: string) =>
+      ipcRenderer.invoke('generate-conversation-title', prompt, sessionId) as Promise<string>
   },
   code: {
     subscribe: () => ipcRenderer.send('code:subscribe'),

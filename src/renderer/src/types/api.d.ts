@@ -144,11 +144,7 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
   ai: {
     listModels: (provider: string) => Promise<{ ok: true; models: Array<Record<string, unknown>> }>
     refreshModels: () => Promise<{ ok: true; models: Array<Record<string, unknown>> }>
-    getKeyStatus: () => Promise<{
-      openai: boolean
-      opencode: boolean
-      search: { provider: string; hasSecret: boolean; searxngConfigured: boolean }
-    }>
+    getKeyStatus: () => Promise<{ opencode: boolean }>
     setOpencodeKey: (key: string) => Promise<{ ok: true } | { ok: false; error: string }>
     clearOpencodeKey: () => Promise<{ ok: true }>
     testOpencodeKey: () => Promise<{ ok: boolean; error?: string }>
@@ -156,13 +152,12 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
       provider: string,
       secret: string
     ) => Promise<{ ok: true } | { ok: false; error: string }>
-    clearSearchSecret: (provider: string) => Promise<{ ok: true }>
+    clearSearchSecret: (provider: string) => Promise<{ ok: true } | { ok: false; error: string }>
     testWebSearch: () => Promise<{ ok: boolean; message: string; resultCount?: number }>
   }
   usage: {
     getMetrics: (rangeDays?: number, projectId?: string, provider?: string) => Promise<UsageMetricsResult>
     getProjects: () => Promise<UsageProjectsResult>
-    getLocalMetrics: (rangeDays?: number) => Promise<UsageMetricsResult>
     clearLocal: () => void
   }
   chat: {
@@ -179,7 +174,7 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     getConversations: () => Promise<ChatConversation[]>
     saveConversation: (conversation: ChatConversation) => Promise<ChatConversation[]>
     deleteConversation: (id: string) => Promise<ChatConversation[]>
-    generateConversationTitle: (prompt: string) => Promise<string>
+    generateConversationTitle: (prompt: string, sessionId?: string) => Promise<string>
   }
   terminal: {
     startTerminal: (size?: { cols?: number; rows?: number }) => Promise<TerminalStartResult>

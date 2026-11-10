@@ -505,6 +505,18 @@ export default function UsageTab({
               })}
             </span>
           ) : null}
+          {usageProvider === 'opencode' ? (
+            <button
+              type="button"
+              onClick={() => {
+                window.api?.usage?.clearLocal?.()
+                setReloadToken((token) => token + 1)
+              }}
+              className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-neutral-200 transition-colors hover:border-neutral-500 hover:text-white"
+            >
+              Clear local history
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => setReloadToken((token) => token + 1)}

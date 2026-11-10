@@ -57,7 +57,6 @@ import { applyThemeToDocument } from './utils/themeDom'
 import type { AiModelOption, ButtonVisibility, ChatProviderId, ReasoningEffort } from '../../shared/config'
 import {
   DEFAULT_CHAT_MODEL,
-  DEFAULT_OPENCODE_CHAT_MODEL,
   DEFAULT_REASONING_EFFORT,
   DEFAULT_TEXTURE_INTENSITY,
   OPENCODE_MODEL_OPTIONS,
@@ -1125,7 +1124,7 @@ export default function App(): JSX.Element {
       if (!window.api?.chat.generateConversationTitle) return
 
       void window.api.chat
-        .generateConversationTitle(prompt)
+        .generateConversationTitle(prompt, conversationId)
         .then((rawTitle) => {
           const safeTitle =
             typeof rawTitle === 'string' ? rawTitle.trim().slice(0, MAX_CONVERSATION_TITLE_LENGTH) : ''

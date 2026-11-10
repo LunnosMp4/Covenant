@@ -2,8 +2,6 @@ import type OpenAI from 'openai'
 import type { AppConfig, NotesSettings } from '../../shared/config'
 import {
   getModelOptionFor,
-  modelDoesReasoningFor,
-  modelSupportsTemperatureFor,
   type AiModelOption,
   type ChatProviderId
 } from '../../shared/config'

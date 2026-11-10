@@ -161,9 +161,7 @@ export function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined
           : 'none',
     webSearchTimeoutMs:
       typeof rawConfig?.webSearchTimeoutMs === 'number' && Number.isFinite(rawConfig.webSearchTimeoutMs)
-        ? rawConfig.webSearchTimeoutMs === 15_000
-          ? DEFAULT_WEB_SEARCH_TIMEOUT_MS
-          : Math.max(3000, Math.min(120000, Math.round(rawConfig.webSearchTimeoutMs)))
+        ? Math.max(3000, Math.min(120000, Math.round(rawConfig.webSearchTimeoutMs)))
         : DEFAULT_WEB_SEARCH_TIMEOUT_MS,
     reasoningEffort:
       typeof rawConfig?.reasoningEffort === 'string' && ['low', 'medium', 'high'].includes(rawConfig.reasoningEffort)

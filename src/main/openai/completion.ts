@@ -1,4 +1,5 @@
 import type OpenAI from 'openai'
+import type { WebContents } from 'electron'
 import {
   buildOpenAIToolDefinitions,
   callMcpTool,
@@ -52,6 +53,8 @@ export async function completeChatWithMcp(
     modelOption?: AiModelOption
     builtinTools?: BuiltinToolHandler[]
     extraTools?: Array<Record<string, unknown>>
+    signal?: AbortSignal
+    sender?: WebContents
   } = {}
 ): Promise<string> {
   const storedConfig = readConfig()
@@ -61,6 +64,7 @@ export async function completeChatWithMcp(
   })
   const tools = [...buildOpenAIToolDefinitions(toolRegistry), ...(options.extraTools ?? [])]
   const builtinTools = options.builtinTools ?? []
+  const signal = options.signal ?? new AbortController().signal
 
   let input = buildResponsesInput(sanitizedMessages)
 
@@ -94,8 +98,8 @@ export async function completeChatWithMcp(
       const builtin = builtinTools.find((handler) => handler.name === call.name)
       if (builtin) {
         const result = await builtin.execute(call.arguments, {
-          signal: new AbortController().signal,
-          sender: undefined as never
+          signal,
+          sender: options.sender
         })
         return {
           type: 'function_call_output',

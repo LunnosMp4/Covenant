@@ -4,9 +4,7 @@ import type OpenAI from 'openai'
 import {
   DEFAULT_CHAT_MODEL,
   DEFAULT_OPENCODE_CHAT_MODEL,
-  getActiveChatModel,
   getModelOptionFor,
-  getModelOptionsForProvider,
   type AiModelOption,
   type AppConfig,
   type ChatProviderId
@@ -56,6 +54,12 @@ export function getOpenAIKey(config: AppConfig): string {
   return config.apiKey || process.env.OPENAI_API_KEY || ''
 }
 
+export function getOpenCodeBaseUrl(plan: AppConfig['opencodePlan']): string {
+  return plan === 'payg'
+    ? 'https://opencode.ai/inference/openai/v1'
+    : 'https://opencode.ai/inference/go/openai/v1'
+}
+
 export function hasProviderKey(config: AppConfig): boolean {
   if (config.chatProvider === 'opencode') return Boolean(getGoApiKey())
   return Boolean(getOpenAIKey(config))
@@ -77,12 +81,8 @@ export function resolveChatProvider(
   if (provider === 'opencode') {
     const apiKey = getGoApiKey()
     if (!apiKey) throw new Error(providerKeyError(provider))
-    const baseURL =
-      config.opencodePlan === 'payg'
-        ? 'https://opencode.ai/inference/openai/v1'
-        : 'https://opencode.ai/inference/go/openai/v1'
     const client = createOpenAIClient(apiKey, resolveOpenAIProxyUrl(config.proxyUrl), {
-      baseURL,
+      baseURL: getOpenCodeBaseUrl(config.opencodePlan),
       defaultHeaders: {
         'User-Agent': `Covenant/${app.getVersion()}`,
         'x-opencode-session': sessionId
@@ -124,12 +124,4 @@ export function resolveChatProvider(
     sessionId,
     isOpenCode: false
   }
-}
-
-export function getActiveModelForConfig(config: AppConfig): string {
-  return getActiveChatModel(config)
-}
-
-export function getModelsForConfig(config: AppConfig): AiModelOption[] {
-  return getModelOptionsForProvider(config.chatProvider)
 }

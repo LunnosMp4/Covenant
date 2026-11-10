@@ -98,6 +98,9 @@ export function createTerminalToolHandlers(sessionId: string): BuiltinToolHandle
         const alreadyAllowed = !destructive && isCommandAlwaysAllowed(sessionId, command)
 
         if (!alreadyAllowed) {
+          if (!ctx.sender) {
+            return errorResult('Terminal commands require an active chat window.')
+          }
           const reply = await requestTerminalApproval({
             sender: ctx.sender,
             signal: ctx.signal,

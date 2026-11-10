@@ -55,16 +55,16 @@ describe('buildLocalUsageMetrics', () => {
     expect(metrics.totalRequests).toBe(1)
   })
 
-  it('groups web search usage separately from chat', () => {
+  it('groups usage by feature', () => {
     const now = Date.now()
     const metrics = buildLocalUsageMetrics(
-      [entry({ id: 'chat', kind: 'chat' }), entry({ id: 'search', kind: 'web-search' })],
+      [entry({ id: 'chat', kind: 'chat' }), entry({ id: 'note', kind: 'note' })],
       30,
       now
     )
 
     expect(metrics.byService.map((service) => service.label)).toEqual(
-      expect.arrayContaining(['Chat', 'Web search'])
+      expect.arrayContaining(['Chat', 'Notes'])
     )
   })
 })

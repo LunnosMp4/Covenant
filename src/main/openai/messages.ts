@@ -108,16 +108,17 @@ export function buildResponseParams(
     ? options.modelOption.supportsTemperature
     : modelSupportsTemperatureFor(provider, model)
 
-  if (reasoning) {
-    const effort = mapReasoningEffort(
-      storedConfig.reasoningEffort || DEFAULT_REASONING_EFFORT,
-      options.modelOption?.reasoningEfforts
-    )
-    if (effort) {
-      params.reasoning = {
-        effort,
-        summary: 'auto'
-      }
+  const effort = reasoning
+    ? mapReasoningEffort(
+        storedConfig.reasoningEffort || DEFAULT_REASONING_EFFORT,
+        options.modelOption?.reasoningEfforts
+      )
+    : undefined
+
+  if (effort) {
+    params.reasoning = {
+      effort,
+      summary: 'auto'
     }
   } else if (supportsTemperature) {
     params.temperature = 0.7

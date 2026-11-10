@@ -44,8 +44,11 @@ export function registerStoreIpc(): void {
     return deleteConversation(conversationId)
   })
 
-  ipcMain.handle('generate-conversation-title', async (_event, prompt: string) => {
-    return generateConversationTitle(prompt)
+  ipcMain.handle('generate-conversation-title', async (_event, prompt: string, sessionId: unknown) => {
+    return generateConversationTitle(
+      prompt,
+      typeof sessionId === 'string' && sessionId.trim() ? sessionId.trim() : undefined
+    )
   })
 
   ipcMain.handle('get-preprompts', () => {
