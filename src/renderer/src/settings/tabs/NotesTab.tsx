@@ -1,4 +1,4 @@
-import type { NotesSettings, TranscriptionModel } from '../../../../shared/config'
+import type { AiModelOption, NotesSettings, TranscriptionModel } from '../../../../shared/config'
 import {
   CHAT_MODEL_OPTIONS,
   DEFAULT_NOTES_SETTINGS,
@@ -10,6 +10,9 @@ import { MinimalistToggle, SectionCard } from '../primitives'
 interface NotesTabProps {
   settings: NotesSettings
   onChange: (patch: Partial<NotesSettings>) => void
+  modelOptions?: AiModelOption[]
+  hasOpenAIKey: boolean
+  onOpenProviders: () => void
 }
 
 const LANGUAGE_OPTIONS = [
@@ -25,9 +28,32 @@ const LANGUAGE_OPTIONS = [
   { value: 'zh', label: 'Chinese' }
 ]
 
-export default function NotesTab({ settings, onChange }: NotesTabProps): JSX.Element {
+export default function NotesTab({
+  settings,
+  onChange,
+  modelOptions,
+  hasOpenAIKey,
+  onOpenProviders
+}: NotesTabProps): JSX.Element {
+  const summaryModels = modelOptions && modelOptions.length > 0 ? modelOptions : CHAT_MODEL_OPTIONS
   return (
     <div className="space-y-6">
+      {!hasOpenAIKey ? (
+        <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          <p className="font-medium">OpenAI API key required for transcription</p>
+          <p className="mt-1 text-xs text-amber-200/80">
+            Microphone and meeting transcription always use OpenAI, even when chat runs on OpenCode.
+          </p>
+          <button
+            type="button"
+            onClick={onOpenProviders}
+            className="mt-2 text-xs font-medium text-amber-300 underline-offset-2 hover:underline"
+          >
+            Add an OpenAI key in Providers &amp; Keys
+          </button>
+        </div>
+      ) : null}
+
       <SectionCard
         title="Meeting Recording"
         description="Meetings are recorded locally. Audio segments are sent to OpenAI for transcription only; the recording stays on this device."
@@ -106,7 +132,7 @@ export default function NotesTab({ settings, onChange }: NotesTabProps): JSX.Ele
               onChange={(value) => onChange({ summaryModel: value })}
               options={[
                 { value: '', label: 'Use current chat model' },
-                ...CHAT_MODEL_OPTIONS.map((option) => ({
+                ...summaryModels.map((option) => ({
                   value: option.id,
                   label: option.label
                 }))

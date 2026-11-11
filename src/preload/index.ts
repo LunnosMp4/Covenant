@@ -17,6 +17,7 @@ import type { ClearCompletedResult, Task } from '../shared/tasks/task'
 import type { GamificationState } from '../shared/tasks/gamification'
 import type { UpdateStatus } from '../shared/system/update'
 import type { UsageMetricsResult, UsageProjectsResult } from '../shared/system/usage'
+import type { OpenCodeUsageResult } from '../shared/ai/opencodeUsage'
 import type { PasteItemDetail, PasteItemMeta, PasteManagerSettings } from '../shared/paste/paste'
 import type {
   Note,
@@ -142,7 +143,7 @@ const api = {
     getConfig: () => ipcRenderer.invoke('get-config') as Promise<AppConfig>,
     saveApiKey: (apiKey: string) => ipcRenderer.send('save-api-key', apiKey),
     saveOpenAISettings: (settings: { apiKey?: string; proxyUrl?: string; adminApiKey?: string }) =>
-      ipcRenderer.send('save-openai-settings', settings),
+      ipcRenderer.invoke('save-openai-settings', settings) as Promise<void>,
     markOnboarded: () => ipcRenderer.send('mark-onboarded'),
     getMcpServers: () => ipcRenderer.invoke('get-mcp-servers') as Promise<McpServer[]>,
     saveMcpServer: (server: Partial<McpServer>) =>
@@ -172,6 +173,11 @@ const api = {
     updateLauncherShowSystemApps: (showSystemApps: boolean) =>
       ipcRenderer.send('update-launcher-show-system-apps', showSystemApps),
     updateChatModel: (chatModel: string) => ipcRenderer.send('update-chat-model', chatModel),
+    updateChatProvider: (provider: string) => ipcRenderer.send('update-chat-provider', provider),
+    updateOpencodeChatModel: (model: string) => ipcRenderer.send('update-opencode-chat-model', model),
+    updateOpencodePlan: (plan: string) => ipcRenderer.send('update-opencode-plan', plan),
+    updateWebSearchSettings: (settings: Record<string, unknown>) =>
+      ipcRenderer.send('update-web-search-settings', settings),
     updateReasoningEffort: (reasoningEffort: ReasoningEffort) =>
       ipcRenderer.send('update-reasoning-effort', reasoningEffort),
     updateWebSearch: (enableWebSearch: boolean) =>
@@ -265,6 +271,33 @@ const api = {
         ipcRenderer.removeListener('chat-model-updated', listener)
       }
     },
+    onChatProviderUpdated: (callback: (provider: string) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, provider: string) => {
+        callback(provider)
+      }
+      ipcRenderer.on('chat-provider-updated', listener)
+      return () => {
+        ipcRenderer.removeListener('chat-provider-updated', listener)
+      }
+    },
+    onOpencodeChatModelUpdated: (callback: (model: string) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, model: string) => {
+        callback(model)
+      }
+      ipcRenderer.on('opencode-chat-model-updated', listener)
+      return () => {
+        ipcRenderer.removeListener('opencode-chat-model-updated', listener)
+      }
+    },
+    onWebSearchSettingsUpdated: (callback: (settings: Record<string, unknown>) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, settings: Record<string, unknown>) => {
+        callback(settings)
+      }
+      ipcRenderer.on('web-search-settings-updated', listener)
+      return () => {
+        ipcRenderer.removeListener('web-search-settings-updated', listener)
+      }
+    },
     onReasoningEffortUpdated: (callback: (reasoningEffort: ReasoningEffort) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, reasoningEffort: ReasoningEffort) => {
         callback(reasoningEffort)
@@ -311,20 +344,63 @@ const api = {
     },
     getTerminalFonts: () => ipcRenderer.invoke('get-terminal-fonts') as Promise<string[]>
   },
+  ai: {
+    listModels: (provider: string) =>
+      ipcRenderer.invoke('ai:list-models', provider) as Promise<{
+        ok: true
+        models: Array<Record<string, unknown>>
+      }>,
+    refreshModels: () =>
+      ipcRenderer.invoke('ai:refresh-models') as Promise<{
+        ok: true
+        models: Array<Record<string, unknown>>
+      }>,
+    getKeyStatus: () =>
+      ipcRenderer.invoke('ai:key-status') as Promise<{
+        openai: { configured: boolean; source: 'config' | 'env' | 'none' }
+        admin: { configured: boolean }
+        opencode: { configured: boolean }
+        search: { searxng: boolean; tavily: boolean; exa: boolean }
+      }>,
+    setOpencodeKey: (key: string) =>
+      ipcRenderer.invoke('ai:opencode-key:set', key) as Promise<
+        { ok: true } | { ok: false; error: string }
+      >,
+    clearOpencodeKey: () =>
+      ipcRenderer.invoke('ai:opencode-key:clear') as Promise<{ ok: true }>,
+    testOpencodeKey: () =>
+      ipcRenderer.invoke('ai:opencode-key:test') as Promise<{ ok: boolean; error?: string }>,
+    setSearchSecret: (provider: string, secret: string) =>
+      ipcRenderer.invoke('ai:web-search:set-secret', { provider, secret }) as Promise<
+        { ok: true } | { ok: false; error: string }
+      >,
+    clearSearchSecret: (provider: string) =>
+      ipcRenderer.invoke('ai:web-search:clear-secret', provider) as Promise<
+        { ok: true } | { ok: false; error: string }
+      >,
+    testWebSearch: (provider?: string) =>
+      ipcRenderer.invoke('ai:web-search:test', provider) as Promise<{
+        ok: boolean
+        message: string
+        resultCount?: number
+      }>
+  },
   usage: {
-    getMetrics: (rangeDays?: number, projectId?: string) =>
-      ipcRenderer.invoke('usage:get-metrics', { rangeDays, projectId }) as Promise<UsageMetricsResult>,
-    getProjects: () => ipcRenderer.invoke('usage:get-projects') as Promise<UsageProjectsResult>
+    getMetrics: (rangeDays?: number, projectId?: string, provider?: string) =>
+      ipcRenderer.invoke('usage:get-metrics', { rangeDays, projectId, provider }) as Promise<UsageMetricsResult>,
+    getProjects: () => ipcRenderer.invoke('usage:get-projects') as Promise<UsageProjectsResult>,
+    getOpenCodeUsage: (rangeDays?: number) =>
+      ipcRenderer.invoke('usage:get-opencode', { rangeDays }) as Promise<OpenCodeUsageResult>
   },
   chat: {
     askCovenant: (
       messages: Array<{ role: ChatRole; content: string | InputContent[] }>,
-      options?: { terminalSessionId?: string }
+      options?: { terminalSessionId?: string; conversationId?: string }
     ) =>
       ipcRenderer.invoke('covenant:chat', { messages, ...options }) as Promise<string>,
     askCovenantStream: (
       messages: Array<{ role: ChatRole; content: string | InputContent[] }>,
-      options?: { terminalSessionId?: string }
+      options?: { terminalSessionId?: string; conversationId?: string }
     ) =>
       ipcRenderer.invoke('covenant:chat-stream', { messages, ...options }) as Promise<{ id: string }>,
     onStreamEvent: (callback: (event: ChatStreamEvent) => void) => {
@@ -344,8 +420,8 @@ const api = {
       ipcRenderer.invoke('save-conversation', conversation) as Promise<ChatConversation[]>,
     deleteConversation: (id: string) =>
       ipcRenderer.invoke('delete-conversation', id) as Promise<ChatConversation[]>,
-    generateConversationTitle: (prompt: string) =>
-      ipcRenderer.invoke('generate-conversation-title', prompt) as Promise<string>
+    generateConversationTitle: (prompt: string, sessionId?: string) =>
+      ipcRenderer.invoke('generate-conversation-title', prompt, sessionId) as Promise<string>
   },
   code: {
     subscribe: () => ipcRenderer.send('code:subscribe'),
@@ -567,6 +643,9 @@ const api = {
       ipcRenderer.invoke('terminal:start', size) as Promise<TerminalStartResult>,
     sendInput: (sessionId: string, data: string) =>
       ipcRenderer.invoke('terminal:input', { sessionId, input: data }) as Promise<{ success: boolean }>,
+    // Fire-and-forget keystroke path: no reply is consumed while typing.
+    typeInput: (sessionId: string, data: string) =>
+      ipcRenderer.send('terminal:input', { sessionId, input: data }),
     resize: (sessionId: string, cols: number, rows: number) =>
       ipcRenderer.invoke('terminal:resize', { sessionId, cols, rows }) as Promise<{ success: boolean }>,
     killTerminal: (sessionId: string) =>

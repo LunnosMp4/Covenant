@@ -32,6 +32,7 @@ import type {
 } from '../../../shared/notes/note'
 import type { NoteAiRequest } from '../../../shared/notes/prompts'
 import type { UsageMetricsResult, UsageProjectsResult } from '../../../shared/system/usage'
+import type { OpenCodeUsageResult } from '../../../shared/ai/opencodeUsage'
 import type {
   CodeActivitySummary,
   CodeAgent,
@@ -91,7 +92,7 @@ interface CovenantAPI {
   config: {
     getConfig: () => Promise<AppConfig>
       saveApiKey: (apiKey: string) => void
-      saveOpenAISettings: (settings: { apiKey?: string; proxyUrl?: string; adminApiKey?: string }) => void
+      saveOpenAISettings: (settings: { apiKey?: string; proxyUrl?: string; adminApiKey?: string }) => Promise<void>
       markOnboarded: () => void
     getMcpServers: () => Promise<McpServer[]>
     saveMcpServer: (server: Partial<McpServer>) => Promise<McpServer[]>
@@ -110,6 +111,10 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     updateButtonVisibility: (buttonVisibility: Partial<ButtonVisibility>) => void
     updateLauncherShowSystemApps: (showSystemApps: boolean) => void
     updateChatModel: (chatModel: string) => void
+    updateChatProvider: (provider: string) => void
+    updateOpencodeChatModel: (model: string) => void
+    updateOpencodePlan: (plan: string) => void
+    updateWebSearchSettings: (settings: Record<string, unknown>) => void
     updateReasoningEffort: (reasoningEffort: ReasoningEffort) => void
     updateWebSearch: (enableWebSearch: boolean) => void
     updateAutoCollapseReasoning: (autoCollapseReasoning: boolean) => void
@@ -128,35 +133,59 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     onButtonVisibilityUpdated: (callback: (buttonVisibility: ButtonVisibility) => void) => () => void
     onLauncherShowSystemAppsUpdated: (callback: (showSystemApps: boolean) => void) => () => void
     onChatModelUpdated: (callback: (chatModel: string) => void) => () => void
+    onChatProviderUpdated: (callback: (provider: string) => void) => () => void
+    onOpencodeChatModelUpdated: (callback: (model: string) => void) => () => void
+    onWebSearchSettingsUpdated: (callback: (settings: Record<string, unknown>) => void) => () => void
     onReasoningEffortUpdated: (callback: (reasoningEffort: ReasoningEffort) => void) => () => void
     onAutoCollapseReasoningUpdated: (callback: (autoCollapseReasoning: boolean) => void) => () => void
     onTextureIntensityUpdated: (callback: (textureIntensity: number) => void) => () => void
     onNotesSettingsUpdated: (callback: (settings: NotesSettings) => void) => () => void
     onShortcutsUpdated: (callback: (shortcuts: ShortcutConfig) => void) => () => void
   }
+  ai: {
+    listModels: (provider: string) => Promise<{ ok: true; models: Array<Record<string, unknown>> }>
+    refreshModels: () => Promise<{ ok: true; models: Array<Record<string, unknown>> }>
+    getKeyStatus: () => Promise<{
+      openai: { configured: boolean; source: 'config' | 'env' | 'none' }
+      admin: { configured: boolean }
+      opencode: { configured: boolean }
+      search: { searxng: boolean; tavily: boolean; exa: boolean }
+    }>
+    setOpencodeKey: (key: string) => Promise<{ ok: true } | { ok: false; error: string }>
+    clearOpencodeKey: () => Promise<{ ok: true }>
+    testOpencodeKey: () => Promise<{ ok: boolean; error?: string }>
+    setSearchSecret: (
+      provider: string,
+      secret: string
+    ) => Promise<{ ok: true } | { ok: false; error: string }>
+    clearSearchSecret: (provider: string) => Promise<{ ok: true } | { ok: false; error: string }>
+    testWebSearch: (provider?: string) => Promise<{ ok: boolean; message: string; resultCount?: number }>
+  }
   usage: {
-    getMetrics: (rangeDays?: number, projectId?: string) => Promise<UsageMetricsResult>
+    getMetrics: (rangeDays?: number, projectId?: string, provider?: string) => Promise<UsageMetricsResult>
     getProjects: () => Promise<UsageProjectsResult>
+    getOpenCodeUsage: (rangeDays?: number) => Promise<OpenCodeUsageResult>
   }
   chat: {
     askCovenant: (
       messages: Array<{ role: ChatRole; content: string | InputContent[] }>,
-      options?: { terminalSessionId?: string }
+      options?: { terminalSessionId?: string; conversationId?: string }
     ) => Promise<string>
     askCovenantStream: (
       messages: Array<{ role: ChatRole; content: string | InputContent[] }>,
-      options?: { terminalSessionId?: string }
+      options?: { terminalSessionId?: string; conversationId?: string }
     ) => Promise<{ id: string }>
     onStreamEvent: (callback: (event: ChatStreamEvent) => void) => () => void
     cancelStream: (streamId: string) => void
     getConversations: () => Promise<ChatConversation[]>
     saveConversation: (conversation: ChatConversation) => Promise<ChatConversation[]>
     deleteConversation: (id: string) => Promise<ChatConversation[]>
-    generateConversationTitle: (prompt: string) => Promise<string>
+    generateConversationTitle: (prompt: string, sessionId?: string) => Promise<string>
   }
   terminal: {
     startTerminal: (size?: { cols?: number; rows?: number }) => Promise<TerminalStartResult>
     sendInput: (sessionId: string, data: string) => Promise<{ success: boolean }>
+    typeInput: (sessionId: string, data: string) => void
     resize: (sessionId: string, cols: number, rows: number) => Promise<{ success: boolean }>
     killTerminal: (sessionId: string) => Promise<{ success: boolean }>
     onData: (callback: (sessionId: string, chunk: string) => void) => () => void

@@ -1,5 +1,6 @@
 import { clipboard, nativeImage } from 'electron'
 import { promises as fs } from 'fs'
+import type { AppConfig } from '../../shared/config'
 import {
   normalizePasteManagerSettings,
   truncatePreview,
@@ -21,7 +22,7 @@ export interface PasteManagerDeps {
   baseDir: string
   getSettings: () => PasteManagerSettings
   saveSettings: (settings: PasteManagerSettings) => void
-  getOpenAIConfig: () => { apiKey: string; proxyUrl?: string }
+  getAppConfig: () => AppConfig
   /** Push a change notification to the main window's paste surface. */
   onChanged: () => void
 }
@@ -44,7 +45,7 @@ export class PasteManager {
   constructor(deps: PasteManagerDeps) {
     this.deps = deps
     this.store = new PasteStore(deps.baseDir)
-    this.ocr = new OcrExtractor(() => deps.getOpenAIConfig())
+    this.ocr = new OcrExtractor(() => deps.getAppConfig())
     this.watcher = new ClipboardWatcher(
       (clip, hash) => {
         void this.handleCapture(clip, hash)

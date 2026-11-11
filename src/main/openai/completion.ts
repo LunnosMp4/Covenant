@@ -1,12 +1,15 @@
 import type OpenAI from 'openai'
+import type { WebContents } from 'electron'
 import {
   buildOpenAIToolDefinitions,
   callMcpTool,
-  sanitizeResponseOutputForInput,
+  sanitizeResponseOutputForProvider,
   type McpToolRegistryEntry
 } from '../services/mcpClient'
+import type { BuiltinToolHandler } from '../services/builtinTools'
 import { readConfig } from '../config/configStore'
 import { buildResponseParams, buildResponsesInput, MAX_MCP_TOOL_ROUNDS, type SanitizedMessage } from './messages'
+import type { AiModelOption, ChatProviderId } from '../../shared/config'
 
 const MAX_PARALLEL_MCP_CALLS = 4
 
@@ -44,11 +47,24 @@ export async function completeChatWithMcp(
   client: OpenAI,
   sanitizedMessages: SanitizedMessage[],
   toolRegistry: McpToolRegistryEntry[],
-  model: string
+  model: string,
+  options: {
+    provider?: ChatProviderId
+    modelOption?: AiModelOption
+    builtinTools?: BuiltinToolHandler[]
+    extraTools?: Array<Record<string, unknown>>
+    signal?: AbortSignal
+    sender?: WebContents
+  } = {}
 ): Promise<string> {
   const storedConfig = readConfig()
-  const params = buildResponseParams(storedConfig, model)
-  const tools = buildOpenAIToolDefinitions(toolRegistry)
+  const params = buildResponseParams(storedConfig, model, {
+    provider: options.provider,
+    modelOption: options.modelOption
+  })
+  const tools = [...buildOpenAIToolDefinitions(toolRegistry), ...(options.extraTools ?? [])]
+  const builtinTools = options.builtinTools ?? []
+  const signal = options.signal ?? new AbortController().signal
 
   let input = buildResponsesInput(sanitizedMessages)
 
@@ -56,7 +72,7 @@ export async function completeChatWithMcp(
     const response = (await client.responses.create({
       model,
       input: input as unknown[],
-      tools: tools as unknown[],
+      ...(tools.length > 0 ? { tools: tools as unknown[] } : {}),
       ...(params as Record<string, unknown>)
     } as any)) as unknown as {
       output?: Array<Record<string, unknown>>
@@ -72,11 +88,25 @@ export async function completeChatWithMcp(
       return (typeof response?.output_text === 'string' ? response.output_text : '').trim() || 'No response from model.'
     }
 
-    const continuation: Array<Record<string, unknown>> = [...sanitizeResponseOutputForInput(output)]
+    const continuation: Array<Record<string, unknown>> = [
+      ...sanitizeResponseOutputForProvider(output, options.provider ?? 'openai')
+    ]
 
     // Independent MCP tools are dispatched concurrently; the loop above used to
     // pay the sum of every roundtrip even when the calls had no dependency.
     const outcomes = await runWithConcurrency(functionCalls, MAX_PARALLEL_MCP_CALLS, async (call) => {
+      const builtin = builtinTools.find((handler) => handler.name === call.name)
+      if (builtin) {
+        const result = await builtin.execute(call.arguments, {
+          signal,
+          sender: options.sender
+        })
+        return {
+          type: 'function_call_output',
+          call_id: call.call_id,
+          output: result.content
+        } as Record<string, unknown>
+      }
       const entry = toolRegistry.find((e) => e.qualifiedName === call.name)
       if (!entry) {
         return {

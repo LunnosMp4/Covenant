@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
-import { ProxyAgent, type Dispatcher } from 'undici'
+import type { Dispatcher } from 'undici'
 import type { McpAuth, McpHeader, McpServer, McpTool } from '../../shared/mcp/mcp'
+import { createProxyDispatcher } from './proxyDispatcher'
 
 const DEFAULT_MCP_PROTOCOL_VERSION = '2024-11-05'
 const DEFAULT_MCP_TIMEOUT_MS = 30_000
@@ -18,7 +19,8 @@ export function configureMcpClient(info: ClientInfo): void {
 }
 
 let mcpProxyUrl: string | undefined
-let mcpProxyAgent: ProxyAgent | undefined
+let mcpProxyAgent: Dispatcher | undefined
+let mcpProxyAgentPromise: Promise<Dispatcher | undefined> | null = null
 
 export function configureMcpProxy(proxyUrl?: string): void {
   const normalized = proxyUrl?.trim() || undefined
@@ -28,11 +30,37 @@ export function configureMcpProxy(proxyUrl?: string): void {
 
   const previousAgent = mcpProxyAgent
   mcpProxyUrl = normalized
-  mcpProxyAgent = normalized ? new ProxyAgent(normalized) : undefined
+  // The agent is built on the first MCP request (see resolveMcpProxyAgent) so
+  // configuring a proxy at startup does not load undici before it is needed.
+  mcpProxyAgent = undefined
+  // Drop any in-flight resolve so the new URL is picked up immediately.
+  mcpProxyAgentPromise = null
 
   if (previousAgent) {
     void previousAgent.close().catch(() => undefined)
   }
+}
+
+async function resolveMcpProxyAgent(): Promise<Dispatcher | undefined> {
+  if (!mcpProxyUrl) return undefined
+  if (mcpProxyAgent) return mcpProxyAgent
+
+  if (!mcpProxyAgentPromise) {
+    const proxyUrl = mcpProxyUrl
+    mcpProxyAgentPromise = createProxyDispatcher(proxyUrl)
+      .then((agent) => {
+        // Ignore a probe that resolved after the proxy setting changed.
+        if (proxyUrl === mcpProxyUrl) {
+          mcpProxyAgent = agent
+        }
+        return mcpProxyAgent
+      })
+      .finally(() => {
+        mcpProxyAgentPromise = null
+      })
+  }
+
+  return mcpProxyAgentPromise
 }
 
 const mcpSessionIds = new Map<string, string>()
@@ -108,8 +136,8 @@ function buildMcpHeaders(server: McpServerConnection): Headers {
   return headers
 }
 
-function buildMcpFetchInit(base: RequestInit, dispatcher?: Dispatcher): RequestInit {
-  const effective = dispatcher ?? mcpProxyAgent
+async function buildMcpFetchInit(base: RequestInit, dispatcher?: Dispatcher): Promise<RequestInit> {
+  const effective = dispatcher ?? (await resolveMcpProxyAgent())
   if (!effective) {
     return base
   }
@@ -229,7 +257,7 @@ async function sendMcpRaw(
 
     const response = await fetch(
       resolveMcpEndpointUrl(server.url, server.appendMcpSuffix ?? true),
-      buildMcpFetchInit(
+      await buildMcpFetchInit(
         {
           method: 'POST',
           headers: buildMcpHeaders(server),
@@ -294,7 +322,7 @@ async function sendMcpNotification(
   try {
     await fetch(
       resolveMcpEndpointUrl(server.url, server.appendMcpSuffix ?? true),
-      buildMcpFetchInit(
+      await buildMcpFetchInit(
         {
           method: 'POST',
           headers: buildMcpHeaders(server),
@@ -524,6 +552,20 @@ export function sanitizeResponseOutputForInput(
 
     return rest
   })
+}
+
+/**
+ * OpenCode's gateway translates non-native APIs and may reject response items
+ * it cannot round-trip (reasoning blocks, native web-search calls). Keep only
+ * the items needed to continue a tool-call loop.
+ */
+export function sanitizeResponseOutputForProvider(
+  output: Array<Record<string, unknown>>,
+  provider: 'openai' | 'opencode'
+): Array<Record<string, unknown>> {
+  const sanitized = sanitizeResponseOutputForInput(output)
+  if (provider === 'openai') return sanitized
+  return sanitized.filter((item) => item.type === 'message' || item.type === 'function_call')
 }
 
 export interface McpConnectionTestResult {

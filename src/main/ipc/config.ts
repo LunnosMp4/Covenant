@@ -5,10 +5,15 @@ import {
   DEFAULT_CHAT_MODEL,
   DEFAULT_ENABLE_WEB_SEARCH,
   DEFAULT_LAUNCHER_SHOW_SYSTEM_APPS,
+  DEFAULT_OPENCODE_CHAT_MODEL,
   DEFAULT_REASONING_EFFORT,
+  DEFAULT_WEB_SEARCH_TIMEOUT_MS,
+  normalizeChatProvider,
+  normalizeOpenCodePlan,
   normalizeShortcuts,
   normalizeNotesSettings,
-  normalizeTextureIntensity
+  normalizeTextureIntensity,
+  normalizeWebSearchProvider
 } from '../../shared/config'
 import { DEFAULT_CONFIG, normalizeTerminalFont, readConfig, updateConfig } from '../config/configStore'
 import { normalizeThemeGradient } from '../../shared/theme/theme'
@@ -25,7 +30,15 @@ const VALID_REASONING_EFFORTS = ['low', 'medium', 'high']
 
 export function registerConfigIpc(): void {
   ipcMain.handle('get-config', () => {
-    return readConfig()
+    const config = readConfig()
+    // Secrets never cross the context bridge. The renderer receives only a
+    // "configured" flag from `ai:key-status` and writes new values back
+    // through `save-openai-settings`.
+    return {
+      ...config,
+      apiKey: '',
+      adminApiKey: ''
+    }
   })
 
   ipcMain.on('save-api-key', (_event, key: string) => {
@@ -33,7 +46,7 @@ export function registerConfigIpc(): void {
     updateConfig({ apiKey })
   })
 
-  ipcMain.on('save-openai-settings', (_event, payload: { apiKey?: string; proxyUrl?: string; adminApiKey?: string }) => {
+  ipcMain.handle('save-openai-settings', (_event, payload: { apiKey?: string; proxyUrl?: string; adminApiKey?: string }) => {
     // Only patch fields the renderer actually sends. The command bar's OpenAI
     // key save and the Usage tab's admin key save share this channel, so treating
     // an absent field as an empty string would wipe the sibling key.
@@ -142,9 +155,90 @@ export function registerConfigIpc(): void {
   })
 
   ipcMain.on('update-chat-model', (_event, chatModel: string) => {
-    const nextChatModel = typeof chatModel === 'string' && chatModel.trim() ? chatModel.trim() : DEFAULT_CHAT_MODEL
-    updateConfig({ chatModel: nextChatModel })
+    const current = readConfig()
+    const nextChatModel =
+      typeof chatModel === 'string' && chatModel.trim() ? chatModel.trim() : DEFAULT_CHAT_MODEL
+    if (current.chatProvider === 'opencode') {
+      updateConfig({ opencodeChatModel: nextChatModel })
+    } else {
+      updateConfig({ chatModel: nextChatModel })
+    }
     broadcast('chat-model-updated', nextChatModel)
+  })
+
+  ipcMain.on('update-chat-provider', (_event, provider: unknown) => {
+    const nextProvider = normalizeChatProvider(provider)
+    const current = readConfig()
+    const nextModel =
+      nextProvider === 'opencode'
+        ? current.opencodeChatModel || DEFAULT_OPENCODE_CHAT_MODEL
+        : current.chatModel || DEFAULT_CHAT_MODEL
+    updateConfig({ chatProvider: nextProvider })
+    broadcast('chat-provider-updated', nextProvider)
+    broadcast('chat-model-updated', nextModel)
+  })
+
+  ipcMain.on('update-opencode-chat-model', (_event, model: string) => {
+    const nextModel =
+      typeof model === 'string' && model.trim() ? model.trim() : DEFAULT_OPENCODE_CHAT_MODEL
+    updateConfig({ opencodeChatModel: nextModel })
+    broadcast('opencode-chat-model-updated', nextModel)
+    if (readConfig().chatProvider === 'opencode') {
+      broadcast('chat-model-updated', nextModel)
+    }
+  })
+
+  ipcMain.on('update-opencode-plan', (_event, plan: unknown) => {
+    const nextPlan = normalizeOpenCodePlan(plan)
+    updateConfig({ opencodePlan: nextPlan })
+    broadcast('opencode-plan-updated', nextPlan)
+  })
+
+  ipcMain.on('update-web-search-settings', (_event, rawSettings: unknown) => {
+    const current = readConfig()
+    const patch =
+      rawSettings && typeof rawSettings === 'object'
+        ? (rawSettings as Record<string, unknown>)
+        : {}
+    const next: Partial<AppConfig> = {
+      webSearchProvider: normalizeWebSearchProvider(
+        patch.webSearchProvider ?? current.webSearchProvider
+      ),
+      webSearchSearxngUrl:
+        typeof patch.webSearchSearxngUrl === 'string'
+          ? patch.webSearchSearxngUrl.trim() || undefined
+          : current.webSearchSearxngUrl,
+      webSearchSearxngAuthType:
+        patch.webSearchSearxngAuthType === 'basic' || patch.webSearchSearxngAuthType === 'bearer'
+          ? patch.webSearchSearxngAuthType
+          : patch.webSearchSearxngAuthType === 'none'
+            ? 'none'
+            : current.webSearchSearxngAuthType ?? 'none',
+      webSearchSearxngUsername:
+        typeof patch.webSearchSearxngUsername === 'string'
+          ? patch.webSearchSearxngUsername.trim()
+          : current.webSearchSearxngUsername,
+      webSearchSearxngAllowInsecure:
+        typeof patch.webSearchSearxngAllowInsecure === 'boolean'
+          ? patch.webSearchSearxngAllowInsecure
+          : current.webSearchSearxngAllowInsecure,
+      webSearchBypassProxyForLocal:
+        typeof patch.webSearchBypassProxyForLocal === 'boolean'
+          ? patch.webSearchBypassProxyForLocal
+          : current.webSearchBypassProxyForLocal,
+      webSearchFallbackProvider:
+        patch.webSearchFallbackProvider === 'none'
+          ? 'none'
+          : patch.webSearchFallbackProvider
+            ? normalizeWebSearchProvider(patch.webSearchFallbackProvider)
+            : current.webSearchFallbackProvider ?? 'none',
+      webSearchTimeoutMs:
+        typeof patch.webSearchTimeoutMs === 'number' && Number.isFinite(patch.webSearchTimeoutMs)
+          ? Math.max(3000, Math.min(120000, Math.round(patch.webSearchTimeoutMs)))
+          : current.webSearchTimeoutMs ?? DEFAULT_WEB_SEARCH_TIMEOUT_MS
+    }
+    updateConfig(next)
+    broadcast('web-search-settings-updated', next)
   })
 
   ipcMain.on('update-reasoning-effort', (_event, reasoningEffort: string) => {

@@ -49,6 +49,21 @@ dotenv.config({ path: join(process.cwd(), '.env') })
 
 setupLogger()
 
+// Acquire the single-instance lock before any startup work: a duplicate launch
+// should exit immediately instead of booting a second renderer first.
+const gotTheLock = app.requestSingleInstanceLock()
+
+if (!gotTheLock) {
+  app.quit()
+} else {
+  // Handle second instance attempts (the lock above rejected the new process).
+  app.on('second-instance', () => {
+    if (getMainWindow()) {
+      showWindow()
+    }
+  })
+}
+
 setBroadcastProviders({
   main: getMainWebContents,
   settings: getSettingsWebContents
@@ -57,21 +72,7 @@ setBroadcastProviders({
 registerIpc()
 
 app.whenReady().then(() => {
-  // Implement single instance lock
-  const gotTheLock = app.requestSingleInstanceLock()
-
-  if (!gotTheLock) {
-    // Another instance is already running, quit this one
-    app.quit()
-    return
-  }
-
-  // Handle second instance attempt
-  app.on('second-instance', () => {
-    if (getMainWindow()) {
-      showWindow()
-    }
-  })
+  if (!gotTheLock) return
 
   // Covenant is a background command-bar app. On macOS, hide the Dock icon and
   // application menu so it never appears as a regular foreground "Electron"
@@ -121,13 +122,7 @@ app.whenReady().then(() => {
     saveSettings: (settings) => {
       updateConfig({ pasteManager: settings })
     },
-    getOpenAIConfig: () => {
-      const current = readConfig()
-      return {
-        apiKey: current.apiKey || process.env.OPENAI_API_KEY || '',
-        proxyUrl: resolveOpenAIProxyUrl(current.proxyUrl)
-      }
-    },
+    getAppConfig: () => readConfig(),
     onChanged: () => {
       // The paste surface lives in the main window; refresh it live when it is
       // open. On show the renderer reloads the full list anyway.

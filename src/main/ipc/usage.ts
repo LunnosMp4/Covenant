@@ -12,11 +12,21 @@ import {
   fetchOrganizationCosts,
   fetchOrganizationProjects
 } from '../services/usageClient'
+import { fetchOpenCodeUsage } from '../ai/opencodeUsageClient'
 
 export function registerUsageIpc(): void {
-  ipcMain.handle('usage:get-metrics', async (_event, payload?: { rangeDays?: unknown; projectId?: unknown }) => {
+  ipcMain.handle('usage:get-metrics', async (_event, payload?: { rangeDays?: unknown; projectId?: unknown; provider?: unknown }) => {
     const rangeDays = normalizeUsageRangeDays(payload?.rangeDays)
     const storedConfig = readConfig()
+
+    if (payload?.provider === 'opencode') {
+      return {
+        ok: false,
+        code: 'UNKNOWN',
+        message: 'OpenCode usage is loaded through the dedicated OpenCode endpoint.'
+      }
+    }
+
     const adminKey = typeof storedConfig.adminApiKey === 'string' ? storedConfig.adminApiKey.trim() : ''
 
     if (!adminKey) {
@@ -55,6 +65,11 @@ export function registerUsageIpc(): void {
       const message = error instanceof Error ? error.message : 'Unable to load usage metrics.'
       return { ok: false, code: 'UNKNOWN', message }
     }
+  })
+
+  ipcMain.handle('usage:get-opencode', async (_event, payload?: { rangeDays?: unknown }) => {
+    const storedConfig = readConfig()
+    return fetchOpenCodeUsage(storedConfig, payload?.rangeDays)
   })
 
   ipcMain.handle('usage:get-projects', async () => {

@@ -1,4 +1,5 @@
-import { CHAT_MODEL_OPTIONS } from '../../../../shared/config'
+import { CHAT_MODEL_OPTIONS, OPENCODE_MODEL_OPTIONS } from '../../../../shared/config'
+import { CHAT_PROVIDERS, type ChatProviderId } from '../../../../shared/ai/models'
 import { formatCurrency, formatTokenCount, type ContextStats } from '../../utils/chat/chatUsage'
 
 interface ContextStatsDonutProps {
@@ -6,12 +7,15 @@ interface ContextStatsDonutProps {
   chatModel: string
   /** Overrides the label shown in the tooltip (e.g. an OpenCode model). */
   modelLabel?: string
+  /** Appends ` · Provider` to the model id shown in the tooltip. */
+  provider?: ChatProviderId
 }
 
 export default function ContextStatsDonut({
   stats,
   chatModel,
-  modelLabel
+  modelLabel,
+  provider
 }: ContextStatsDonutProps): JSX.Element | null {
   if (!stats || stats.maxTokens <= 0) return null
 
@@ -22,6 +26,17 @@ export default function ContextStatsDonut({
   let progressClass = 'stroke-white/50'
   if (fillPercent > 0.95) progressClass = 'stroke-red-500/80'
   else if (fillPercent > 0.8) progressClass = 'stroke-amber-500/80'
+
+  const fallbackModelLabel =
+    CHAT_MODEL_OPTIONS.find(m => m.id === chatModel)?.label ??
+    OPENCODE_MODEL_OPTIONS.find(m => m.id === chatModel)?.label ??
+    chatModel
+  const providerLabel = provider
+    ? CHAT_PROVIDERS.find(option => option.id === provider)?.label
+    : undefined
+  const modelHeading = providerLabel
+    ? `${modelLabel ?? chatModel} \u00b7 ${providerLabel}`
+    : (modelLabel ?? fallbackModelLabel)
 
   return (
     <div className="relative group">
@@ -49,7 +64,7 @@ export default function ContextStatsDonut({
           </div>
           <div className="space-y-0.5 text-[11px] text-neutral-400">
             <p className="font-medium text-neutral-300">
-              {modelLabel ?? CHAT_MODEL_OPTIONS.find(m => m.id === chatModel)?.label ?? chatModel}
+              {modelHeading}
             </p>
             <p>Cost: {formatCurrency(stats.totalCost)}</p>
             <p>{stats.messageCount} messages &middot; {'>'}{formatTokenCount(stats.totalInputTokens)}tk &middot; {formatTokenCount(stats.totalOutputTokens)}tk</p>

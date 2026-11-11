@@ -1,48 +1,26 @@
-import OpenAI from 'openai'
-import { ProxyAgent } from 'undici'
-
-export interface OpenAIConfig {
-  apiKey: string
-  proxyUrl?: string
-}
+import type { AppConfig } from '../../shared/config'
+import { resolveChatProvider } from '../ai/provider'
+import { recordAiUsage } from '../ai/usageLedger'
 
 const OCR_MODEL = 'gpt-6-luna'
 const OCR_PROMPT =
   'Extract all readable text from this image. Return only the extracted text, preserving line breaks, with no commentary. If there is no text, return an empty string.'
 
 /**
- * Optional OCR for copied images, reusing the existing OpenAI dependency and
- * API key. Runs only when explicitly enabled and an API key is configured.
+ * Optional OCR for copied images. Uses the active AI provider (OpenAI or
+ * OpenCode) and a vision-capable model. Runs only when explicitly enabled.
  */
 export class OcrExtractor {
-  private client: OpenAI | null = null
-  private clientKey = ''
-
-  constructor(private readonly getConfig: () => OpenAIConfig) {}
-
-  private getClient(apiKey: string, proxyUrl?: string): OpenAI {
-    const key = `${apiKey}\u0000${proxyUrl ?? ''}`
-    if (this.client && this.clientKey === key) return this.client
-
-    this.client = new OpenAI({
-      apiKey,
-      timeout: 20_000,
-      maxRetries: 1,
-      fetchOptions: proxyUrl ? { dispatcher: new ProxyAgent(proxyUrl) } : undefined
-    })
-    this.clientKey = key
-    return this.client
-  }
+  constructor(private readonly getConfig: () => AppConfig) {}
 
   async extractText(imageBuffer: Buffer, mime: string): Promise<string | null> {
-    const { apiKey, proxyUrl } = this.getConfig()
-    if (!apiKey) return null
     if (!imageBuffer || imageBuffer.length === 0) return null
 
     try {
-      const client = this.getClient(apiKey, proxyUrl)
+      const config = this.getConfig()
+      const provider = await resolveChatProvider(config, { model: OCR_MODEL })
       const dataUrl = `data:${mime || 'image/png'};base64,${imageBuffer.toString('base64')}`
-      const response = await client.responses.create({
+      const response = await provider.client.responses.create({
         model: OCR_MODEL,
         input: [
           {
@@ -54,6 +32,21 @@ export class OcrExtractor {
           }
         ]
       } as never)
+
+      const usage = (response as unknown as { usage?: Record<string, unknown> }).usage
+      if (usage) {
+        recordAiUsage({
+          provider: provider.provider,
+          model: OCR_MODEL,
+          kind: 'ocr',
+          usage: {
+            promptTokens: typeof usage.input_tokens === 'number' ? usage.input_tokens : undefined,
+            completionTokens:
+              typeof usage.output_tokens === 'number' ? usage.output_tokens : undefined,
+            totalTokens: typeof usage.total_tokens === 'number' ? usage.total_tokens : undefined
+          }
+        })
+      }
 
       const output = (response as unknown as { output_text?: unknown }).output_text
       if (typeof output !== 'string') return null

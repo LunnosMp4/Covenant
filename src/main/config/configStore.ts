@@ -6,20 +6,27 @@ import {
   DEFAULT_AUTO_COLLAPSE_REASONING,
   DEFAULT_BUTTON_VISIBILITY,
   DEFAULT_CHAT_MODEL,
+  DEFAULT_CHAT_PROVIDER,
   DEFAULT_CODE_SETTINGS,
   DEFAULT_ENABLE_WEB_SEARCH,
   DEFAULT_LAUNCHER_SHOW_SYSTEM_APPS,
   DEFAULT_NOTES_SETTINGS,
+  DEFAULT_OPENCODE_CHAT_MODEL,
   DEFAULT_REASONING_EFFORT,
   DEFAULT_SHORTCUTS,
   DEFAULT_TEXTURE_INTENSITY,
+  DEFAULT_WEB_SEARCH_PROVIDER,
+  DEFAULT_WEB_SEARCH_TIMEOUT_MS,
   normalizeAdminApiKey,
   normalizeChatModelId,
+  normalizeChatProvider,
   normalizeCodeSettings,
   normalizeNotesSettings,
+  normalizeOpenCodePlan,
   normalizeShortcuts,
   normalizeTextureIntensity,
-  normalizeUsageProjectId
+  normalizeUsageProjectId,
+  normalizeWebSearchProvider
 } from '../../shared/config'
 import { DEFAULT_PASTE_SETTINGS, normalizePasteManagerSettings } from '../../shared/paste/paste'
 import {
@@ -40,6 +47,18 @@ export const DEFAULT_CONFIG: AppConfig = {
   mcpServers: [],
   buttonVisibility: { ...DEFAULT_BUTTON_VISIBILITY },
   chatModel: DEFAULT_CHAT_MODEL,
+  chatProvider: DEFAULT_CHAT_PROVIDER,
+  opencodeChatModel: DEFAULT_OPENCODE_CHAT_MODEL,
+  opencodePlan: 'go',
+  webSearchProvider: DEFAULT_WEB_SEARCH_PROVIDER,
+  webSearchSearxngUrl: undefined,
+  webSearchSearxngAuthType: 'none',
+  webSearchSearxngUsername: '',
+  webSearchSearxngAllowInsecure: false,
+  webSearchBypassProxyForLocal: true,
+  webSearchFallbackProvider: 'none',
+  webSearchTimeoutMs: DEFAULT_WEB_SEARCH_TIMEOUT_MS,
+  webSearchProviderMigrated: true,
   reasoningEffort: DEFAULT_REASONING_EFFORT,
   enableWebSearch: DEFAULT_ENABLE_WEB_SEARCH,
   autoCollapseReasoning: DEFAULT_AUTO_COLLAPSE_REASONING,
@@ -90,6 +109,13 @@ export function normalizeButtonVisibility(raw: unknown): AppConfig['buttonVisibi
 }
 
 export function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined): AppConfig {
+  // One-time migration: the old default was 'openai'. Moving to 'auto' lets
+  // SearXNG win when configured and lets OpenCode models use native search.
+  // The marker keeps an explicit 'openai' choice intact afterwards.
+  const shouldMigrateWebSearch =
+    rawConfig?.webSearchProviderMigrated !== true &&
+    (rawConfig?.webSearchProvider === undefined || rawConfig?.webSearchProvider === 'openai')
+
   return {
     apiKey: typeof rawConfig?.apiKey === 'string' ? rawConfig.apiKey : DEFAULT_CONFIG.apiKey,
     adminApiKey: normalizeAdminApiKey(rawConfig?.adminApiKey),
@@ -111,6 +137,44 @@ export function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined
     mcpServers: normalizeStoredMcpServers(rawConfig?.mcpServers),
     buttonVisibility: normalizeButtonVisibility(rawConfig?.buttonVisibility),
     chatModel: normalizeChatModelId(rawConfig?.chatModel),
+    chatProvider: normalizeChatProvider(rawConfig?.chatProvider),
+    opencodeChatModel:
+      typeof rawConfig?.opencodeChatModel === 'string' && rawConfig.opencodeChatModel.trim()
+        ? rawConfig.opencodeChatModel.trim()
+        : DEFAULT_OPENCODE_CHAT_MODEL,
+    opencodePlan: normalizeOpenCodePlan(rawConfig?.opencodePlan),
+    webSearchProvider: shouldMigrateWebSearch
+      ? 'auto'
+      : normalizeWebSearchProvider(rawConfig?.webSearchProvider),
+    webSearchSearxngUrl:
+      typeof rawConfig?.webSearchSearxngUrl === 'string' && rawConfig.webSearchSearxngUrl.trim()
+        ? rawConfig.webSearchSearxngUrl.trim()
+        : undefined,
+    webSearchSearxngAuthType:
+      rawConfig?.webSearchSearxngAuthType === 'basic' || rawConfig?.webSearchSearxngAuthType === 'bearer'
+        ? rawConfig.webSearchSearxngAuthType
+        : 'none',
+    webSearchSearxngUsername:
+      typeof rawConfig?.webSearchSearxngUsername === 'string'
+        ? rawConfig.webSearchSearxngUsername.trim()
+        : '',
+    webSearchSearxngAllowInsecure: rawConfig?.webSearchSearxngAllowInsecure === true,
+    webSearchBypassProxyForLocal:
+      typeof rawConfig?.webSearchBypassProxyForLocal === 'boolean'
+        ? rawConfig.webSearchBypassProxyForLocal
+        : true,
+    webSearchFallbackProvider:
+      rawConfig?.webSearchFallbackProvider === 'none'
+        ? 'none'
+        : rawConfig?.webSearchFallbackProvider
+          ? normalizeWebSearchProvider(rawConfig.webSearchFallbackProvider)
+          : 'none',
+    webSearchTimeoutMs:
+      typeof rawConfig?.webSearchTimeoutMs === 'number' && Number.isFinite(rawConfig.webSearchTimeoutMs)
+        ? Math.max(3000, Math.min(120000, Math.round(rawConfig.webSearchTimeoutMs)))
+        : DEFAULT_WEB_SEARCH_TIMEOUT_MS,
+    webSearchProviderMigrated:
+      rawConfig?.webSearchProviderMigrated === true || shouldMigrateWebSearch,
     reasoningEffort:
       typeof rawConfig?.reasoningEffort === 'string' && ['low', 'medium', 'high'].includes(rawConfig.reasoningEffort)
         ? rawConfig.reasoningEffort as AppConfig['reasoningEffort']

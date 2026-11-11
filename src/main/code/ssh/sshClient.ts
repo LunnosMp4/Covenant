@@ -1,8 +1,27 @@
-import { Client, type ClientChannel, type ConnectConfig, type SFTPWrapper } from 'ssh2'
+import type { Client, ClientChannel, ConnectConfig, SFTPWrapper } from 'ssh2'
 import { readFileSync } from 'fs'
 import { log } from '../../logger'
 import type { CodeConnection } from '../../../shared/code/connection'
 import { getSshCredential, type SshCredential } from './sshCredentials'
+
+type SshModule = typeof import('ssh2')
+
+/**
+ * `ssh2` (and its optional native helpers) is only relevant to remote Code
+ * connections. Load it on the first SSH connect instead of during startup.
+ */
+let sshModulePromise: Promise<SshModule> | null = null
+
+function loadSshModule(): Promise<SshModule> {
+  if (!sshModulePromise) {
+    sshModulePromise = import('ssh2').catch((error) => {
+      // Don't cache a failed load; a later connection attempt can retry.
+      sshModulePromise = null
+      throw error
+    })
+  }
+  return sshModulePromise
+}
 
 export interface SshExecResult {
   code: number | null
@@ -29,7 +48,10 @@ export class SshSession {
 
   private constructor(readonly client: Client) {}
 
-  static connect(connection: CodeConnection): Promise<SshConnectResult> {
+  static async connect(connection: CodeConnection): Promise<SshConnectResult> {
+    const sshModule = await loadSshModule()
+    const Client = sshModule.Client ?? (sshModule as unknown as { default: SshModule }).default.Client
+
     return new Promise((resolve, reject) => {
       const client = new Client()
       let observedFingerprint: string | undefined

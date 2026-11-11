@@ -1,5 +1,5 @@
 import { app, BrowserWindow, Notification, shell } from 'electron'
-import { autoUpdater, type UpdateInfo } from 'electron-updater'
+import type { UpdateInfo } from 'electron-updater'
 import { log } from './logger'
 import type { UpdateStatus } from '../shared/system/update'
 
@@ -8,6 +8,47 @@ const RELEASE_API_URL = 'https://api.github.com/repos/LunnosMp4/Covenant/release
 const RELEASE_PAGE_URL = 'https://github.com/LunnosMp4/Covenant/releases/latest'
 
 let isSetup = false
+
+/**
+ * `electron-updater` pulls in builder-util-runtime and a chunk of Node crypto
+ * that is useless until an update check actually runs (10s after launch, and
+ * only when auto-update is enabled). Load it on first use so the main process
+ * does not pay for it during startup.
+ */
+type AutoUpdaterModule = typeof import('electron-updater')
+type AutoUpdater = AutoUpdaterModule['autoUpdater']
+
+/**
+ * Picks `autoUpdater` off the resolved module. Named-export detection for CJS
+ * getters is not guaranteed, so the namespace's `default` is used as a
+ * fallback (this is what the runtime actually provides for electron-updater).
+ */
+function resolveAutoUpdater(module: unknown): AutoUpdater {
+  const namespace = module as {
+    autoUpdater?: AutoUpdater
+    default?: { autoUpdater?: AutoUpdater }
+  }
+  const autoUpdater = namespace.autoUpdater ?? namespace.default?.autoUpdater
+  if (!autoUpdater) {
+    throw new Error('electron-updater did not expose autoUpdater')
+  }
+  return autoUpdater
+}
+
+let autoUpdaterPromise: Promise<AutoUpdater> | null = null
+
+function loadAutoUpdater(): Promise<AutoUpdater> {
+  if (!autoUpdaterPromise) {
+    autoUpdaterPromise = import('electron-updater')
+      .then(resolveAutoUpdater)
+      .catch((error) => {
+        // Don't cache a failed load; a later check can retry.
+        autoUpdaterPromise = null
+        throw error
+      })
+  }
+  return autoUpdaterPromise
+}
 
 function createInitialStatus(): UpdateStatus {
   return {
@@ -162,6 +203,24 @@ export function setupAutoUpdater(getAutoUpdateEnabled: () => boolean): void {
     return
   }
 
+  void registerWindowsUpdater(getAutoUpdateEnabled)
+}
+
+/**
+ * Defers loading `electron-updater` until the first scheduled/manual check.
+ * Listener registration and the 10s startup check happen once the module is
+ * available, which is a few milliseconds later than before and otherwise
+ * identical.
+ */
+async function registerWindowsUpdater(getAutoUpdateEnabled: () => boolean): Promise<void> {
+  let autoUpdater: AutoUpdater
+  try {
+    autoUpdater = await loadAutoUpdater()
+  } catch (error) {
+    log.error('Failed to load the auto-updater:', error)
+    return
+  }
+
   autoUpdater.autoDownload = true
   autoUpdater.logger = log as unknown as typeof autoUpdater.logger
 
@@ -240,14 +299,16 @@ export function checkForUpdatesManually(): void {
   }
 
   setUpdateStatus({ state: 'checking', error: undefined, checkedAt: Date.now() })
-  void autoUpdater.checkForUpdates().catch((error) => {
-    log.error('Failed to check for updates:', error)
-    setUpdateStatus({
-      state: 'error',
-      error: error instanceof Error ? error.message : String(error),
-      checkedAt: Date.now()
+  void loadAutoUpdater()
+    .then((autoUpdater) => autoUpdater.checkForUpdates())
+    .catch((error) => {
+      log.error('Failed to check for updates:', error)
+      setUpdateStatus({
+        state: 'error',
+        error: error instanceof Error ? error.message : String(error),
+        checkedAt: Date.now()
+      })
     })
-  })
 }
 
 export function quitAndInstallUpdate(): void {
@@ -263,5 +324,10 @@ export function quitAndInstallUpdate(): void {
     focusApp()
     return
   }
-  autoUpdater.quitAndInstall()
+
+  void loadAutoUpdater()
+    .then((autoUpdater) => autoUpdater.quitAndInstall())
+    .catch((error) => {
+      log.error('Failed to install the downloaded update:', error)
+    })
 }

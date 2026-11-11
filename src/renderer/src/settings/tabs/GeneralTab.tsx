@@ -1,192 +1,42 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { AnimatePresence, motion, useAnimationControls, type Transition } from 'framer-motion'
-import { WINDOW_ENTER_TRANSITION, WINDOW_EXIT_TRANSITION } from '../../constants/motion'
-import ConfirmDeleteModal from '../../ui/ConfirmDeleteModal'
-import CustomSelect from '../../ui/CustomSelect'
-import McpServerFormModal from '../modals/McpServerFormModal'
-import McpServersTab, { type McpPreset } from './McpServersTab'
-import PrepromptFormModal from '../modals/PrepromptFormModal'
-import WorkflowFormModal from '../../workflow/WorkflowFormModal'
-import PasteSettingsTab from '../../paste/PasteSettingsTab'
-import UsageTab from './UsageTab'
-import MeasuredCollapse from '../../ui/MeasuredCollapse'
-import {
-  DEFAULT_TERMINAL_FONT,
-  normalizeTerminalFont
-} from '../../constants/terminalFonts'
-import {
-  DEFAULT_THEME_GRADIENT,
-  THEME_OPTIONS,
-  getThemeMode,
-  normalizeThemeGradient
-} from '../../constants/theme'
-import type { AppConfig, ButtonVisibility, ReasoningEffort, ShortcutConfig } from '../../../../shared/config'
-import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_REASONING_EFFORT, DEFAULT_SHORTCUTS, DEFAULT_TEXTURE_INTENSITY, MAX_TEXTURE_INTENSITY, REASONING_EFFORT_OPTIONS, TEXTURE_MAX_OPACITY, modelSupportsExtendedParams, modelSupportsWebSearch } from '../../../../shared/config'
 import type { UpdateStatus } from '../../../../shared/system/update'
-import {
-  DEFAULT_PASTE_SETTINGS,
-  normalizePasteManagerSettings,
-  type PasteManagerSettings
-} from '../../../../shared/paste/paste'
-import type { McpServer } from '../../../../shared/mcp/mcp'
-import type { Preprompt } from '../../types/renderer'
-import type { Workflow } from '../../types/renderer'
-import { getAppBadgeText } from '../../utils/helpers'
 import { MinimalistToggle, SectionCard } from '../primitives'
-import { ShortcutRecorder } from '../shortcutRecorder'
 import { formatUpdateBytes, getUpdateStatusLabel } from '../helpers'
 
 interface GeneralTabProps {
-  apiKey: string
-  onApiKeyChange: (value: string) => void
   proxyUrl: string
   onProxyUrlChange: (value: string) => void
-  isAdvancedOpen: boolean
-  onToggleAdvanced: () => void
-  onSaveOpenAISettings: () => void
-  isSavingApiKey: boolean
-  isConfigLoaded: boolean
-  saveFeedbackMessage: string
   launchOnStartup: boolean
   onLaunchOnStartupChange: (value: boolean) => void
-  chatModel: string
-  onChatModelChange: (value: string) => void
-  reasoningEffort: ReasoningEffort
-  onReasoningEffortChange: (value: ReasoningEffort) => void
-  enableWebSearch: boolean
-  onWebSearchChange: (value: boolean) => void
-  autoCollapseReasoning: boolean
-  onAutoCollapseReasoningChange: (value: boolean) => void
   autoUpdate: boolean
   onAutoUpdateChange: (value: boolean) => void
   updateStatus: UpdateStatus
   onCheckForUpdates: () => void
   onInstallUpdate: () => void
-  shortcuts: ShortcutConfig
-  onShortcutChange: (field: keyof ShortcutConfig, value: string) => void
 }
 
 export default function GeneralTab({
-  apiKey,
-  onApiKeyChange,
   proxyUrl,
   onProxyUrlChange,
-  isAdvancedOpen,
-  onToggleAdvanced,
-  onSaveOpenAISettings,
-  isSavingApiKey,
-  isConfigLoaded,
-  saveFeedbackMessage,
   launchOnStartup,
   onLaunchOnStartupChange,
-  chatModel,
-  onChatModelChange,
-  reasoningEffort,
-  onReasoningEffortChange,
-  enableWebSearch,
-  onWebSearchChange,
-  autoCollapseReasoning,
-  onAutoCollapseReasoningChange,
   autoUpdate,
   onAutoUpdateChange,
   updateStatus,
   onCheckForUpdates,
-  onInstallUpdate,
-  shortcuts,
-  onShortcutChange
+  onInstallUpdate
 }: GeneralTabProps): JSX.Element {
   return (
     <div className="space-y-6">
       <SectionCard
-        title="OpenAI API Key"
-        description="Stored in your local OS user data directory. This key is used by Covenant chat requests."
-      >
-        <div>
-          <label htmlFor="openai-key" className="mb-2 block text-sm font-medium text-neutral-300">
-            API Key
-          </label>
-
-          <div className="flex items-center gap-3">
-            <input
-              id="openai-key"
-              type="password"
-              value={apiKey}
-              onChange={(event) => onApiKeyChange(event.target.value)}
-              placeholder="sk-..."
-              className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-neutral-500 focus:outline-none"
-              autoComplete="off"
-            />
-
-            <button
-              type="button"
-              onClick={onSaveOpenAISettings}
-              disabled={isSavingApiKey || !isConfigLoaded}
-              className="pressable btn-primary rounded-xl px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isSavingApiKey ? 'Saving…' : 'Save'}
-            </button>
-          </div>
-
-          <button
-            type="button"
-            onClick={onToggleAdvanced}
-            className="pressable mt-3 inline-flex items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-neutral-300 hover:border-neutral-600 hover:text-neutral-100"
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              className={`transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
-                isAdvancedOpen ? 'rotate-90' : ''
-              }`}
-              aria-hidden
-            >
-              <path d="m9 18 6-6-6-6" />
-            </svg>
-            <span>Advanced settings</span>
-          </button>
-
-          <MeasuredCollapse open={isAdvancedOpen} className="mt-3">
-            <div className="rounded-xl border border-neutral-800 bg-neutral-950/70 p-3">
-              <label htmlFor="openai-proxy-url" className="mb-2 block text-xs font-medium uppercase tracking-[0.08em] text-neutral-400">
-                Proxy URL
-              </label>
-              <input
-                id="openai-proxy-url"
-                type="text"
-                value={proxyUrl}
-                onChange={(event) => onProxyUrlChange(event.target.value)}
-                placeholder="http://proxy.company.local:8080"
-                className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 placeholder:text-neutral-500 focus:border-neutral-500 focus:outline-none"
-                autoComplete="off"
-              />
-              <p className="mt-2 text-xs text-neutral-500">
-                Use this when your company routes outbound traffic through a proxy. Applies to OpenAI requests and MCP
-                server connections. Leave empty for direct access.
-              </p>
-            </div>
-          </MeasuredCollapse>
-
-          <p className="mt-2 text-xs text-neutral-500">Saved locally in the native user data folder as part of config.json.</p>
-          {saveFeedbackMessage ? <p className="mt-2 text-xs text-emerald-300">{saveFeedbackMessage}</p> : null}
-        </div>
-      </SectionCard>
-
-      <SectionCard
         title="Startup"
         description="Automatically launch Covenant when you start your computer."
       >
-        <div className="space-y-4">
-          <MinimalistToggle
-            checked={launchOnStartup}
-            onChange={onLaunchOnStartupChange}
-            label="Launch on startup"
-            description="Covenant will open automatically when your system starts."
-          />
-        </div>
+        <MinimalistToggle
+          checked={launchOnStartup}
+          onChange={onLaunchOnStartupChange}
+          label="Launch on startup"
+          description="Covenant will open automatically when your system starts."
+        />
       </SectionCard>
 
       <SectionCard
@@ -258,236 +108,26 @@ export default function GeneralTab({
       </SectionCard>
 
       <SectionCard
-        title="Chat Model"
-        description="Select which OpenAI model to use for AI conversations. Changes apply immediately."
+        title="Network"
+        description="Outbound requests from Covenant (OpenAI, OpenCode, MCP, and web search) can go through a proxy."
       >
-        <div className="space-y-4">
-          <div>
-            <label className="mb-2 block text-sm font-medium text-neutral-300">
-              Model
-            </label>
-            <CustomSelect
-              options={CHAT_MODEL_OPTIONS.map((option) => ({
-                value: option.id,
-                label: option.label
-              }))}
-              value={chatModel || DEFAULT_CHAT_MODEL}
-              onChange={onChatModelChange}
-            />
-          </div>
-
-          <div>
-            <label className={`mb-2 block text-sm font-medium ${modelSupportsExtendedParams(chatModel || DEFAULT_CHAT_MODEL) ? 'text-neutral-300' : 'text-neutral-600'}`}>
-              Reasoning Effort
-            </label>
-            <CustomSelect
-              options={REASONING_EFFORT_OPTIONS.map((effort) => ({
-                value: effort,
-                label: effort.charAt(0).toUpperCase() + effort.slice(1)
-              }))}
-              value={reasoningEffort || DEFAULT_REASONING_EFFORT}
-              onChange={(value) => onReasoningEffortChange(value as ReasoningEffort)}
-              disabled={!modelSupportsExtendedParams(chatModel || DEFAULT_CHAT_MODEL)}
-            />
-            <p className={`mt-2 text-xs ${modelSupportsExtendedParams(chatModel || DEFAULT_CHAT_MODEL) ? 'text-neutral-500' : 'text-neutral-600'}`}>
-              {modelSupportsExtendedParams(chatModel || DEFAULT_CHAT_MODEL)
-                ? 'Controls how much compute the model spends reasoning.'
-                : 'Not supported by this model.'}
-            </p>
-          </div>
-
-          <MinimalistToggle
-            checked={enableWebSearch}
-            onChange={onWebSearchChange}
-            label="Web Search"
-            description="Allow the model to search the web for up-to-date information. Requires Responses API support."
-            disabled={!modelSupportsWebSearch(chatModel || DEFAULT_CHAT_MODEL)}
+        <div>
+          <label htmlFor="proxy-url" className="mb-2 block text-sm font-medium text-neutral-300">
+            Proxy URL
+          </label>
+          <input
+            id="proxy-url"
+            type="text"
+            value={proxyUrl}
+            onChange={(event) => onProxyUrlChange(event.target.value)}
+            placeholder="http://proxy.company.local:8080"
+            className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 placeholder:text-neutral-500 focus:border-neutral-500 focus:outline-none"
+            autoComplete="off"
           />
-
-          <MinimalistToggle
-            checked={autoCollapseReasoning}
-            onChange={onAutoCollapseReasoningChange}
-            label="Auto-collapse Reasoning"
-            description="Automatically collapse the reasoning panel after the response completes."
-          />
-        </div>
-      </SectionCard>
-
-      <SectionCard
-        title="Keyboard Shortcuts"
-        description="Configure global shortcuts to open Covenant. These are OS-level shortcuts that work from anywhere. Each shortcut shows or switches to its view, and pressing it again while that view is active closes the window. In-app navigation (Tab, Ctrl+Tab) is unaffected by these settings."
-      >
-        <div className="space-y-5">
-          <div>
-            <label className="mb-2 block text-sm font-medium text-neutral-300">
-              Open App
-            </label>
-            <p className="mb-2 text-xs text-neutral-500">
-              Shows the bare command bar ready for a new conversation. From another view it switches back to the bar; pressing it again closes the window.
-            </p>
-            <ShortcutRecorder
-              value={shortcuts.openApp}
-              onChange={(val) => onShortcutChange('openApp', val)}
-              conflictWarning={
-                shortcuts.openApp && shortcuts.openAppTerminal && shortcuts.openApp === shortcuts.openAppTerminal
-                  ? 'This shortcut is also assigned to Open App in Terminal Mode'
-                  : null
-              }
-              defaultShortcut={DEFAULT_SHORTCUTS.openApp}
-              onReset={() => onShortcutChange('openApp', DEFAULT_SHORTCUTS.openApp)}
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium text-neutral-300">
-              Open Last Conversation
-            </label>
-            <p className="mb-2 text-xs text-neutral-500">
-              Opens the bar with the conversation panel already showing your most recent conversation (or the one you were last in). Press again to close.
-            </p>
-            <ShortcutRecorder
-              value={shortcuts.openLastConversation}
-              onChange={(val) => onShortcutChange('openLastConversation', val)}
-              conflictWarning={
-                shortcuts.openLastConversation && shortcuts.openApp && shortcuts.openLastConversation === shortcuts.openApp
-                  ? 'This shortcut is also assigned to Open App'
-                  : null
-              }
-              defaultShortcut={DEFAULT_SHORTCUTS.openLastConversation}
-              onReset={() => onShortcutChange('openLastConversation', DEFAULT_SHORTCUTS.openLastConversation)}
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium text-neutral-300">
-              Open App in Terminal Mode
-            </label>
-            <p className="mb-2 text-xs text-neutral-500">
-              Shows Covenant with the terminal panel visible and focused. Press again to close, or use another shortcut to switch.
-            </p>
-            <ShortcutRecorder
-              value={shortcuts.openAppTerminal}
-              onChange={(val) => onShortcutChange('openAppTerminal', val)}
-              conflictWarning={
-                shortcuts.openAppTerminal && shortcuts.openApp && shortcuts.openAppTerminal === shortcuts.openApp
-                  ? 'This shortcut is also assigned to Open App'
-                  : null
-              }
-              defaultShortcut={DEFAULT_SHORTCUTS.openAppTerminal}
-              onReset={() => onShortcutChange('openAppTerminal', DEFAULT_SHORTCUTS.openAppTerminal)}
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium text-neutral-300">
-              Open Tasks
-            </label>
-            <p className="mb-2 text-xs text-neutral-500">
-              Shows the Tasks quick-capture list. Press again to close, or use another shortcut to switch.
-            </p>
-            <ShortcutRecorder
-              value={shortcuts.openTasks}
-              onChange={(val) => onShortcutChange('openTasks', val)}
-              conflictWarning={
-                shortcuts.openTasks && shortcuts.openApp && shortcuts.openTasks === shortcuts.openApp
-                  ? 'This shortcut is also assigned to Open App'
-                  : shortcuts.openTasks && shortcuts.openAppTerminal && shortcuts.openTasks === shortcuts.openAppTerminal
-                    ? 'This shortcut is also assigned to Open App in Terminal Mode'
-                    : null
-              }
-              defaultShortcut={DEFAULT_SHORTCUTS.openTasks}
-              onReset={() => onShortcutChange('openTasks', DEFAULT_SHORTCUTS.openTasks)}
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium text-neutral-300">
-              Open Paste Manager
-            </label>
-            <p className="mb-2 text-xs text-neutral-500">
-              Opens the clipboard history view. Only active when Paste Manager is enabled.
-            </p>
-            <ShortcutRecorder
-              value={shortcuts.openPaste}
-              onChange={(val) => onShortcutChange('openPaste', val)}
-              conflictWarning={
-                shortcuts.openPaste && shortcuts.openApp && shortcuts.openPaste === shortcuts.openApp
-                  ? 'This shortcut is also assigned to Open App'
-                  : shortcuts.openPaste && shortcuts.openAppTerminal && shortcuts.openPaste === shortcuts.openAppTerminal
-                    ? 'This shortcut is also assigned to Open App in Terminal Mode'
-                    : shortcuts.openPaste && shortcuts.openTasks && shortcuts.openPaste === shortcuts.openTasks
-                      ? 'This shortcut is also assigned to Open Tasks'
-                      : null
-              }
-              defaultShortcut={DEFAULT_SHORTCUTS.openPaste}
-              onReset={() => onShortcutChange('openPaste', DEFAULT_SHORTCUTS.openPaste)}
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium text-neutral-300">
-              Open Notes &amp; Meetings
-            </label>
-            <p className="mb-2 text-xs text-neutral-500">
-              Opens the notes surface. From another view it switches to Notes; pressing it again
-              closes the window.
-            </p>
-            <ShortcutRecorder
-              value={shortcuts.openNotes}
-              onChange={(val) => onShortcutChange('openNotes', val)}
-              conflictWarning={
-                shortcuts.openNotes && shortcuts.openApp && shortcuts.openNotes === shortcuts.openApp
-                  ? 'This shortcut is also assigned to Open App'
-                  : shortcuts.openNotes && shortcuts.openPaste && shortcuts.openNotes === shortcuts.openPaste
-                    ? 'This shortcut is also assigned to Open Paste Manager'
-                    : shortcuts.openNotes && shortcuts.openTasks && shortcuts.openNotes === shortcuts.openTasks
-                      ? 'This shortcut is also assigned to Open Tasks'
-                      : null
-              }
-              defaultShortcut={DEFAULT_SHORTCUTS.openNotes}
-              onReset={() => onShortcutChange('openNotes', DEFAULT_SHORTCUTS.openNotes)}
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium text-neutral-300">
-              Open Covenant Code
-            </label>
-            <p className="mb-2 text-xs text-neutral-500">
-              Shows the OpenCode coding surface above the command bar. Press again to close, or use another shortcut to switch.
-            </p>
-            <ShortcutRecorder
-              value={shortcuts.openCode}
-              onChange={(val) => onShortcutChange('openCode', val)}
-              conflictWarning={
-                shortcuts.openCode && shortcuts.openApp && shortcuts.openCode === shortcuts.openApp
-                  ? 'This shortcut is also assigned to Open App'
-                  : null
-              }
-              defaultShortcut={DEFAULT_SHORTCUTS.openCode}
-              onReset={() => onShortcutChange('openCode', DEFAULT_SHORTCUTS.openCode)}
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium text-neutral-300">
-              Toggle Code Mode
-            </label>
-            <p className="mb-2 text-xs text-neutral-500">
-              Switches Covenant Code between Build and Plan mode while the coding surface is open.
-            </p>
-            <ShortcutRecorder
-              value={shortcuts.toggleCodeMode}
-              onChange={(val) => onShortcutChange('toggleCodeMode', val)}
-              conflictWarning={
-                shortcuts.toggleCodeMode && shortcuts.openApp && shortcuts.toggleCodeMode === shortcuts.openApp
-                  ? 'This shortcut is also assigned to Open App'
-                  : null
-              }
-              defaultShortcut={DEFAULT_SHORTCUTS.toggleCodeMode}
-              onReset={() => onShortcutChange('toggleCodeMode', DEFAULT_SHORTCUTS.toggleCodeMode)}
-            />
-          </div>
+          <p className="mt-2 text-xs text-neutral-500">
+            Leave empty for direct access. SearXNG can bypass the proxy for local addresses from
+            the Web Search page.
+          </p>
         </div>
       </SectionCard>
     </div>

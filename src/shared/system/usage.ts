@@ -150,6 +150,7 @@ export interface UsageModelBreakdown {
   cachedInputTokens: number
   outputTokens: number
   estimatedCost: number | null
+  allowance?: number
 }
 
 export interface UsageMetrics {
@@ -162,9 +163,12 @@ export interface UsageMetrics {
   totalRequests: number
   totalInputTokens: number
   totalOutputTokens: number
+  /** Optional: OpenCode reports cache reads separately from input tokens. */
+  totalCachedInputTokens?: number
   daily: UsageCostPoint[]
   byService: UsageServiceBreakdown[]
   byModel: UsageModelBreakdown[]
+  allowance?: number
 }
 
 export type UsageMetricsResult =

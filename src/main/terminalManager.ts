@@ -1,4 +1,4 @@
-import { spawn, type IPty } from 'node-pty'
+import type { IPty } from 'node-pty'
 import { existsSync } from 'fs'
 import { randomUUID } from 'crypto'
 import {
@@ -41,6 +41,26 @@ interface PtySession {
 }
 
 const COMMAND_TIMEOUT_MS = 60_000
+
+type NodePtyModule = typeof import('node-pty')
+
+/**
+ * `node-pty` ships a native addon that is only needed once a terminal session
+ * is actually created. Loading it lazily keeps the native bind on the startup
+ * path out of the way (terminals are opt-in and often never opened).
+ */
+let nodePtyPromise: Promise<NodePtyModule> | null = null
+
+function loadNodePty(): Promise<NodePtyModule> {
+  if (!nodePtyPromise) {
+    nodePtyPromise = import('node-pty').catch((error) => {
+      // Don't cache a failed load; a later attempt can retry.
+      nodePtyPromise = null
+      throw error
+    })
+  }
+  return nodePtyPromise
+}
 
 function validateShellPath(command: string): boolean {
   try {
@@ -121,7 +141,15 @@ class TerminalManager {
 
   private readonly globalStateListeners = new Set<StateListener>()
 
-  createSession(cols?: number, rows?: number, preferredShell?: string): TerminalStartResult {
+  async createSession(
+    cols?: number,
+    rows?: number,
+    preferredShell?: string
+  ): Promise<TerminalStartResult> {
+    const ptyModule = await loadNodePty()
+    // Native CJS module: named exports are available, but fall back to the
+    // default namespace for bundler interop shapes that only expose `default`.
+    const spawn = ptyModule.spawn ?? (ptyModule as unknown as { default: NodePtyModule }).default.spawn
     const normalizedCols = sanitizeTerminalDimension(cols, DEFAULT_TERMINAL_COLS, MIN_TERMINAL_COLS, MAX_TERMINAL_COLS)
     const normalizedRows = sanitizeTerminalDimension(rows, DEFAULT_TERMINAL_ROWS, MIN_TERMINAL_ROWS, MAX_TERMINAL_ROWS)
 

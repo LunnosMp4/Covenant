@@ -89,6 +89,18 @@ function emitTerminalEvent(
   })
 }
 
+function applyTerminalInput(payload?: { sessionId?: unknown; input?: unknown }): boolean {
+  const sessionId =
+    typeof payload?.sessionId === 'string' && payload.sessionId.length > 0 ? payload.sessionId : ''
+  if (!sessionId) return false
+
+  const input = sanitizeTerminalInput(payload?.input)
+  if (!input) return false
+
+  terminalManager.write(sessionId, input)
+  return true
+}
+
 export function registerTerminalIpc(): void {
   terminalManager.onData((sessionId, chunk) => {
     queueTerminalData(sessionId, chunk)
@@ -107,7 +119,7 @@ export function registerTerminalIpc(): void {
     emitTerminalEvent('terminal:state-changed', { sessionId: state.sessionId, state })
   })
 
-  ipcMain.handle('terminal:start', (event, payload?: { cols?: unknown; rows?: unknown }) => {
+  ipcMain.handle('terminal:start', async (event, payload?: { cols?: unknown; rows?: unknown }) => {
     assertMainWindowSender(event.sender)
 
     const cols = sanitizeTerminalDimension(
@@ -128,7 +140,7 @@ export function registerTerminalIpc(): void {
     const config = readConfig()
 
     try {
-      const result = terminalManager.createSession(cols, rows, config.preferredShell)
+      const result = await terminalManager.createSession(cols, rows, config.preferredShell)
       if (result.created && result.sessionId) {
         lastActiveSessionId = result.sessionId
       }
@@ -148,17 +160,18 @@ export function registerTerminalIpc(): void {
 
   ipcMain.handle('terminal:input', (event, payload?: { sessionId?: unknown; input?: unknown }) => {
     assertMainWindowSender(event.sender)
+    return { success: applyTerminalInput(payload) }
+  })
 
-    const sessionId = typeof payload?.sessionId === 'string' && payload.sessionId.length > 0 ? payload.sessionId : ''
-    if (!sessionId) return { success: false }
-
-    const input = sanitizeTerminalInput(payload?.input)
-    if (!input) {
-      return { success: false }
+  // Fire-and-forget variant used for keystrokes: the reply was never consumed
+  // and serialising one per key press is pure overhead in the input path.
+  ipcMain.on('terminal:input', (event, payload?: { sessionId?: unknown; input?: unknown }) => {
+    try {
+      assertMainWindowSender(event.sender)
+      applyTerminalInput(payload)
+    } catch {
+      // Untrusted sender or a window that went away mid-keystroke.
     }
-
-    terminalManager.write(sessionId, input)
-    return { success: true }
   })
 
   ipcMain.handle('terminal:resize', (event, payload?: { sessionId?: unknown; cols?: unknown; rows?: unknown }) => {
@@ -258,7 +271,7 @@ export function registerTerminalIpc(): void {
     }
   )
 
-  ipcMain.handle('terminal:send-to-active-session', (event, payload?: { code?: unknown }) => {
+  ipcMain.handle('terminal:send-to-active-session', async (event, payload?: { code?: unknown }) => {
     assertMainWindowSender(event.sender)
 
     const code = typeof payload?.code === 'string' ? payload.code : ''
@@ -275,7 +288,11 @@ export function registerTerminalIpc(): void {
 
     if (!sessionId) {
       const config = readConfig()
-      const result = terminalManager.createSession(DEFAULT_TERMINAL_COLS, DEFAULT_TERMINAL_ROWS, config.preferredShell)
+      const result = await terminalManager.createSession(
+        DEFAULT_TERMINAL_COLS,
+        DEFAULT_TERMINAL_ROWS,
+        config.preferredShell
+      )
       if (!result.created || !result.sessionId) {
         return { success: false, error: result.error ?? 'Failed to create terminal session' }
       }

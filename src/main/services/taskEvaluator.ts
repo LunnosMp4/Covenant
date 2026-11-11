@@ -1,5 +1,3 @@
-import OpenAI from 'openai'
-import { ProxyAgent } from 'undici'
 import {
   TASK_ACTION_TYPE_SET,
   TASK_CATEGORY_SET,
@@ -10,7 +8,11 @@ import {
   type TaskEvaluation,
   type TaskTier
 } from '../../shared/tasks/gamification'
-import { modelSupportsTemperature } from '../../shared/config'
+import type { AppConfig } from '../../shared/config'
+import { getActiveChatModel, modelSupportsTemperature } from '../../shared/config'
+import { getOpenAIKey, resolveChatProvider } from '../ai/provider'
+import { loadOpenAISdk } from '../openai/sdk'
+import { createProxyDispatcher } from './proxyDispatcher'
 
 const EVALUATION_MODEL = 'gpt-6-luna'
 const EVALUATION_TIMEOUT_MS = 8000
@@ -200,7 +202,10 @@ export async function evaluateTaskWithOpenAI(
   apiKey: string,
   proxyUrl?: string
 ): Promise<TaskEvaluation> {
-  const openAIProxyAgent = proxyUrl ? new ProxyAgent(proxyUrl) : undefined
+  const [OpenAI, openAIProxyAgent] = await Promise.all([
+    loadOpenAISdk(),
+    createProxyDispatcher(proxyUrl)
+  ])
 
   const client = new OpenAI({
     apiKey,
@@ -234,6 +239,64 @@ export async function evaluateTaskWithOpenAI(
     return evaluateTaskHeuristically(title)
   } finally {
     clearTimeout(timeout)
+  }
+}
+
+async function evaluateTaskWithOpenCode(
+  title: string,
+  config: AppConfig
+): Promise<TaskEvaluation> {
+  const provider = await resolveChatProvider(config, { model: getActiveChatModel(config) })
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), EVALUATION_TIMEOUT_MS)
+
+  const baseRequest = {
+    model: provider.model,
+    messages: [
+      { role: 'system' as const, content: SYSTEM_PROMPT },
+      { role: 'user' as const, content: title }
+    ],
+    ...(provider.modelOption.supportsTemperature ? { temperature: 0.2 } : {})
+  }
+
+  try {
+    let completion
+    try {
+      completion = await provider.client.chat.completions.create(
+        {
+          ...baseRequest,
+          response_format: { type: 'json_object' }
+        } as never,
+        { signal: controller.signal }
+      )
+    } catch {
+      completion = await provider.client.chat.completions.create(baseRequest as never, {
+        signal: controller.signal
+      })
+    }
+
+    const content = completion.choices[0]?.message?.content ?? ''
+    return parseEvaluationContent(content) ?? evaluateTaskHeuristically(title)
+  } catch {
+    return evaluateTaskHeuristically(title)
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+export async function evaluateTaskWithProvider(
+  title: string,
+  config: AppConfig
+): Promise<TaskEvaluation> {
+  if (config.chatProvider === 'opencode') {
+    return evaluateTaskWithOpenCode(title, config)
+  }
+  const apiKey = getOpenAIKey(config)
+  if (!apiKey) return evaluateTaskHeuristically(title)
+  try {
+    return await evaluateTaskWithOpenAI(title, apiKey, config.proxyUrl)
+  } catch {
+    return evaluateTaskHeuristically(title)
   }
 }
 

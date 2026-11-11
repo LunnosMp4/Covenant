@@ -41,6 +41,7 @@ export function WebSearchStepRow({
 }): JSX.Element {
   const isSearching = step.status === 'searching'
   const query = step.query?.trim()
+  const provider = step.provider ? ` via ${step.provider}` : ''
 
   return (
     <div className="chat-thinking-search">
@@ -51,10 +52,14 @@ export function WebSearchStepRow({
         <span>
           {query ? (
             <>
-              Searching web for <span className="chat-thinking-search-query">“{query}”</span>
+              {isSearching ? 'Searching' : 'Searched'} web{provider} for{' '}
+              <span className="chat-thinking-search-query">“{query}”</span>
             </>
           ) : (
-            'Searching the web…'
+            <>
+              {isSearching ? 'Searching' : 'Searched'} the web{provider}
+              {isSearching ? '…' : ''}
+            </>
           )}
         </span>
         {!isSearching && step.sources.length > 0 ? (

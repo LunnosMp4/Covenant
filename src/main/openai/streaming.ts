@@ -1,7 +1,11 @@
 import type OpenAI from 'openai'
 import type { WebContents } from 'electron'
 import type { ChatUsage } from '../../shared/chat/chat'
-import { callMcpTool, sanitizeResponseOutputForInput, type McpToolRegistryEntry } from '../services/mcpClient'
+import {
+  callMcpTool,
+  sanitizeResponseOutputForProvider,
+  type McpToolRegistryEntry
+} from '../services/mcpClient'
 import type { BuiltinToolHandler } from '../services/builtinTools'
 import {
   extractWebSearchQuery,
@@ -14,8 +18,11 @@ export interface StreamingChatContext {
   streamId: string
   sender: WebContents
   model: string
+  provider: 'openai' | 'opencode'
+  webSearchProviderLabel?: string
   sendStreamEvent: (payload: { id: string } & Record<string, unknown>) => void
   signal: AbortSignal
+  onUsage?: (usage: ChatUsage) => void
 }
 
 export async function runStreamingChat(
@@ -69,6 +76,7 @@ export async function runStreamingChat(
                 itemId: item.id,
                 toolType: 'web_search',
                 toolName: 'Web Search',
+                provider: ctx.webSearchProviderLabel,
                 actionType: typeof action?.type === 'string' ? action.type : 'search',
                 query: extractWebSearchQuery(action)
               })
@@ -84,8 +92,10 @@ export async function runStreamingChat(
                 id: ctx.streamId,
                 type: 'tool-start',
                 itemId,
-                toolType: builtin ? 'terminal' : 'mcp',
+                toolType: builtin ? builtin.toolType ?? 'terminal' : 'mcp',
                 toolName: entry ? `${entry.server.name} › ${entry.tool.name}` : name,
+                provider:
+                  builtin?.toolType === 'web_search' ? ctx.webSearchProviderLabel : undefined,
                 serverName: entry?.server.name,
                 serverId: entry?.server.id,
                 query: builtin ? undefined : name,
@@ -118,6 +128,8 @@ export async function runStreamingChat(
                   const parsed = JSON.parse(args) as Record<string, unknown>
                   if (typeof parsed.command === 'string' && parsed.command.trim()) {
                     query = parsed.command.trim()
+                  } else if (typeof parsed.query === 'string' && parsed.query.trim()) {
+                    query = parsed.query.trim()
                   }
                 } catch {
                   // Fall back to the tool name when arguments are still partial.
@@ -152,6 +164,30 @@ export async function runStreamingChat(
             if (reasoningTitleParsed.has(itemId)) {
               ctx.sendStreamEvent({ id: ctx.streamId, type: 'reasoning-delta', itemId, delta: deltaStr })
             }
+            break
+          }
+
+          case 'response.reasoning_text.delta': {
+            const deltaStr = typeof streamEvent.delta === 'string' ? streamEvent.delta : ''
+            const itemId = streamEvent.item_id
+            if (!deltaStr || !itemId) break
+            if (!reasoningTitleParsed.has(itemId)) {
+              reasoningTitleParsed.add(itemId)
+              reasoningTitleById.set(itemId, 'Thinking...')
+              ctx.sendStreamEvent({
+                id: ctx.streamId,
+                type: 'reasoning-title',
+                itemId,
+                title: 'Thinking...'
+              })
+            }
+            reasoningBufferMap.set(itemId, (reasoningBufferMap.get(itemId) || '') + deltaStr)
+            ctx.sendStreamEvent({
+              id: ctx.streamId,
+              type: 'reasoning-delta',
+              itemId,
+              delta: deltaStr
+            })
             break
           }
 
@@ -237,6 +273,29 @@ export async function runStreamingChat(
             break
           }
 
+          case 'response.failed': {
+            const failed = streamEvent as unknown as {
+              response?: { error?: { message?: string } }
+            }
+            ctx.sendStreamEvent({
+              id: ctx.streamId,
+              type: 'error',
+              error: failed.response?.error?.message || 'The model failed to complete the response.'
+            })
+            return
+          }
+
+          case 'response.incomplete': {
+            ctx.sendStreamEvent({
+              id: ctx.streamId,
+              type: 'done',
+              usage: finalUsage,
+              model: ctx.model,
+              stopped: true
+            })
+            return
+          }
+
           case 'response.output_text.delta': {
             const textDelta = typeof streamEvent.delta === 'string' ? streamEvent.delta : ''
             if (textDelta) {
@@ -253,8 +312,14 @@ export async function runStreamingChat(
                 total_tokens?: number
                 cache_creation_input_tokens?: number
                 cache_write_tokens?: number
+                cost?: number
                 input_tokens_details?: { cached_tokens?: number; cache_creation_tokens?: number }
                 output_tokens_details?: { reasoning_tokens?: number }
+                opencode?: {
+                  billing_source?: string
+                  list_cost?: number
+                  allowance?: number
+                }
               }
             }
             const usage = response?.usage
@@ -268,9 +333,14 @@ export async function runStreamingChat(
                     usage.cache_write_tokens,
                   completionTokens: usage.output_tokens,
                   totalTokens: usage.total_tokens,
-                  reasoningTokens: usage.output_tokens_details?.reasoning_tokens
+                  reasoningTokens: usage.output_tokens_details?.reasoning_tokens,
+                  cost: usage.cost,
+                  listCost: usage.opencode?.list_cost,
+                  allowance: usage.opencode?.allowance,
+                  billingSource: usage.opencode?.billing_source
                 }
               : undefined
+            if (finalUsage) ctx.onUsage?.(finalUsage)
             break
           }
         }
@@ -305,7 +375,9 @@ export async function runStreamingChat(
       return
     }
 
-    const continuation: Array<Record<string, unknown>> = [...sanitizeResponseOutputForInput(output)]
+    const continuation: Array<Record<string, unknown>> = [
+      ...sanitizeResponseOutputForProvider(output, ctx.provider)
+    ]
 
     // Builtin (terminal) tools are stateful and must keep their original order,
     // so they stay sequential. MCP tools are independent HTTP calls and are
@@ -315,7 +387,7 @@ export async function runStreamingChat(
     const calls = functionCalls.map((call, index) => {
       const mcpEntry = toolRegistry.find((e) => e.qualifiedName === call.name)
       const builtin = builtinTools.find((handler) => handler.name === call.name)
-      const toolType = builtin ? 'terminal' : 'mcp'
+      const toolType = builtin ? builtin.toolType ?? 'terminal' : 'mcp'
       const serverName = mcpEntry?.server.name
 
       ctx.sendStreamEvent({
@@ -353,11 +425,14 @@ export async function runStreamingChat(
       }
 
       try {
-        const result = builtin
+        const builtinResult = builtin
           ? await builtin.execute(call.arguments, { signal: ctx.signal, sender: ctx.sender })
-          : await callMcpTool(mcpEntry!.server, mcpEntry!.tool, call.arguments, {
-              signal: ctx.signal
-            })
+          : undefined
+        const result =
+          builtinResult ??
+          (await callMcpTool(mcpEntry!.server, mcpEntry!.tool, call.arguments, {
+            signal: ctx.signal
+          }))
         outputs[index] = { type: 'function_call_output', call_id: call.call_id, output: result.content }
         ctx.sendStreamEvent({
           id: ctx.streamId,
@@ -369,6 +444,23 @@ export async function runStreamingChat(
           status: result.isError ? 'error' : 'done',
           content: truncateMcpResult(result.content)
         })
+        if (builtinResult?.query) {
+          ctx.sendStreamEvent({
+            id: ctx.streamId,
+            type: 'tool-query',
+            itemId: call.id,
+            query: builtinResult.query
+          })
+        }
+        if (builtinResult?.sources && builtinResult.sources.length > 0) {
+          ctx.sendStreamEvent({
+            id: ctx.streamId,
+            type: 'sources',
+            itemId: call.id,
+            sources: builtinResult.sources,
+            query: builtinResult.query
+          })
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Tool call failed.'
         outputs[index] = {

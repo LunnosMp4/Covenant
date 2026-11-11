@@ -1,5 +1,12 @@
 import type { AppConfig } from '../../shared/config'
-import { DEFAULT_REASONING_EFFORT, modelDoesReasoning } from '../../shared/config'
+import {
+  DEFAULT_REASONING_EFFORT,
+  modelDoesReasoningFor,
+  modelSupportsTemperatureFor,
+  type AiModelOption,
+  type ChatProviderId,
+  type ReasoningEffort
+} from '../../shared/config'
 import type { ChatRole } from '../../shared/chat/chat'
 import { CHAT_ROLE_SET } from '../../shared/chat/chat'
 import { getGlobalInstructions } from '../features/preprompts'
@@ -62,7 +69,30 @@ export function buildResponsesInput(sanitizedMessages: SanitizedMessage[]): Arra
   }))
 }
 
-export function buildResponseParams(storedConfig: AppConfig, model: string): Record<string, unknown> {
+function mapReasoningEffort(
+  requested: ReasoningEffort,
+  supported: string[] | undefined
+): string | undefined {
+  if (!supported || supported.length === 0) return undefined
+  if (supported.includes(requested)) return requested
+
+  const preferences: Record<ReasoningEffort, string[]> = {
+    low: ['low', 'minimal', 'medium', 'high', 'xhigh', 'max'],
+    medium: ['medium', 'low', 'high', 'xhigh', 'max', 'minimal'],
+    high: ['high', 'xhigh', 'max', 'medium', 'low', 'minimal']
+  }
+
+  for (const candidate of preferences[requested]) {
+    if (supported.includes(candidate)) return candidate
+  }
+  return supported[0]
+}
+
+export function buildResponseParams(
+  storedConfig: AppConfig,
+  model: string,
+  options: { provider?: ChatProviderId; modelOption?: AiModelOption } = {}
+): Record<string, unknown> {
   const globalInstructions = getGlobalInstructions()
   const params: Record<string, unknown> = {
     instructions: globalInstructions
@@ -70,16 +100,56 @@ export function buildResponseParams(storedConfig: AppConfig, model: string): Rec
       : COVENANT_INSTRUCTIONS
   }
 
-  if (modelDoesReasoning(model)) {
+  const provider = options.provider ?? storedConfig.chatProvider
+  const reasoning = options.modelOption
+    ? options.modelOption.supportsReasoning
+    : modelDoesReasoningFor(provider, model)
+  const supportsTemperature = options.modelOption
+    ? options.modelOption.supportsTemperature
+    : modelSupportsTemperatureFor(provider, model)
+
+  const effort = reasoning
+    ? mapReasoningEffort(
+        storedConfig.reasoningEffort || DEFAULT_REASONING_EFFORT,
+        options.modelOption?.reasoningEfforts
+      )
+    : undefined
+
+  if (effort) {
     params.reasoning = {
-      effort: storedConfig.reasoningEffort || DEFAULT_REASONING_EFFORT,
+      effort,
       summary: 'auto'
     }
-  } else {
+  } else if (supportsTemperature) {
     params.temperature = 0.7
   }
 
   return params
+}
+
+export function buildWebSearchToolDefinition(): {
+  type: 'function'
+  name: string
+  description: string
+  parameters: Record<string, unknown>
+} {
+  return {
+    type: 'function',
+    name: 'web_search',
+    description:
+      'Search the web for current information. Use this when the answer depends on recent events, live data, or facts you are not confident about. Returns a short summary and source links.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'The search query.'
+        }
+      },
+      required: ['query'],
+      additionalProperties: false
+    }
+  }
 }
 
 export function extractWebSearchQuery(action: Record<string, unknown> | undefined): string {

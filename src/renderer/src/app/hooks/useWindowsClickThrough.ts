@@ -7,7 +7,15 @@ const REGION_REFRESH_MS = 100
 const INTERACTIVE_SURFACE_SELECTOR = '[data-interactive-surface]'
 const MAX_REGIONS = 128
 
-function collectInteractiveRegions(): InteractiveRect[] {
+/**
+ * Reads the clickable rectangles out of a pre-collected node list.
+ *
+ * The node list is only rebuilt when the DOM actually changed (see the
+ * MutationObserver in `useWindowsClickThrough`); walking the cached nodes is
+ * what keeps the 10 Hz refresh cheap, since every tick still has to read layout
+ * to follow entry/exit animations.
+ */
+function collectInteractiveRegions(nodes: HTMLElement[]): InteractiveRect[] {
   if (typeof document === 'undefined') return []
 
   const viewportWidth = window.innerWidth
@@ -15,7 +23,7 @@ function collectInteractiveRegions(): InteractiveRect[] {
   const regions: InteractiveRect[] = []
   const seen = new Set<string>()
 
-  for (const node of document.querySelectorAll<HTMLElement>(INTERACTIVE_SURFACE_SELECTOR)) {
+  for (const node of nodes) {
     const rect = node.getBoundingClientRect()
     if (rect.width <= 0 || rect.height <= 0) continue
 
@@ -67,9 +75,28 @@ export function useWindowsClickThrough(visible: boolean): void {
       return
     }
 
+    let surfaceNodes: HTMLElement[] = []
+    let nodesDirty = true
     let lastSignature = ''
+
+    const refreshNodes = (): void => {
+      surfaceNodes = Array.from(
+        document.querySelectorAll<HTMLElement>(INTERACTIVE_SURFACE_SELECTOR)
+      )
+      nodesDirty = false
+    }
+
+    // Surfaces mount and unmount as popups/modals open; only rebuild the node
+    // list when that happens, never on plain style/animation updates.
+    const observer = new MutationObserver(() => {
+      nodesDirty = true
+    })
+    observer.observe(document.body, { childList: true, subtree: true })
+
     const publish = (): void => {
-      const regions = collectInteractiveRegions()
+      if (nodesDirty) refreshNodes()
+
+      const regions = collectInteractiveRegions(surfaceNodes)
       const viewport = currentViewport()
       const signature = JSON.stringify({ regions, viewport })
       if (signature === lastSignature) return
@@ -82,6 +109,7 @@ export function useWindowsClickThrough(visible: boolean): void {
     window.addEventListener('resize', publish)
 
     return () => {
+      observer.disconnect()
       window.clearInterval(timer)
       window.removeEventListener('resize', publish)
       lastSignature = ''

@@ -1,6 +1,10 @@
 import type OpenAI from 'openai'
 import type { AppConfig, NotesSettings } from '../../shared/config'
-import { DEFAULT_REASONING_EFFORT, modelDoesReasoning } from '../../shared/config'
+import {
+  getModelOptionFor,
+  type AiModelOption,
+  type ChatProviderId
+} from '../../shared/config'
 import type { Note } from '../../shared/notes/note'
 import { chunkTranscript, extractRecapTitle } from '../../shared/notes/meeting'
 import {
@@ -11,23 +15,48 @@ import {
 } from '../../shared/notes/prompts'
 import { readConfig } from '../config/configStore'
 import { applyMeetingRecap, getNote, updateNoteMeeting } from '../features/notes'
-import { createOpenAIClient } from '../openai/client'
+import { resolveChatProvider } from '../ai/provider'
+import { recordAiUsage } from '../ai/usageLedger'
+import { buildResponseParams } from '../openai/messages'
 import { sendToMain } from '../windows/broadcast'
 
 const TRANSCRIPT_CHUNK_CHARS = 120_000
 const PARTIAL_SUMMARY_CHUNK_CHARS = 100_000
 
-function responseParams(config: AppConfig): Record<string, unknown> {
-  const params: Record<string, unknown> = {}
-  if (modelDoesReasoning(config.chatModel)) {
-    params.reasoning = {
-      effort: config.reasoningEffort || DEFAULT_REASONING_EFFORT,
-      summary: 'auto'
-    }
-  } else {
-    params.temperature = 0.3
-  }
+function responseParams(
+  config: AppConfig,
+  model: string,
+  provider: ChatProviderId,
+  modelOption?: AiModelOption
+): Record<string, unknown> {
+  const params = buildResponseParams(config, model, { provider, modelOption })
+  delete params.instructions
+  if (typeof params.temperature === 'number') params.temperature = 0.3
   return params
+}
+
+function recordResponseUsage(
+  provider: ChatProviderId,
+  model: string,
+  response: unknown
+): void {
+  const usage = (response as { usage?: Record<string, unknown> } | undefined)?.usage
+  if (!usage) return
+  recordAiUsage({
+    provider,
+    model,
+    kind: 'recap',
+    usage: {
+      promptTokens: typeof usage.input_tokens === 'number' ? usage.input_tokens : undefined,
+      completionTokens: typeof usage.output_tokens === 'number' ? usage.output_tokens : undefined,
+      totalTokens: typeof usage.total_tokens === 'number' ? usage.total_tokens : undefined,
+      reasoningTokens:
+        (usage.output_tokens_details as Record<string, unknown> | undefined)?.reasoning_tokens as
+          | number
+          | undefined,
+      cost: typeof usage.cost === 'number' ? usage.cost : undefined
+    }
+  })
 }
 
 async function createText(
@@ -35,14 +64,17 @@ async function createText(
   model: string,
   config: AppConfig,
   instructions: string,
-  input: string
+  input: string,
+  provider: ChatProviderId,
+  modelOption?: AiModelOption
 ): Promise<string> {
   const response = await client.responses.create({
     model,
     input,
-    ...responseParams(config),
+    ...responseParams(config, model, provider, modelOption),
     instructions
   } as never)
+  recordResponseUsage(provider, model, response)
   const text = (response as unknown as { output_text?: unknown }).output_text
   return typeof text === 'string' ? text.trim() : ''
 }
@@ -51,7 +83,9 @@ async function summarizeChunks(
   client: OpenAI,
   model: string,
   config: AppConfig,
-  transcript: string
+  transcript: string,
+  provider: ChatProviderId,
+  modelOption?: AiModelOption
 ): Promise<string> {
   const chunks = chunkTranscript(transcript, PARTIAL_SUMMARY_CHUNK_CHARS)
   if (chunks.length <= 1) return transcript
@@ -63,7 +97,9 @@ async function summarizeChunks(
       model,
       config,
       'You summarize meeting transcripts faithfully. Use Markdown bullets and preserve names, numbers, decisions and action items.',
-      buildPartialSummaryPrompt(chunks[index], index, chunks.length)
+      buildPartialSummaryPrompt(chunks[index], index, chunks.length),
+      provider,
+      modelOption
     )
     if (partial) partials.push(partial)
   }
@@ -80,14 +116,13 @@ export async function generateMeetingRecap(
     throw new Error('There is no transcript to summarize yet.')
   }
 
-  const apiKey = config.apiKey || process.env.OPENAI_API_KEY
-  if (!apiKey) {
-    throw new Error('OpenAI API key is missing. Add it in Settings > General.')
-  }
-
-  const client = createOpenAIClient(apiKey, config.proxyUrl)
-  const model = settings.summaryModel || config.chatModel
-  const source = await summarizeChunks(client, model, config, transcript)
+  const provider = await resolveChatProvider(config, { sessionId: note.id })
+  const client = provider.client
+  const requestedModel = settings.summaryModel || provider.model
+  const modelOption =
+    getModelOptionFor(provider.provider, requestedModel) ?? provider.modelOption
+  const model = modelOption.id || provider.model
+  const source = await summarizeChunks(client, model, config, transcript, provider.provider, modelOption)
   const customPrompt = settings.summaryPrompt.trim()
   const startedAt = note.meeting?.startedAt ?? Date.now()
   // Apply the user's custom instructions for chunked transcripts too, not just
@@ -105,7 +140,9 @@ export async function generateMeetingRecap(
     model,
     config,
     buildMeetingRecapInstructions(),
-    prompt
+    prompt,
+    provider.provider,
+    modelOption
   )
   if (!recap) throw new Error('The model returned an empty recap.')
   return recap
