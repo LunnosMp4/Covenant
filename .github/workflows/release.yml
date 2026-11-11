@@ -12,6 +12,12 @@
 #
 # You can also trigger it manually from the Actions tab ("Run workflow"); the
 # release tag is then derived from the version in package.json.
+#
+# The release body is written in English by scripts/release-notes.mjs: it diffs
+# the commits since the previous published release and asks OpenAI (Responses
+# API, gpt-6-luna) for user-facing release notes. This requires the repository
+# secret OPENAI_API_KEY. If the call fails, a raw commit list is used instead
+# and the release is never blocked.
 name: Release
 
 on:
@@ -32,6 +38,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Full history + tags are needed to diff against the previous release.
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
 
       - name: Verify tag matches package.json version
         if: startsWith(github.ref, 'refs/tags/')
@@ -54,11 +69,19 @@ jobs:
             echo "tag=v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Generate release notes
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: node scripts/release-notes.mjs
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: Covenant ${{ steps.tag.outputs.tag }}
+          body_path: release-notes.md
           draft: false
 
   publish-windows:

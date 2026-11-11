@@ -57,3 +57,5 @@ CI runs typecheck, tests, and a build on Windows/macOS/Linux (`.github/workflows
 ## Git
 
 Conventional commits (`feat:`, `fix:`, `chore:`, `refactor:`); version bumps are separate `chore:` commits (see `package.json` `version`).
+
+Release notes are generated at release time by `scripts/release-notes.mjs` (the `prepare` job in `.github/workflows/release.yml`): it diffs the commits since the previous published GitHub release, calls the OpenAI Responses API (`gpt-6-luna`) with the `OPENAI_API_KEY` repo secret, and writes the English release body. Any failure falls back to a raw changelog and never blocks the build.
