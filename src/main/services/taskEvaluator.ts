@@ -1,5 +1,3 @@
-import OpenAI from 'openai'
-import { ProxyAgent } from 'undici'
 import {
   TASK_ACTION_TYPE_SET,
   TASK_CATEGORY_SET,
@@ -12,7 +10,9 @@ import {
 } from '../../shared/tasks/gamification'
 import type { AppConfig } from '../../shared/config'
 import { getActiveChatModel, modelSupportsTemperature } from '../../shared/config'
-import { resolveChatProvider } from '../ai/provider'
+import { getOpenAIKey, resolveChatProvider } from '../ai/provider'
+import { loadOpenAISdk } from '../openai/sdk'
+import { createProxyDispatcher } from './proxyDispatcher'
 
 const EVALUATION_MODEL = 'gpt-6-luna'
 const EVALUATION_TIMEOUT_MS = 8000
@@ -202,7 +202,10 @@ export async function evaluateTaskWithOpenAI(
   apiKey: string,
   proxyUrl?: string
 ): Promise<TaskEvaluation> {
-  const openAIProxyAgent = proxyUrl ? new ProxyAgent(proxyUrl) : undefined
+  const [OpenAI, openAIProxyAgent] = await Promise.all([
+    loadOpenAISdk(),
+    createProxyDispatcher(proxyUrl)
+  ])
 
   const client = new OpenAI({
     apiKey,
@@ -243,7 +246,7 @@ async function evaluateTaskWithOpenCode(
   title: string,
   config: AppConfig
 ): Promise<TaskEvaluation> {
-  const provider = resolveChatProvider(config, { model: getActiveChatModel(config) })
+  const provider = await resolveChatProvider(config, { model: getActiveChatModel(config) })
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), EVALUATION_TIMEOUT_MS)
 
@@ -288,7 +291,7 @@ export async function evaluateTaskWithProvider(
   if (config.chatProvider === 'opencode') {
     return evaluateTaskWithOpenCode(title, config)
   }
-  const apiKey = config.apiKey || process.env.OPENAI_API_KEY
+  const apiKey = getOpenAIKey(config)
   if (!apiKey) return evaluateTaskHeuristically(title)
   try {
     return await evaluateTaskWithOpenAI(title, apiKey, config.proxyUrl)

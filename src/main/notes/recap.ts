@@ -116,7 +116,7 @@ export async function generateMeetingRecap(
     throw new Error('There is no transcript to summarize yet.')
   }
 
-  const provider = resolveChatProvider(config, { sessionId: note.id })
+  const provider = await resolveChatProvider(config, { sessionId: note.id })
   const client = provider.client
   const requestedModel = settings.summaryModel || provider.model
   const modelOption =

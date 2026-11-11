@@ -1,35 +1,36 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { AnimatePresence, motion, useAnimationControls, type Transition } from 'framer-motion'
+import type { Transition } from 'framer-motion'
 import { WINDOW_ENTER_TRANSITION, WINDOW_EXIT_TRANSITION } from '../constants/motion'
-import ConfirmDeleteModal from '../ui/ConfirmDeleteModal'
-import CustomSelect from '../ui/CustomSelect'
-import WorkflowFormModal from '../workflow/WorkflowFormModal'
-import PasteSettingsTab from '../paste/PasteSettingsTab'
-import {
-  DEFAULT_TERMINAL_FONT,
-  normalizeTerminalFont
-} from '../constants/terminalFonts'
-import {
-  DEFAULT_THEME_GRADIENT,
-  THEME_OPTIONS,
-  getThemeMode,
-  normalizeThemeGradient
-} from '../constants/theme'
-import type { AppConfig, ButtonVisibility, ReasoningEffort, ShortcutConfig } from '../../../shared/config'
-import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_REASONING_EFFORT, DEFAULT_SHORTCUTS, DEFAULT_TEXTURE_INTENSITY, MAX_TEXTURE_INTENSITY, REASONING_EFFORT_OPTIONS, TEXTURE_MAX_OPACITY, modelSupportsExtendedParams, modelSupportsWebSearch } from '../../../shared/config'
-import type { UpdateStatus } from '../../../shared/system/update'
-import {
-  DEFAULT_PASTE_SETTINGS,
-  normalizePasteManagerSettings,
-  type PasteManagerSettings
-} from '../../../shared/paste/paste'
-import type { McpServer } from '../../../shared/mcp/mcp'
-import type { Preprompt } from '../types/renderer'
-import type { Workflow } from '../types/renderer'
 
-export type SettingsTab = 'general' | 'providers' | 'appearance' | 'terminal' | 'workflow' | 'preprompts' | 'mcp' | 'paste' | 'notes' | 'usage' | 'code'
+export type SettingsTab =
+  | 'general'
+  | 'providers'
+  | 'websearch'
+  | 'shortcuts'
+  | 'appearance'
+  | 'terminal'
+  | 'workflow'
+  | 'preprompts'
+  | 'mcp'
+  | 'paste'
+  | 'notes'
+  | 'usage'
+  | 'code'
 
-export const VALID_SETTINGS_TABS: readonly SettingsTab[] = ['general', 'providers', 'appearance', 'terminal', 'workflow', 'preprompts', 'mcp', 'paste', 'notes', 'usage', 'code']
+export const VALID_SETTINGS_TABS: readonly SettingsTab[] = [
+  'general',
+  'providers',
+  'websearch',
+  'shortcuts',
+  'appearance',
+  'terminal',
+  'workflow',
+  'preprompts',
+  'mcp',
+  'paste',
+  'notes',
+  'usage',
+  'code'
+]
 
 export interface SettingsNavGroup {
   label: string
@@ -42,17 +43,23 @@ export const SETTINGS_NAV_GROUPS: readonly SettingsNavGroup[] = [
     items: [
       { id: 'general', label: 'General' },
       { id: 'appearance', label: 'Appearance' },
+      { id: 'shortcuts', label: 'Shortcuts' },
       { id: 'terminal', label: 'Terminal' }
     ]
   },
   {
-    label: 'AI & Automation',
+    label: 'AI',
     items: [
-      { id: 'providers', label: 'AI Provider' },
+      { id: 'providers', label: 'Providers & Keys' },
+      { id: 'websearch', label: 'Web Search' },
       { id: 'preprompts', label: 'Instructions' },
       { id: 'mcp', label: 'MCP Servers' },
       { id: 'workflow', label: 'Workflows' }
     ]
+  },
+  {
+    label: 'Covenant Code',
+    items: [{ id: 'code', label: 'Covenant Code' }]
   },
   {
     label: 'Tools',
@@ -62,12 +69,8 @@ export const SETTINGS_NAV_GROUPS: readonly SettingsNavGroup[] = [
     ]
   },
   {
-    label: 'Code',
-    items: [{ id: 'code', label: 'OpenCode' }]
-  },
-  {
     label: 'Account',
-    items: [{ id: 'usage', label: 'Usage & Cost' }]
+    items: [{ id: 'usage', label: 'Usage & Billing' }]
   }
 ]
 

@@ -1,5 +1,6 @@
 import type { NotesSettings } from '../../shared/config'
 import { readConfig } from '../config/configStore'
+import { getOpenAIKey } from '../ai/provider'
 import { createOpenAIClient } from '../openai/client'
 
 const MAX_TRANSCRIPTION_BYTES = 24 * 1024 * 1024
@@ -23,13 +24,13 @@ export async function transcribeAudio(
   }
 
   const storedConfig = readConfig()
-  const apiKey = storedConfig.apiKey || process.env.OPENAI_API_KEY
+  const apiKey = getOpenAIKey(storedConfig)
   if (!apiKey) {
-    throw new Error('OpenAI API key is missing. Add it in Settings > General.')
+    throw new Error('OpenAI API key is missing. Add it in Settings > AI > Providers & Keys.')
   }
 
   const notes = settings ?? storedConfig.notes
-  const client = createOpenAIClient(apiKey, storedConfig.proxyUrl)
+  const client = await createOpenAIClient(apiKey, storedConfig.proxyUrl)
   const file = new File([audio as unknown as BlobPart], fileName, { type: 'audio/webm' })
   const isDiarized = notes.transcriptionModel === 'gpt-4o-transcribe-diarize'
 

@@ -1,6 +1,7 @@
 import { DEFAULT_WEB_SEARCH_TIMEOUT_MS, type AppConfig } from '../../../shared/config'
 import { createOpenAIClient } from '../../openai/client'
 import { resolveOpenAIProxyUrl } from '../../proxy'
+import { getOpenAIKey } from '../provider'
 import type { SearchOptions, SearchResult } from './types'
 
 const SEARCH_MODEL = 'gpt-6-luna'
@@ -64,12 +65,12 @@ export async function searchWithOpenAI(
   config: AppConfig,
   options: SearchOptions = { query }
 ): Promise<{ text: string; sources: SearchResult[] }> {
-  const apiKey = config.apiKey || process.env.OPENAI_API_KEY
+  const apiKey = getOpenAIKey(config)
   if (!apiKey) {
-    throw new Error('OpenAI API key is missing. Add it in Settings > General to use OpenAI web search.')
+    throw new Error('OpenAI API key is missing. Add it in Settings > AI > Providers & Keys to use OpenAI web search.')
   }
 
-  const client = createOpenAIClient(apiKey, resolveOpenAIProxyUrl(config.proxyUrl), {
+  const client = await createOpenAIClient(apiKey, resolveOpenAIProxyUrl(config.proxyUrl), {
     timeout: Math.max(
       options.timeoutMs ?? config.webSearchTimeoutMs ?? DEFAULT_WEB_SEARCH_TIMEOUT_MS,
       MIN_SEARCH_TIMEOUT_MS

@@ -21,7 +21,12 @@ import { terminalManager } from '../terminalManager'
 import { createTerminalToolHandlers } from '../terminal/tools'
 import { setVoiceRecordingActive } from '../windows'
 import { getOpenAIKey, resolveChatProvider } from '../ai/provider'
-import { createWebSearchHandler, shouldUseNativeWebSearch } from '../ai/webSearch'
+import {
+  createWebSearchHandler,
+  resolveWebSearchProviderForModel,
+  shouldUseNativeWebSearch
+} from '../ai/webSearch'
+import { webSearchProviderLabel as getWebSearchProviderLabel } from '../../shared/ai/webSearch'
 import { recordAiUsage } from '../ai/usageLedger'
 import type { BuiltinToolHandler } from '../services/builtinTools'
 import { log } from '../logger'
@@ -138,7 +143,7 @@ export function registerChatIpc(): void {
     }
 
     const storedConfig = readConfig()
-    const provider = resolveChatProvider(storedConfig, { sessionId: conversationId })
+    const provider = await resolveChatProvider(storedConfig, { sessionId: conversationId })
 
     const streamId = randomUUID()
     const sender = event.sender
@@ -150,18 +155,8 @@ export function registerChatIpc(): void {
     const modelOption = provider.modelOption
     const enableWebSearch = storedConfig.enableWebSearch ?? DEFAULT_ENABLE_WEB_SEARCH
     const webSearchEnabled = enableWebSearch && modelOption.webSearch !== false
-    const webSearchProviderLabel =
-      storedConfig.webSearchProvider === 'searxng'
-        ? 'SearXNG'
-        : storedConfig.webSearchProvider === 'tavily'
-          ? 'Tavily'
-          : storedConfig.webSearchProvider === 'exa'
-            ? 'Exa'
-            : storedConfig.webSearchProvider === 'native'
-              ? provider.provider === 'opencode'
-                ? 'OpenCode native'
-                : 'OpenAI'
-              : 'OpenAI'
+    const resolvedWebSearchProvider = resolveWebSearchProviderForModel(storedConfig, modelOption)
+    const webSearchProviderLabel = getWebSearchProviderLabel(resolvedWebSearchProvider)
     const terminalSession =
       terminalSessionId && terminalManager.hasSession(terminalSessionId)
         ? terminalSessionId
@@ -175,14 +170,18 @@ export function registerChatIpc(): void {
     if (webSearchEnabled) {
       const useNativeOpenAI =
         provider.provider === 'openai' &&
-        storedConfig.webSearchProvider === 'openai' &&
+        resolvedWebSearchProvider === 'openai' &&
         modelOption.webSearch === 'native'
-      const useNativeOpenCode = shouldUseNativeWebSearch(storedConfig, modelOption)
+      const useNativeOpenCode = shouldUseNativeWebSearch(
+        storedConfig,
+        modelOption,
+        resolvedWebSearchProvider
+      )
       if (useNativeOpenAI || useNativeOpenCode) {
         tools.push({ type: 'web_search' })
       } else {
         tools.push(buildWebSearchToolDefinition())
-        builtinTools.push(createWebSearchHandler(storedConfig))
+        builtinTools.push(createWebSearchHandler(storedConfig, modelOption))
       }
     }
 
@@ -251,26 +250,31 @@ export function registerChatIpc(): void {
     }
 
     const storedConfig = readConfig()
-    const provider = resolveChatProvider(storedConfig)
+    const provider = await resolveChatProvider(storedConfig)
     const toolRegistry = getActiveMcpToolRegistry()
     const chatModel = provider.model
     const modelOption = provider.modelOption
     const enableWebSearch = storedConfig.enableWebSearch ?? DEFAULT_ENABLE_WEB_SEARCH
     const webSearchEnabled = enableWebSearch && modelOption.webSearch !== false
+    const resolvedWebSearchProvider = resolveWebSearchProviderForModel(storedConfig, modelOption)
 
     const extraTools: Array<Record<string, unknown>> = []
     const builtinTools: BuiltinToolHandler[] = []
     if (webSearchEnabled) {
       const useNativeOpenAI =
         provider.provider === 'openai' &&
-        storedConfig.webSearchProvider === 'openai' &&
+        resolvedWebSearchProvider === 'openai' &&
         modelOption.webSearch === 'native'
-      const useNativeOpenCode = shouldUseNativeWebSearch(storedConfig, modelOption)
+      const useNativeOpenCode = shouldUseNativeWebSearch(
+        storedConfig,
+        modelOption,
+        resolvedWebSearchProvider
+      )
       if (useNativeOpenAI || useNativeOpenCode) {
         extraTools.push({ type: 'web_search' })
       } else {
         extraTools.push(buildWebSearchToolDefinition())
-        builtinTools.push(createWebSearchHandler(storedConfig))
+        builtinTools.push(createWebSearchHandler(storedConfig, modelOption))
       }
     }
 
@@ -307,10 +311,10 @@ export function registerChatIpc(): void {
     const storedConfig = readConfig()
     const apiKey = getOpenAIKey(storedConfig)
     if (!apiKey) {
-      throw new Error('OpenAI API key is required for microphone transcription. Add it in Settings > General.')
+      throw new Error('OpenAI API key is required for microphone transcription. Add it in Settings > AI > Providers & Keys.')
     }
 
-    const client = createOpenAIClient(apiKey, storedConfig.proxyUrl)
+    const client = await createOpenAIClient(apiKey, storedConfig.proxyUrl)
 
     const file = new File([Buffer.from(audioBuffer)], 'audio.webm', { type: 'audio/webm' })
     const transcription = await client.audio.transcriptions.create({

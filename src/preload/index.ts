@@ -17,6 +17,7 @@ import type { ClearCompletedResult, Task } from '../shared/tasks/task'
 import type { GamificationState } from '../shared/tasks/gamification'
 import type { UpdateStatus } from '../shared/system/update'
 import type { UsageMetricsResult, UsageProjectsResult } from '../shared/system/usage'
+import type { OpenCodeUsageResult } from '../shared/ai/opencodeUsage'
 import type { PasteItemDetail, PasteItemMeta, PasteManagerSettings } from '../shared/paste/paste'
 import type {
   Note,
@@ -142,7 +143,7 @@ const api = {
     getConfig: () => ipcRenderer.invoke('get-config') as Promise<AppConfig>,
     saveApiKey: (apiKey: string) => ipcRenderer.send('save-api-key', apiKey),
     saveOpenAISettings: (settings: { apiKey?: string; proxyUrl?: string; adminApiKey?: string }) =>
-      ipcRenderer.send('save-openai-settings', settings),
+      ipcRenderer.invoke('save-openai-settings', settings) as Promise<void>,
     markOnboarded: () => ipcRenderer.send('mark-onboarded'),
     getMcpServers: () => ipcRenderer.invoke('get-mcp-servers') as Promise<McpServer[]>,
     saveMcpServer: (server: Partial<McpServer>) =>
@@ -355,7 +356,12 @@ const api = {
         models: Array<Record<string, unknown>>
       }>,
     getKeyStatus: () =>
-      ipcRenderer.invoke('ai:key-status') as Promise<{ opencode: boolean }>,
+      ipcRenderer.invoke('ai:key-status') as Promise<{
+        openai: { configured: boolean; source: 'config' | 'env' | 'none' }
+        admin: { configured: boolean }
+        opencode: { configured: boolean }
+        search: { searxng: boolean; tavily: boolean; exa: boolean }
+      }>,
     setOpencodeKey: (key: string) =>
       ipcRenderer.invoke('ai:opencode-key:set', key) as Promise<
         { ok: true } | { ok: false; error: string }
@@ -372,8 +378,8 @@ const api = {
       ipcRenderer.invoke('ai:web-search:clear-secret', provider) as Promise<
         { ok: true } | { ok: false; error: string }
       >,
-    testWebSearch: () =>
-      ipcRenderer.invoke('ai:web-search:test') as Promise<{
+    testWebSearch: (provider?: string) =>
+      ipcRenderer.invoke('ai:web-search:test', provider) as Promise<{
         ok: boolean
         message: string
         resultCount?: number
@@ -383,7 +389,8 @@ const api = {
     getMetrics: (rangeDays?: number, projectId?: string, provider?: string) =>
       ipcRenderer.invoke('usage:get-metrics', { rangeDays, projectId, provider }) as Promise<UsageMetricsResult>,
     getProjects: () => ipcRenderer.invoke('usage:get-projects') as Promise<UsageProjectsResult>,
-    clearLocal: () => ipcRenderer.send('usage:clear-local')
+    getOpenCodeUsage: (rangeDays?: number) =>
+      ipcRenderer.invoke('usage:get-opencode', { rangeDays }) as Promise<OpenCodeUsageResult>
   },
   chat: {
     askCovenant: (
@@ -636,6 +643,9 @@ const api = {
       ipcRenderer.invoke('terminal:start', size) as Promise<TerminalStartResult>,
     sendInput: (sessionId: string, data: string) =>
       ipcRenderer.invoke('terminal:input', { sessionId, input: data }) as Promise<{ success: boolean }>,
+    // Fire-and-forget keystroke path: no reply is consumed while typing.
+    typeInput: (sessionId: string, data: string) =>
+      ipcRenderer.send('terminal:input', { sessionId, input: data }),
     resize: (sessionId: string, cols: number, rows: number) =>
       ipcRenderer.invoke('terminal:resize', { sessionId, cols, rows }) as Promise<{ success: boolean }>,
     killTerminal: (sessionId: string) =>

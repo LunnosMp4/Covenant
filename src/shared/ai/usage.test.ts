@@ -55,6 +55,23 @@ describe('buildLocalUsageMetrics', () => {
     expect(metrics.totalRequests).toBe(1)
   })
 
+  it('filters by provider when requested', () => {
+    const now = Date.now()
+    const metrics = buildLocalUsageMetrics(
+      [
+        entry({ id: 'openai', provider: 'openai' }),
+        entry({ id: 'opencode', provider: 'opencode' })
+      ],
+      30,
+      now,
+      'opencode'
+    )
+
+    expect(metrics.totalRequests).toBe(1)
+    expect(metrics.byModel).toHaveLength(1)
+    expect(metrics.byModel[0].model).toBe('gpt-6-luna')
+  })
+
   it('groups usage by feature', () => {
     const now = Date.now()
     const metrics = buildLocalUsageMetrics(

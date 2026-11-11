@@ -1,6 +1,7 @@
-import OpenAI from 'openai'
-import { ProxyAgent } from 'undici'
+import type OpenAI from 'openai'
 import { resolveOpenAIProxyUrl } from '../proxy'
+import { createProxyDispatcher } from '../services/proxyDispatcher'
+import { loadOpenAISdk } from './sdk'
 
 export interface OpenAIClientOptions {
   baseURL?: string
@@ -9,13 +10,17 @@ export interface OpenAIClientOptions {
   maxRetries?: number
 }
 
-export function createOpenAIClient(
+export async function createOpenAIClient(
   apiKey: string,
   proxyUrl?: string,
   options: OpenAIClientOptions = {}
-): OpenAI {
-  const resolvedProxyUrl = resolveOpenAIProxyUrl(proxyUrl)
-  const openAIProxyAgent = resolvedProxyUrl ? new ProxyAgent(resolvedProxyUrl) : undefined
+): Promise<OpenAI> {
+  // Both the SDK and the proxy dispatcher are resolved lazily; on a direct
+  // connection this only pays for the SDK.
+  const [OpenAI, openAIProxyAgent] = await Promise.all([
+    loadOpenAISdk(),
+    createProxyDispatcher(resolveOpenAIProxyUrl(proxyUrl))
+  ])
 
   return new OpenAI({
     apiKey,

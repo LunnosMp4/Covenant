@@ -58,6 +58,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   webSearchBypassProxyForLocal: true,
   webSearchFallbackProvider: 'none',
   webSearchTimeoutMs: DEFAULT_WEB_SEARCH_TIMEOUT_MS,
+  webSearchProviderMigrated: true,
   reasoningEffort: DEFAULT_REASONING_EFFORT,
   enableWebSearch: DEFAULT_ENABLE_WEB_SEARCH,
   autoCollapseReasoning: DEFAULT_AUTO_COLLAPSE_REASONING,
@@ -108,6 +109,13 @@ export function normalizeButtonVisibility(raw: unknown): AppConfig['buttonVisibi
 }
 
 export function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined): AppConfig {
+  // One-time migration: the old default was 'openai'. Moving to 'auto' lets
+  // SearXNG win when configured and lets OpenCode models use native search.
+  // The marker keeps an explicit 'openai' choice intact afterwards.
+  const shouldMigrateWebSearch =
+    rawConfig?.webSearchProviderMigrated !== true &&
+    (rawConfig?.webSearchProvider === undefined || rawConfig?.webSearchProvider === 'openai')
+
   return {
     apiKey: typeof rawConfig?.apiKey === 'string' ? rawConfig.apiKey : DEFAULT_CONFIG.apiKey,
     adminApiKey: normalizeAdminApiKey(rawConfig?.adminApiKey),
@@ -135,7 +143,9 @@ export function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined
         ? rawConfig.opencodeChatModel.trim()
         : DEFAULT_OPENCODE_CHAT_MODEL,
     opencodePlan: normalizeOpenCodePlan(rawConfig?.opencodePlan),
-    webSearchProvider: normalizeWebSearchProvider(rawConfig?.webSearchProvider),
+    webSearchProvider: shouldMigrateWebSearch
+      ? 'auto'
+      : normalizeWebSearchProvider(rawConfig?.webSearchProvider),
     webSearchSearxngUrl:
       typeof rawConfig?.webSearchSearxngUrl === 'string' && rawConfig.webSearchSearxngUrl.trim()
         ? rawConfig.webSearchSearxngUrl.trim()
@@ -163,6 +173,8 @@ export function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined
       typeof rawConfig?.webSearchTimeoutMs === 'number' && Number.isFinite(rawConfig.webSearchTimeoutMs)
         ? Math.max(3000, Math.min(120000, Math.round(rawConfig.webSearchTimeoutMs)))
         : DEFAULT_WEB_SEARCH_TIMEOUT_MS,
+    webSearchProviderMigrated:
+      rawConfig?.webSearchProviderMigrated === true || shouldMigrateWebSearch,
     reasoningEffort:
       typeof rawConfig?.reasoningEffort === 'string' && ['low', 'medium', 'high'].includes(rawConfig.reasoningEffort)
         ? rawConfig.reasoningEffort as AppConfig['reasoningEffort']

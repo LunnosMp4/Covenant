@@ -1,5 +1,4 @@
 import { app } from 'electron'
-import { ProxyAgent, type Dispatcher } from 'undici'
 import {
   OPENCODE_MODEL_OPTIONS,
   type AiModelOption,
@@ -9,6 +8,7 @@ import {
 import { readConfig } from '../config/configStore'
 import { getGoApiKey } from '../code/codeCredentials'
 import { resolveOpenAIProxyUrl } from '../proxy'
+import { createProxyDispatcher } from '../services/proxyDispatcher'
 
 const CACHE_TTL_MS = 60 * 60 * 1000
 const FALLBACK_TIMEOUT_MS = 12_000
@@ -128,10 +128,6 @@ function mapModel(raw: Record<string, unknown>): AiModelOption | null {
   }
 }
 
-function createDispatcher(proxyUrl?: string): Dispatcher | undefined {
-  return proxyUrl ? new ProxyAgent(proxyUrl) : undefined
-}
-
 export async function listOpenCodeModels(
   plan: OpenCodePlan,
   options: { force?: boolean } = {}
@@ -143,7 +139,7 @@ export async function listOpenCodeModels(
   if (!options.force && cache && cache.key === key && Date.now() - cache.fetchedAt < CACHE_TTL_MS) {
     return cache.models
   }
-  const dispatcher = createDispatcher(proxyUrl)
+  const dispatcher = await createProxyDispatcher(proxyUrl)
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), FALLBACK_TIMEOUT_MS)
 

@@ -18,7 +18,7 @@ export class OcrExtractor {
 
     try {
       const config = this.getConfig()
-      const provider = resolveChatProvider(config, { model: OCR_MODEL })
+      const provider = await resolveChatProvider(config, { model: OCR_MODEL })
       const dataUrl = `data:${mime || 'image/png'};base64,${imageBuffer.toString('base64')}`
       const response = await provider.client.responses.create({
         model: OCR_MODEL,

@@ -30,7 +30,7 @@ export async function generateConversationTitle(
   }
 
   const storedConfig = readConfig()
-  const provider = resolveChatProvider(storedConfig, {
+  const provider = await resolveChatProvider(storedConfig, {
     model: CONVERSATION_TITLE_MODEL,
     sessionId
   })

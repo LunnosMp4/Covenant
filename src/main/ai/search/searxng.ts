@@ -1,6 +1,7 @@
-import { Agent, ProxyAgent, type Dispatcher } from 'undici'
+import type { Dispatcher } from 'undici'
 import { resolveOpenAIProxyUrl } from '../../proxy'
 import type { AppConfig } from '../../../shared/config'
+import { createAgentDispatcher, createProxyDispatcher } from '../../services/proxyDispatcher'
 import { getSearchSecret } from './credentials'
 import type { SearchOptions, SearchResult } from './types'
 
@@ -14,7 +15,7 @@ function isPrivateHost(hostname: string): boolean {
   return false
 }
 
-function createDispatcher(config: AppConfig, baseUrl: string): Dispatcher | undefined {
+async function createDispatcher(config: AppConfig, baseUrl: string): Promise<Dispatcher | undefined> {
   let parsed: URL
   try {
     parsed = new URL(baseUrl)
@@ -25,15 +26,15 @@ function createDispatcher(config: AppConfig, baseUrl: string): Dispatcher | unde
   const local = isPrivateHost(parsed.hostname)
   if (config.webSearchBypassProxyForLocal !== false && local) {
     if (parsed.protocol === 'https:' && config.webSearchSearxngAllowInsecure) {
-      return new Agent({ connect: { rejectUnauthorized: false } })
+      return createAgentDispatcher({ connect: { rejectUnauthorized: false } })
     }
     return undefined
   }
 
   const proxyUrl = resolveOpenAIProxyUrl(config.proxyUrl)
-  if (proxyUrl) return new ProxyAgent(proxyUrl)
+  if (proxyUrl) return createProxyDispatcher(proxyUrl)
   if (parsed.protocol === 'https:' && config.webSearchSearxngAllowInsecure) {
-    return new Agent({ connect: { rejectUnauthorized: false } })
+    return createAgentDispatcher({ connect: { rejectUnauthorized: false } })
   }
   return undefined
 }
@@ -63,7 +64,7 @@ export async function searchSearxng(
 ): Promise<SearchResult[]> {
   const baseUrl = config.webSearchSearxngUrl?.trim()
   if (!baseUrl) {
-    throw new Error('SearXNG endpoint is not configured. Add it in Settings > AI Provider > Web search.')
+    throw new Error('SearXNG endpoint is not configured. Add it in Settings > AI > Web Search.')
   }
 
   const normalized = normalizeBaseUrl(baseUrl)
@@ -71,7 +72,7 @@ export async function searchSearxng(
   try {
     endpoint = new URL(normalized)
   } catch {
-    throw new Error('SearXNG endpoint is not a valid URL. Add a full http(s) URL in Settings > AI Provider.')
+    throw new Error('SearXNG endpoint is not a valid URL. Add a full http(s) URL in Settings > AI > Web Search.')
   }
   if (endpoint.protocol !== 'http:' && endpoint.protocol !== 'https:') {
     throw new Error('SearXNG endpoint must use http or https.')
@@ -100,7 +101,7 @@ export async function searchSearxng(
   const auth = buildAuthHeader(config)
   if (auth) headers.Authorization = auth
 
-  const dispatcher = createDispatcher(config, normalized)
+  const dispatcher = await createDispatcher(config, normalized)
 
   try {
     const response = await fetch(url, {

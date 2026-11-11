@@ -1,31 +1,3 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { AnimatePresence, motion, useAnimationControls, type Transition } from 'framer-motion'
-import { WINDOW_ENTER_TRANSITION, WINDOW_EXIT_TRANSITION } from '../constants/motion'
-import ConfirmDeleteModal from '../ui/ConfirmDeleteModal'
-import CustomSelect from '../ui/CustomSelect'
-import WorkflowFormModal from '../workflow/WorkflowFormModal'
-import PasteSettingsTab from '../paste/PasteSettingsTab'
-import {
-  DEFAULT_TERMINAL_FONT,
-  normalizeTerminalFont
-} from '../constants/terminalFonts'
-import {
-  DEFAULT_THEME_GRADIENT,
-  THEME_OPTIONS,
-  getThemeMode,
-  normalizeThemeGradient
-} from '../constants/theme'
-import type { AppConfig, ButtonVisibility, ReasoningEffort, ShortcutConfig } from '../../../shared/config'
-import { CHAT_MODEL_OPTIONS, DEFAULT_CHAT_MODEL, DEFAULT_REASONING_EFFORT, DEFAULT_SHORTCUTS, DEFAULT_TEXTURE_INTENSITY, MAX_TEXTURE_INTENSITY, REASONING_EFFORT_OPTIONS, TEXTURE_MAX_OPACITY, modelSupportsExtendedParams, modelSupportsWebSearch } from '../../../shared/config'
-import type { UpdateStatus } from '../../../shared/system/update'
-import {
-  DEFAULT_PASTE_SETTINGS,
-  normalizePasteManagerSettings,
-  type PasteManagerSettings
-} from '../../../shared/paste/paste'
-import type { McpServer } from '../../../shared/mcp/mcp'
-import type { Preprompt } from '../types/renderer'
-import type { Workflow } from '../types/renderer'
 import type { SettingsTab } from './constants'
 
 export function SidebarGlyph({ tab }: { tab: SettingsTab }): JSX.Element {
@@ -85,6 +57,67 @@ export function SidebarGlyph({ tab }: { tab: SettingsTab }): JSX.Element {
         <path d="M8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
         <path d="M9 13h6" />
         <path d="M9 17h4" />
+      </svg>
+    )
+  }
+
+  if (tab === 'providers') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <circle cx="7.5" cy="15.5" r="3.5" />
+        <path d="m10.5 12.5 9-9" />
+        <path d="m16 7 2 2" />
+        <path d="m13 10 2 2" />
+      </svg>
+    )
+  }
+
+  if (tab === 'websearch') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M3 12h18" />
+        <path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18Z" />
+      </svg>
+    )
+  }
+
+  if (tab === 'shortcuts') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <rect x="2.5" y="5" width="19" height="14" rx="2" />
+        <path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M10 13h.01M14 13h.01M18 13h.01M8 16h8" />
+      </svg>
+    )
+  }
+
+  if (tab === 'workflow') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <rect x="3" y="3" width="6" height="6" rx="1.5" />
+        <rect x="15" y="15" width="6" height="6" rx="1.5" />
+        <path d="M9 6h4a2 2 0 0 1 2 2v7" />
+        <path d="m12 12 3 3 3-3" />
+      </svg>
+    )
+  }
+
+  if (tab === 'notes') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M5 3h11l3 3v15H5z" />
+        <path d="M16 3v4h4" />
+        <path d="M8 11h8M8 15h5" />
+      </svg>
+    )
+  }
+
+  if (tab === 'code') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="m8 9 3 3-3 3" />
+        <path d="M13 15h4" />
       </svg>
     )
   }

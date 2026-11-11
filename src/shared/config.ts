@@ -295,6 +295,8 @@ export interface AppConfig {
   webSearchBypassProxyForLocal?: boolean
   webSearchFallbackProvider?: WebSearchProviderId | 'none'
   webSearchTimeoutMs?: number
+  /** One-time migration marker for the Auto web-search default. */
+  webSearchProviderMigrated?: boolean
   reasoningEffort: ReasoningEffort
   enableWebSearch: boolean
   autoCollapseReasoning: boolean
@@ -324,6 +326,13 @@ export {
   normalizeOpenCodePlan,
   normalizeWebSearchProvider
 } from './ai/models'
+export {
+  resolveWebSearchProviderChoice,
+  resolveWebSearchProviderForConfig,
+  webSearchProviderLabel,
+  type ResolvedWebSearchProvider,
+  type WebSearchResolutionInput
+} from './ai/webSearch'
 export type {
   AiModelOption,
   ChatProviderId,

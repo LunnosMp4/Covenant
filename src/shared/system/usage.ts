@@ -163,6 +163,8 @@ export interface UsageMetrics {
   totalRequests: number
   totalInputTokens: number
   totalOutputTokens: number
+  /** Optional: OpenCode reports cache reads separately from input tokens. */
+  totalCachedInputTokens?: number
   daily: UsageCostPoint[]
   byService: UsageServiceBreakdown[]
   byModel: UsageModelBreakdown[]

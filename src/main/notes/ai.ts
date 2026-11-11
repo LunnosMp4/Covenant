@@ -78,7 +78,7 @@ export async function runNoteAi(
   if (!note) throw new Error('Note not found.')
 
   const config = readConfig()
-  const provider = resolveChatProvider(config, { sessionId: request.noteId })
+  const provider = await resolveChatProvider(config, { sessionId: request.noteId })
 
   const model = provider.model
   const client = provider.client

@@ -1,6 +1,12 @@
-import type { AiModelOption, AppConfig, WebSearchProviderId } from '../../shared/config'
+import type { AiModelOption, AppConfig } from '../../shared/config'
+import {
+  resolveWebSearchProviderForConfig,
+  webSearchProviderLabel,
+  type ResolvedWebSearchProvider
+} from '../../shared/config'
 import type { BuiltinToolHandler, BuiltinToolResult } from '../services/builtinTools'
 import { log } from '../logger'
+import { getOpenAIKey } from './provider'
 import { searchExa } from './search/exa'
 import { searchWithOpenAI } from './search/openai'
 import { searchSearxng } from './search/searxng'
@@ -32,7 +38,7 @@ function formatResults(query: string, results: SearchResult[], summary?: string)
 }
 
 async function runProvider(
-  provider: WebSearchProviderId,
+  provider: ResolvedWebSearchProvider,
   query: string,
   config: AppConfig,
   signal?: AbortSignal
@@ -51,8 +57,11 @@ async function runProvider(
       const sources = await searchExa(query, config, options)
       return { text: formatResults(query, sources), sources }
     }
-    case 'openai':
     case 'native':
+      throw new Error(
+        'Native web search is only available with an OpenCode model that supports it. Choose SearXNG, Tavily, Exa, or OpenAI for this model.'
+      )
+    case 'openai':
     default: {
       const result = await searchWithOpenAI(query, config, options)
       return { text: formatResults(query, result.sources, result.text), sources: result.sources }
@@ -60,17 +69,28 @@ async function runProvider(
   }
 }
 
+export function resolveWebSearchProviderForModel(
+  config: AppConfig,
+  modelOption?: AiModelOption
+): ResolvedWebSearchProvider {
+  return resolveWebSearchProviderForConfig(config, {
+    modelOption,
+    hasOpenAIKey: Boolean(getOpenAIKey(config))
+  })
+}
+
 export async function searchWeb(
   query: string,
   config: AppConfig,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  modelOption?: AiModelOption
 ): Promise<WebSearchResult> {
-  const provider = config.webSearchProvider
+  const provider = resolveWebSearchProviderForModel(config, modelOption)
   try {
     return await runProvider(provider, query, config, signal)
   } catch (error) {
     const fallback = config.webSearchFallbackProvider
-    if (fallback && fallback !== 'none' && fallback !== provider) {
+    if (fallback && fallback !== 'none' && fallback !== 'auto' && fallback !== provider) {
       try {
         return await runProvider(fallback, query, config, signal)
       } catch {
@@ -83,12 +103,16 @@ export async function searchWeb(
 
 export function shouldUseNativeWebSearch(
   config: AppConfig,
-  modelOption: AiModelOption
+  modelOption: AiModelOption,
+  resolvedProvider = resolveWebSearchProviderForModel(config, modelOption)
 ): boolean {
-  return config.webSearchProvider === 'native' && modelOption.webSearch === 'native'
+  return resolvedProvider === 'native' && modelOption.webSearch === 'native'
 }
 
-export function createWebSearchHandler(config: AppConfig): BuiltinToolHandler {
+export function createWebSearchHandler(
+  config: AppConfig,
+  modelOption?: AiModelOption
+): BuiltinToolHandler {
   return {
     name: 'web_search',
     toolType: 'web_search',
@@ -105,7 +129,7 @@ export function createWebSearchHandler(config: AppConfig): BuiltinToolHandler {
       }
 
       try {
-        const result = await searchWeb(query, config, ctx.signal)
+        const result = await searchWeb(query, config, ctx.signal, modelOption)
         return {
           content: result.text,
           isError: false,
@@ -114,7 +138,10 @@ export function createWebSearchHandler(config: AppConfig): BuiltinToolHandler {
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Web search failed.'
-        log.warn(`Web search failed (${config.webSearchProvider})`, error)
+        log.warn(
+          `Web search failed (${webSearchProviderLabel(resolveWebSearchProviderForModel(config, modelOption))})`,
+          error
+        )
         return {
           content: message,
           isError: true,

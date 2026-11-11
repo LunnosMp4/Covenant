@@ -51,7 +51,7 @@ function normalizeSessionId(value?: string): string {
 }
 
 export function getOpenAIKey(config: AppConfig): string {
-  return config.apiKey || process.env.OPENAI_API_KEY || ''
+  return config.apiKey?.trim() || process.env.OPENAI_API_KEY || ''
 }
 
 export function getOpenCodeBaseUrl(plan: AppConfig['opencodePlan']): string {
@@ -67,21 +67,21 @@ export function hasProviderKey(config: AppConfig): boolean {
 
 export function providerKeyError(provider: ChatProviderId): string {
   return provider === 'opencode'
-    ? 'OpenCode API key is missing. Add it in Settings > AI Provider.'
-    : 'OpenAI API key is missing. Add it in Settings > General or set OPENAI_API_KEY.'
+    ? 'OpenCode API key is missing. Add it in Settings > AI > Providers & Keys.'
+    : 'OpenAI API key is missing. Add it in Settings > AI > Providers & Keys or set OPENAI_API_KEY.'
 }
 
-export function resolveChatProvider(
+export async function resolveChatProvider(
   config: AppConfig,
   options: ResolveProviderOptions = {}
-): ChatProviderContext {
+): Promise<ChatProviderContext> {
   const provider = config.chatProvider
   const sessionId = normalizeSessionId(options.sessionId)
 
   if (provider === 'opencode') {
     const apiKey = getGoApiKey()
     if (!apiKey) throw new Error(providerKeyError(provider))
-    const client = createOpenAIClient(apiKey, resolveOpenAIProxyUrl(config.proxyUrl), {
+    const client = await createOpenAIClient(apiKey, resolveOpenAIProxyUrl(config.proxyUrl), {
       baseURL: getOpenCodeBaseUrl(config.opencodePlan),
       defaultHeaders: {
         'User-Agent': `Covenant/${app.getVersion()}`,
@@ -108,7 +108,7 @@ export function resolveChatProvider(
 
   const apiKey = getOpenAIKey(config)
   if (!apiKey) throw new Error(providerKeyError(provider))
-  const client = createOpenAIClient(apiKey, resolveOpenAIProxyUrl(config.proxyUrl), {
+  const client = await createOpenAIClient(apiKey, resolveOpenAIProxyUrl(config.proxyUrl), {
     defaultHeaders: {
       'User-Agent': `Covenant/${app.getVersion()}`
     }

@@ -1,13 +1,8 @@
-import { ProxyAgent, type Dispatcher } from 'undici'
 import type { AppConfig } from '../../../shared/config'
 import { resolveOpenAIProxyUrl } from '../../proxy'
+import { createProxyDispatcher } from '../../services/proxyDispatcher'
 import { getSearchSecret } from './credentials'
 import type { SearchOptions, SearchResult } from './types'
-
-function dispatcher(config: AppConfig): Dispatcher | undefined {
-  const proxyUrl = resolveOpenAIProxyUrl(config.proxyUrl)
-  return proxyUrl ? new ProxyAgent(proxyUrl) : undefined
-}
 
 export async function searchTavily(
   query: string,
@@ -15,9 +10,9 @@ export async function searchTavily(
   options: SearchOptions = { query }
 ): Promise<SearchResult[]> {
   const apiKey = getSearchSecret('tavily')
-  if (!apiKey) throw new Error('Tavily API key is missing. Add it in Settings > AI Provider > Web search.')
+  if (!apiKey) throw new Error('Tavily API key is missing. Add it in Settings > AI > Web Search.')
 
-  const agent = dispatcher(config)
+  const agent = await createProxyDispatcher(resolveOpenAIProxyUrl(config.proxyUrl))
   const controller = new AbortController()
   const timeoutMs = options.timeoutMs ?? config.webSearchTimeoutMs ?? 15_000
   let timedOut = false

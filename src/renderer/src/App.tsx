@@ -1,13 +1,11 @@
-import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, type CSSProperties } from 'react'
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, lazy, Suspense, type CSSProperties } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import ModulePopup, { type ActivePopup, type PopupItem } from './launcher/ModulePopup'
 import LauncherResults from './launcher/LauncherResults'
 import InstructionPicker from './launcher/InstructionPicker'
-import TerminalView from './terminal/TerminalView'
 import TerminalApprovalModal from './terminal/TerminalApprovalModal'
 import VoiceWaveform from './chat/VoiceWaveform'
 import ConfirmDeleteModal from './ui/ConfirmDeleteModal'
-import ChatTranscript from './chat/ChatTranscript'
 import ConversationHistoryMenu from './chat/ConversationHistoryMenu'
 import { buildTerminalContext } from './terminal/terminalContext'
 import {
@@ -109,12 +107,47 @@ import { useAttachments } from './app/hooks/useAttachments'
 import { useVoiceInput } from './app/hooks/useVoiceInput'
 import { useChatSearch } from './app/hooks/useChatSearch'
 import { useWindowsClickThrough } from './app/hooks/useWindowsClickThrough'
-import CodePanel from './code/CodePanel'
 import CodePermissionModal from './code/CodePermissionModal'
 import { useCodeSession } from './code/useCodeSession'
-import PasteSurface from './paste/PasteSurface'
-import NotesSurface from './notes/NotesSurface'
 import { useMeetingRecorder } from './notes/useMeetingRecorder'
+
+// Surfaces behind a shortcut or a popup live in their own chunks so the command
+// bar does not parse xterm, CodeMirror and the markdown stack on startup. They
+// are warmed once the window has been shown (see scheduleSurfacePrefetch), so
+// the first open of each surface behaves exactly like an eager import.
+const TerminalView = lazy(() => import('./terminal/TerminalView'))
+const ChatTranscript = lazy(() => import('./chat/ChatTranscript'))
+const CodePanel = lazy(() => import('./code/CodePanel'))
+const PasteSurface = lazy(() => import('./paste/PasteSurface'))
+const NotesSurface = lazy(() => import('./notes/NotesSurface'))
+
+let surfacePrefetchState: 'idle' | 'queued' | 'done' = 'idle'
+
+function prefetchSurfaces(): void {
+  void import('./terminal/TerminalView')
+  void import('./chat/ChatTranscript')
+  void import('./code/CodePanel')
+  void import('./paste/PasteSurface')
+  void import('./notes/NotesSurface')
+}
+
+function scheduleSurfacePrefetch(): void {
+  if (surfacePrefetchState !== 'idle') return
+  surfacePrefetchState = 'queued'
+
+  const run = (): void => {
+    surfacePrefetchState = 'done'
+    prefetchSurfaces()
+  }
+
+  // Idle callback so the split chunks never compete with the entry animation.
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(run, { timeout: 2000 })
+    return
+  }
+  window.setTimeout(run, 200)
+}
+
 
 export default function App(): JSX.Element {
   const [visible, setVisible] = useState(false)
@@ -207,6 +240,9 @@ export default function App(): JSX.Element {
   const rootRef = useRef<HTMLDivElement>(null)
   const pasteBlocksRef = useRef<Map<string, string>>(new Map())
   const isComposingRef = useRef(false)
+  // The OpenCode catalog is only needed once a model picker can be opened, so
+  // the (network) fetch is deferred until the window has actually been shown.
+  const opencodeModelsRequestedRef = useRef(false)
   const popupRef = useRef<HTMLDivElement>(null)
   const moduleButtonsRef = useRef<HTMLDivElement>(null)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
@@ -459,11 +495,6 @@ export default function App(): JSX.Element {
           const provider = config.chatProvider === 'opencode' ? 'opencode' : 'openai'
           setChatProvider(provider)
           setChatModel(getActiveChatModel({ ...config, chatProvider: provider }))
-          void window.api?.ai?.listModels?.('opencode').then((result) => {
-            if (result?.ok && Array.isArray(result.models) && result.models.length > 0) {
-              setOpencodeModels(result.models as unknown as AiModelOption[])
-            }
-          })
           if (config.reasoningEffort) {
             setReasoningEffort(config.reasoningEffort)
           }
@@ -579,6 +610,7 @@ export default function App(): JSX.Element {
         if (v) {
           setIsAppVisible(true)
           setVisible(true)
+          scheduleSurfacePrefetch()
 
           // Mount directly on the requested view (bar by default). Never
           // resurrect a previously shown surface.
@@ -1295,6 +1327,23 @@ export default function App(): JSX.Element {
     if (!visible) return
     void loadInstalledApps()
   }, [visible, loadInstalledApps])
+
+  useEffect(() => {
+    // Same reasoning for the OpenCode catalog: the request may hit the network
+    // and nothing can consume it until the window is visible and a picker is
+    // opened, so don't pay for it while Covenant is idling in the tray.
+    if (!visible || opencodeModelsRequestedRef.current) return
+    opencodeModelsRequestedRef.current = true
+
+    const listModels = window.api?.ai?.listModels
+    if (!listModels) return
+
+    void listModels('opencode').then((result) => {
+      if (result?.ok && Array.isArray(result.models) && result.models.length > 0) {
+        setOpencodeModels(result.models as unknown as AiModelOption[])
+      }
+    })
+  }, [visible])
 
   useEffect(() => {
     const unsubscribe = window.api?.config?.onLauncherShowSystemAppsUpdated?.(() => {
@@ -3013,7 +3062,7 @@ export default function App(): JSX.Element {
                           </div>
                         )}
                       </div>
-                        <ContextStatsDonut stats={contextStats} chatModel={chatModel} />
+                        <ContextStatsDonut stats={contextStats} chatModel={chatModel} provider={chatProvider} />
                       <button
                         ref={historyButtonRef}
                         type="button"
@@ -3068,52 +3117,60 @@ export default function App(): JSX.Element {
                     }}
                     transition={PANEL_TRANSITION}
                   >
-                    <ChatTranscript
-                      messages={chatMessages}
-                      isLoading={isLoading}
-                      activeStreamMessageId={activeStreamMessageId}
-                      thinkingOpenById={thinkingOpenById}
-                      onToggleThinking={handleToggleThinking}
-                      sourcesPanelMessageId={sourcesPanelMessageId}
-                      onToggleSources={handleToggleSources}
-                      emptyLabel="No messages yet."
-                    />
+                    <Suspense fallback={null}>
+                      <ChatTranscript
+                        messages={chatMessages}
+                        isLoading={isLoading}
+                        activeStreamMessageId={activeStreamMessageId}
+                        thinkingOpenById={thinkingOpenById}
+                        onToggleThinking={handleToggleThinking}
+                        sourcesPanelMessageId={sourcesPanelMessageId}
+                        onToggleSources={handleToggleSources}
+                        emptyLabel="No messages yet."
+                      />
+                    </Suspense>
                   </motion.div>
                   </>
                   ) : isCodeOpen ? (
-                    <CodePanel
-                      session={code}
-                      isExpanded={isExpanded}
-                      isWide={isWide}
-                      isAltHeld={isAltHeld}
-                      isPinned={isPinned}
-                      viewportHeight={viewportHeight}
-                      onToggleExpand={handleToggleExpand}
-                      onTogglePin={handleTogglePin}
-                    />
+                    <Suspense fallback={null}>
+                      <CodePanel
+                        session={code}
+                        isExpanded={isExpanded}
+                        isWide={isWide}
+                        isAltHeld={isAltHeld}
+                        isPinned={isPinned}
+                        viewportHeight={viewportHeight}
+                        onToggleExpand={handleToggleExpand}
+                        onTogglePin={handleTogglePin}
+                      />
+                    </Suspense>
                   ) : isNotesOpen ? (
-                    <NotesSurface
-                      active
-                      height={notesSurfaceHeight}
-                      isExpanded={isExpanded}
-                      isWide={isWide}
-                      isAltHeld={isAltHeld}
-                      isPinned={isPinned}
-                      onToggleExpand={handleToggleExpand}
-                      onTogglePin={handleTogglePin}
-                      meeting={meeting}
-                    />
+                    <Suspense fallback={null}>
+                      <NotesSurface
+                        active
+                        height={notesSurfaceHeight}
+                        isExpanded={isExpanded}
+                        isWide={isWide}
+                        isAltHeld={isAltHeld}
+                        isPinned={isPinned}
+                        onToggleExpand={handleToggleExpand}
+                        onTogglePin={handleTogglePin}
+                        meeting={meeting}
+                      />
+                    </Suspense>
                   ) : (
-                    <PasteSurface
-                      active
-                      height={fullSurfaceHeight}
-                      isExpanded={isExpanded}
-                      isWide={isWide}
-                      isAltHeld={isAltHeld}
-                      isPinned={isPinned}
-                      onToggleExpand={handleToggleExpand}
-                      onTogglePin={handleTogglePin}
-                    />
+                    <Suspense fallback={null}>
+                      <PasteSurface
+                        active
+                        height={fullSurfaceHeight}
+                        isExpanded={isExpanded}
+                        isWide={isWide}
+                        isAltHeld={isAltHeld}
+                        isPinned={isPinned}
+                        onToggleExpand={handleToggleExpand}
+                        onTogglePin={handleTogglePin}
+                      />
+                    </Suspense>
                   )}
                   </motion.div>
                 </MeasuredPanel>
@@ -3536,18 +3593,20 @@ export default function App(): JSX.Element {
           >
             <div className="flex h-full min-h-0 w-full">
               <div className="min-h-0 flex-1">
-                <TerminalView
-                  active={mode === 'terminal' && visible && isAppVisible}
-                  fontFamily={terminalFont}
-                  isExpanded={isExpanded}
-                  isWide={isWide}
-                  isAltHeld={isAltHeld}
-                  isPinned={isPinned}
-                  isLight={getThemeMode(themeGradient) === 'light'}
-                  onTogglePin={handleTogglePin}
-                  onToggleExpand={handleToggleExpand}
-                  onActiveSessionChange={setTerminalSessionId}
-                />
+                <Suspense fallback={null}>
+                  <TerminalView
+                    active={mode === 'terminal' && visible && isAppVisible}
+                    fontFamily={terminalFont}
+                    isExpanded={isExpanded}
+                    isWide={isWide}
+                    isAltHeld={isAltHeld}
+                    isPinned={isPinned}
+                    isLight={getThemeMode(themeGradient) === 'light'}
+                    onTogglePin={handleTogglePin}
+                    onToggleExpand={handleToggleExpand}
+                    onActiveSessionChange={setTerminalSessionId}
+                  />
+                </Suspense>
               </div>
 
               {isExpanded && isWide && (
@@ -3562,17 +3621,19 @@ export default function App(): JSX.Element {
                     ref={terminalRailRef}
                     className="chat-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3"
                   >
-                    <ChatTranscript
-                      messages={chatMessages}
-                      isLoading={isLoading}
-                      activeStreamMessageId={activeStreamMessageId}
-                      thinkingOpenById={thinkingOpenById}
-                      onToggleThinking={handleToggleThinking}
-                      sourcesPanelMessageId={sourcesPanelMessageId}
-                      onToggleSources={handleToggleSources}
-                      emptyLabel="Ask about this terminal — errors, commands, or what to do next."
-                      fullWidthBubbles
-                    />
+                    <Suspense fallback={null}>
+                      <ChatTranscript
+                        messages={chatMessages}
+                        isLoading={isLoading}
+                        activeStreamMessageId={activeStreamMessageId}
+                        thinkingOpenById={thinkingOpenById}
+                        onToggleThinking={handleToggleThinking}
+                        sourcesPanelMessageId={sourcesPanelMessageId}
+                        onToggleSources={handleToggleSources}
+                        emptyLabel="Ask about this terminal — errors, commands, or what to do next."
+                        fullWidthBubbles
+                      />
+                    </Suspense>
                   </div>
                 </div>
               )}

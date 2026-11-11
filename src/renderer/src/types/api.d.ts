@@ -32,6 +32,7 @@ import type {
 } from '../../../shared/notes/note'
 import type { NoteAiRequest } from '../../../shared/notes/prompts'
 import type { UsageMetricsResult, UsageProjectsResult } from '../../../shared/system/usage'
+import type { OpenCodeUsageResult } from '../../../shared/ai/opencodeUsage'
 import type {
   CodeActivitySummary,
   CodeAgent,
@@ -91,7 +92,7 @@ interface CovenantAPI {
   config: {
     getConfig: () => Promise<AppConfig>
       saveApiKey: (apiKey: string) => void
-      saveOpenAISettings: (settings: { apiKey?: string; proxyUrl?: string; adminApiKey?: string }) => void
+      saveOpenAISettings: (settings: { apiKey?: string; proxyUrl?: string; adminApiKey?: string }) => Promise<void>
       markOnboarded: () => void
     getMcpServers: () => Promise<McpServer[]>
     saveMcpServer: (server: Partial<McpServer>) => Promise<McpServer[]>
@@ -144,7 +145,12 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
   ai: {
     listModels: (provider: string) => Promise<{ ok: true; models: Array<Record<string, unknown>> }>
     refreshModels: () => Promise<{ ok: true; models: Array<Record<string, unknown>> }>
-    getKeyStatus: () => Promise<{ opencode: boolean }>
+    getKeyStatus: () => Promise<{
+      openai: { configured: boolean; source: 'config' | 'env' | 'none' }
+      admin: { configured: boolean }
+      opencode: { configured: boolean }
+      search: { searxng: boolean; tavily: boolean; exa: boolean }
+    }>
     setOpencodeKey: (key: string) => Promise<{ ok: true } | { ok: false; error: string }>
     clearOpencodeKey: () => Promise<{ ok: true }>
     testOpencodeKey: () => Promise<{ ok: boolean; error?: string }>
@@ -153,12 +159,12 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
       secret: string
     ) => Promise<{ ok: true } | { ok: false; error: string }>
     clearSearchSecret: (provider: string) => Promise<{ ok: true } | { ok: false; error: string }>
-    testWebSearch: () => Promise<{ ok: boolean; message: string; resultCount?: number }>
+    testWebSearch: (provider?: string) => Promise<{ ok: boolean; message: string; resultCount?: number }>
   }
   usage: {
     getMetrics: (rangeDays?: number, projectId?: string, provider?: string) => Promise<UsageMetricsResult>
     getProjects: () => Promise<UsageProjectsResult>
-    clearLocal: () => void
+    getOpenCodeUsage: (rangeDays?: number) => Promise<OpenCodeUsageResult>
   }
   chat: {
     askCovenant: (
@@ -179,6 +185,7 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
   terminal: {
     startTerminal: (size?: { cols?: number; rows?: number }) => Promise<TerminalStartResult>
     sendInput: (sessionId: string, data: string) => Promise<{ success: boolean }>
+    typeInput: (sessionId: string, data: string) => void
     resize: (sessionId: string, cols: number, rows: number) => Promise<{ success: boolean }>
     killTerminal: (sessionId: string) => Promise<{ success: boolean }>
     onData: (callback: (sessionId: string, chunk: string) => void) => () => void

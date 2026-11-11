@@ -35,7 +35,8 @@ function dayStartSeconds(timestampMs: number): number {
 export function buildLocalUsageMetrics(
   entries: AiUsageEntry[],
   rangeDays: number,
-  now = Date.now()
+  now = Date.now(),
+  provider?: AiUsageEntry['provider']
 ): UsageMetrics {
   const endDate = new Date(now)
   const endDay = Math.floor(
@@ -43,7 +44,10 @@ export function buildLocalUsageMetrics(
   )
   const startTime = endDay - (rangeDays - 1) * DAY_SECONDS
   const endTime = endDay + DAY_SECONDS
-  const filtered = entries.filter((entry) => entry.timestamp / 1000 >= startTime)
+  const filtered = entries.filter(
+    (entry) =>
+      entry.timestamp / 1000 >= startTime && (provider === undefined || entry.provider === provider)
+  )
 
   const dailyMap = new Map<number, UsageCostPoint>()
   for (let index = 0; index < rangeDays; index += 1) {

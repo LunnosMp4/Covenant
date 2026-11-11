@@ -1,14 +1,8 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { AnimatePresence, motion, useAnimationControls, type Transition } from 'framer-motion'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense, type CSSProperties } from 'react'
+import { AnimatePresence, motion, useAnimationControls } from 'framer-motion'
 import { FADE_FAST, WINDOW_ENTER_TRANSITION, WINDOW_EXIT_TRANSITION } from './constants/motion'
 import ConfirmDeleteModal from './ui/ConfirmDeleteModal'
-import CustomSelect from './ui/CustomSelect'
-import McpServerFormModal from './settings/modals/McpServerFormModal'
-import McpServersTab, { type McpPreset } from './settings/tabs/McpServersTab'
-import PrepromptFormModal from './settings/modals/PrepromptFormModal'
-import WorkflowFormModal from './workflow/WorkflowFormModal'
-import PasteSettingsTab from './paste/PasteSettingsTab'
-import UsageTab from './settings/tabs/UsageTab'
+import type { McpPreset } from './settings/tabs/McpServersTab'
 import {
   DEFAULT_TERMINAL_FONT,
   normalizeTerminalFont
@@ -18,8 +12,8 @@ import {
   normalizeThemeGradient
 } from './constants/theme'
 import { applyThemeToDocument } from './utils/themeDom'
-import type { AppConfig, ButtonVisibility, NotesSettings, ReasoningEffort, ShortcutConfig } from '../../shared/config'
-import { DEFAULT_CHAT_MODEL, DEFAULT_NOTES_SETTINGS, DEFAULT_OPENCODE_CHAT_MODEL, DEFAULT_REASONING_EFFORT, DEFAULT_SHORTCUTS, DEFAULT_TEXTURE_INTENSITY, DEFAULT_WEB_SEARCH_PROVIDER, DEFAULT_WEB_SEARCH_TIMEOUT_MS, MAX_TEXTURE_INTENSITY, OPENCODE_MODEL_OPTIONS, TEXTURE_MAX_OPACITY, getModelOptionsForProvider, normalizeNotesSettings, type AiModelOption, type ChatProviderId, type OpenCodePlan, type WebSearchProviderId } from '../../shared/config'
+import type { ButtonVisibility, NotesSettings, ReasoningEffort, ShortcutConfig } from '../../shared/config'
+import { DEFAULT_CHAT_MODEL, DEFAULT_NOTES_SETTINGS, DEFAULT_OPENCODE_CHAT_MODEL, DEFAULT_REASONING_EFFORT, DEFAULT_SHORTCUTS, DEFAULT_TEXTURE_INTENSITY, DEFAULT_WEB_SEARCH_PROVIDER, DEFAULT_WEB_SEARCH_TIMEOUT_MS, MAX_TEXTURE_INTENSITY, OPENCODE_MODEL_OPTIONS, TEXTURE_MAX_OPACITY, getModelOptionFor, getModelOptionsForProvider, normalizeNotesSettings, type AiModelOption, type ChatProviderId, type OpenCodePlan, type WebSearchProviderId } from '../../shared/config'
 import type { UpdateStatus } from '../../shared/system/update'
 import {
   DEFAULT_PASTE_SETTINGS,
@@ -39,17 +33,61 @@ import {
   type SettingsTab
 } from './settings/constants'
 import { SidebarGlyph, MinimizeIcon, CloseIcon } from './settings/icons'
-import { MinimalistToggle, SectionCard } from './settings/primitives'
-import { ShortcutRecorder } from './settings/shortcutRecorder'
-import AppearanceTab from './settings/tabs/AppearanceTab'
-import GeneralTab from './settings/tabs/GeneralTab'
-import ProvidersTab from './settings/tabs/ProvidersTab'
-import TerminalTab from './settings/tabs/TerminalTab'
-import WorkflowsTab from './settings/tabs/WorkflowsTab'
-import PrepromptsTab from './settings/tabs/PrepromptsTab'
-import CodeTab from './settings/tabs/CodeTab'
-import NotesTab from './settings/tabs/NotesTab'
 import { DEFAULT_CODE_SETTINGS, type CodeModel, type CodeSettings, type CodeStatus } from '../../shared/code/code'
+
+// Each settings tab (and the heavier modal forms) is split into its own chunk
+// so opening Settings only parses the tab that is actually shown. The rest are
+// warmed on idle right after mount, which keeps tab switches instant.
+const GeneralTab = lazy(() => import('./settings/tabs/GeneralTab'))
+const AppearanceTab = lazy(() => import('./settings/tabs/AppearanceTab'))
+const ProvidersTab = lazy(() => import('./settings/tabs/ProvidersTab'))
+const ShortcutsTab = lazy(() => import('./settings/tabs/ShortcutsTab'))
+const WebSearchTab = lazy(() => import('./settings/tabs/WebSearchTab'))
+const UsageTab = lazy(() => import('./settings/tabs/UsageTab'))
+const TerminalTab = lazy(() => import('./settings/tabs/TerminalTab'))
+const WorkflowsTab = lazy(() => import('./settings/tabs/WorkflowsTab'))
+const PrepromptsTab = lazy(() => import('./settings/tabs/PrepromptsTab'))
+const McpServersTab = lazy(() => import('./settings/tabs/McpServersTab'))
+const NotesTab = lazy(() => import('./settings/tabs/NotesTab'))
+const CodeTab = lazy(() => import('./settings/tabs/CodeTab'))
+const PasteSettingsTab = lazy(() => import('./paste/PasteSettingsTab'))
+const WorkflowFormModal = lazy(() => import('./workflow/WorkflowFormModal'))
+const PrepromptFormModal = lazy(() => import('./settings/modals/PrepromptFormModal'))
+const McpServerFormModal = lazy(() => import('./settings/modals/McpServerFormModal'))
+
+let settingsPrefetchState: 'idle' | 'queued' | 'done' = 'idle'
+
+function scheduleSettingsPrefetch(): void {
+  if (settingsPrefetchState !== 'idle') return
+  settingsPrefetchState = 'queued'
+
+  const run = (): void => {
+    settingsPrefetchState = 'done'
+    void import('./settings/tabs/GeneralTab')
+    void import('./settings/tabs/AppearanceTab')
+    void import('./settings/tabs/ProvidersTab')
+    void import('./settings/tabs/ShortcutsTab')
+    void import('./settings/tabs/WebSearchTab')
+    void import('./settings/tabs/UsageTab')
+    void import('./settings/tabs/TerminalTab')
+    void import('./settings/tabs/WorkflowsTab')
+    void import('./settings/tabs/PrepromptsTab')
+    void import('./settings/tabs/McpServersTab')
+    void import('./settings/tabs/NotesTab')
+    void import('./settings/tabs/CodeTab')
+    void import('./paste/PasteSettingsTab')
+    void import('./workflow/WorkflowFormModal')
+    void import('./settings/modals/PrepromptFormModal')
+    void import('./settings/modals/McpServerFormModal')
+  }
+
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(run, { timeout: 2000 })
+    return
+  }
+  window.setTimeout(run, 200)
+}
+
 
 
 
@@ -65,40 +103,32 @@ import { DEFAULT_CODE_SETTINGS, type CodeModel, type CodeSettings, type CodeStat
 
 export default function Settings(): JSX.Element {
   const [activeTab, setActiveTab] = useState<SettingsTab>(getInitialTab)
-  const [apiKey, setApiKey] = useState('')
-  const [adminApiKey, setAdminApiKey] = useState('')
   const [usageProjectId, setUsageProjectId] = useState('')
   const [proxyUrl, setProxyUrl] = useState('')
   const [isConfigLoaded, setIsConfigLoaded] = useState(false)
-  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false)
   const [selectedTheme, setSelectedTheme] = useState(DEFAULT_THEME_GRADIENT)
   const [launchOnStartup, setLaunchOnStartup] = useState(true)
   const [terminalFont, setTerminalFont] = useState(DEFAULT_TERMINAL_FONT)
   const [preferredShell, setPreferredShell] = useState<string | undefined>(undefined)
-  const [isSavingApiKey, setIsSavingApiKey] = useState(false)
-  const [saveFeedbackMessage, setSaveFeedbackMessage] = useState('')
-  const [isSavingAdminKey, setIsSavingAdminKey] = useState(false)
-  const [adminKeyFeedbackMessage, setAdminKeyFeedbackMessage] = useState('')
-  const [chatModel, setChatModel] = useState(DEFAULT_CHAT_MODEL)
+  const [hasOpenAIKey, setHasOpenAIKey] = useState(false)
+  const [openaiKeySource, setOpenaiKeySource] = useState<'config' | 'env' | 'none'>('none')
+  const [hasAdminKey, setHasAdminKey] = useState(false)
+  const [openaiChatModel, setOpenaiChatModel] = useState(DEFAULT_CHAT_MODEL)
   const [chatProvider, setChatProvider] = useState<ChatProviderId>('openai')
+  const chatProviderRef = useRef<ChatProviderId>('openai')
   const [opencodeChatModel, setOpencodeChatModel] = useState(DEFAULT_OPENCODE_CHAT_MODEL)
   const [opencodePlan, setOpencodePlan] = useState<OpenCodePlan>('go')
   const [opencodeModels, setOpencodeModels] = useState<AiModelOption[]>(OPENCODE_MODEL_OPTIONS)
   const [hasOpenCodeKey, setHasOpenCodeKey] = useState(false)
-  const [opencodeKey, setOpencodeKey] = useState('')
-  const [opencodeFeedback, setOpencodeFeedback] = useState('')
-  const [opencodeTesting, setOpencodeTesting] = useState(false)
   const [webSearchProvider, setWebSearchProvider] = useState<WebSearchProviderId>(DEFAULT_WEB_SEARCH_PROVIDER)
   const [webSearchSearxngUrl, setWebSearchSearxngUrl] = useState('')
   const [webSearchSearxngAuthType, setWebSearchSearxngAuthType] = useState<'none' | 'basic' | 'bearer'>('none')
   const [webSearchSearxngUsername, setWebSearchSearxngUsername] = useState('')
-  const [webSearchSearxngSecret, setWebSearchSearxngSecret] = useState('')
   const [webSearchSearxngAllowInsecure, setWebSearchSearxngAllowInsecure] = useState(false)
   const [webSearchBypassProxyForLocal, setWebSearchBypassProxyForLocal] = useState(true)
   const [webSearchFallbackProvider, setWebSearchFallbackProvider] = useState('none')
   const [webSearchTimeoutMs, setWebSearchTimeoutMs] = useState(DEFAULT_WEB_SEARCH_TIMEOUT_MS)
-  const [webSearchFeedback, setWebSearchFeedback] = useState('')
-  const [webSearchTesting, setWebSearchTesting] = useState(false)
+  const [hasSearchSecrets, setHasSearchSecrets] = useState({ searxng: false, tavily: false, exa: false })
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT)
   const [enableWebSearch, setEnableWebSearch] = useState(true)
   const [autoCollapseReasoning, setAutoCollapseReasoning] = useState(true)
@@ -145,11 +175,17 @@ export default function Settings(): JSX.Element {
   const [isClosing, setIsClosing] = useState(false)
   const [usageRefreshSignal, setUsageRefreshSignal] = useState(0)
   const texturePersistTimer = useRef<number | null>(null)
+  const proxyPersistTimer = useRef<number | null>(null)
 
   useEffect(() => {
+    scheduleSettingsPrefetch()
+
     return () => {
       if (texturePersistTimer.current !== null) {
         window.clearTimeout(texturePersistTimer.current)
+      }
+      if (proxyPersistTimer.current !== null) {
+        window.clearTimeout(proxyPersistTimer.current)
       }
     }
   }, [])
@@ -161,6 +197,18 @@ export default function Settings(): JSX.Element {
   const dragRegionStyle = { WebkitAppRegion: 'drag' } as CSSProperties
   const noDragRegionStyle = { WebkitAppRegion: 'no-drag' } as CSSProperties
 
+  const refreshKeyStatus = async (): Promise<void> => {
+    const status = await window.api?.ai?.getKeyStatus?.()
+    if (!status) return
+    setHasOpenAIKey(status.openai.configured)
+    setOpenaiKeySource(status.openai.source)
+    setHasAdminKey(status.admin.configured)
+    setHasOpenCodeKey(status.opencode.configured)
+    setHasSearchSecrets(
+      status.search ?? { searxng: false, tavily: false, exa: false }
+    )
+  }
+
   useEffect(() => {
     let isMounted = true
 
@@ -171,8 +219,6 @@ export default function Settings(): JSX.Element {
         const config = await window.api.config.getConfig()
         if (!isMounted) return
 
-        setApiKey(typeof config.apiKey === 'string' ? config.apiKey : '')
-        setAdminApiKey(typeof config.adminApiKey === 'string' ? config.adminApiKey : '')
         setUsageProjectId(typeof config.usageProjectId === 'string' ? config.usageProjectId : '')
         setProxyUrl(typeof config.proxyUrl === 'string' ? config.proxyUrl : '')
         setSelectedTheme(normalizeThemeGradient(config.themeGradient))
@@ -180,8 +226,10 @@ export default function Settings(): JSX.Element {
         setTerminalFont(normalizeTerminalFont(config.terminalFont))
         setPreferredShell(typeof config.preferredShell === 'string' ? config.preferredShell : undefined)
         setMcpServers(Array.isArray(config.mcpServers) ? config.mcpServers : [])
-        setChatModel(typeof config.chatModel === 'string' && config.chatModel.trim() ? config.chatModel : DEFAULT_CHAT_MODEL)
-        setChatProvider(config.chatProvider === 'opencode' ? 'opencode' : 'openai')
+        setOpenaiChatModel(typeof config.chatModel === 'string' && config.chatModel.trim() ? config.chatModel : DEFAULT_CHAT_MODEL)
+        const nextProvider = config.chatProvider === 'opencode' ? 'opencode' : 'openai'
+        chatProviderRef.current = nextProvider
+        setChatProvider(nextProvider)
         setOpencodeChatModel(config.opencodeChatModel || DEFAULT_OPENCODE_CHAT_MODEL)
         setOpencodePlan(config.opencodePlan === 'payg' ? 'payg' : 'go')
         setWebSearchProvider(config.webSearchProvider ?? DEFAULT_WEB_SEARCH_PROVIDER)
@@ -192,9 +240,7 @@ export default function Settings(): JSX.Element {
         setWebSearchBypassProxyForLocal(config.webSearchBypassProxyForLocal !== false)
         setWebSearchFallbackProvider(config.webSearchFallbackProvider ?? 'none')
         setWebSearchTimeoutMs(config.webSearchTimeoutMs ?? DEFAULT_WEB_SEARCH_TIMEOUT_MS)
-        void window.api?.ai?.getKeyStatus?.().then((status) => {
-          if (status) setHasOpenCodeKey(status.opencode)
-        })
+        void refreshKeyStatus()
         void window.api?.ai?.listModels?.('opencode').then((result) => {
           if (result?.ok && Array.isArray(result.models) && result.models.length > 0) {
             setOpencodeModels(result.models as unknown as AiModelOption[])
@@ -218,8 +264,11 @@ export default function Settings(): JSX.Element {
         setIsConfigLoaded(true)
       } catch {
         if (!isMounted) return
-        setApiKey('')
-        setAdminApiKey('')
+        setHasOpenAIKey(false)
+        setOpenaiKeySource('none')
+        setHasAdminKey(false)
+        setHasOpenCodeKey(false)
+        setHasSearchSecrets({ searxng: false, tavily: false, exa: false })
         setUsageProjectId('')
         setProxyUrl('')
         setSelectedTheme(DEFAULT_THEME_GRADIENT)
@@ -227,7 +276,7 @@ export default function Settings(): JSX.Element {
         setTerminalFont(DEFAULT_TERMINAL_FONT)
         setPreferredShell(undefined)
         setMcpServers([])
-        setChatModel(DEFAULT_CHAT_MODEL)
+        setOpenaiChatModel(DEFAULT_CHAT_MODEL)
         setButtonVisibility({ workflow: true, tasks: true, notes: true, code: true })
         setLauncherShowSystemApps(false)
         setAutoUpdate(true)
@@ -239,11 +288,17 @@ export default function Settings(): JSX.Element {
     void loadConfig()
 
     const unsubChatModel = window.api?.config.onChatModelUpdated?.((newChatModel) => {
-      setChatModel(newChatModel)
+      if (chatProviderRef.current === 'opencode') {
+        setOpencodeChatModel(newChatModel)
+      } else {
+        setOpenaiChatModel(newChatModel)
+      }
     })
 
     const unsubChatProvider = window.api?.config.onChatProviderUpdated?.((provider) => {
-      setChatProvider(provider === 'opencode' ? 'opencode' : 'openai')
+      const nextProvider = provider === 'opencode' ? 'opencode' : 'openai'
+      chatProviderRef.current = nextProvider
+      setChatProvider(nextProvider)
     })
 
     const unsubOpencodeChatModel = window.api?.config.onOpencodeChatModelUpdated?.((model) => {
@@ -481,38 +536,42 @@ const handleMinimizeWindow = (): void => {
     setIsClosing(true)
   }
 
-  const handleSaveOpenAISettings = (): void => {
-    if (!isConfigLoaded) return
-    try {
-      setIsSavingApiKey(true)
-      if (window.api?.config.saveOpenAISettings) {
-        // Only submit the General tab's own fields; the admin key is owned by
-        // the Usage tab so we don't clobber it with possibly-stale state.
-        window.api.config.saveOpenAISettings({ apiKey, proxyUrl })
-      } else {
-        window.api?.config.saveApiKey?.(apiKey)
-      }
-
-      setSaveFeedbackMessage('OpenAI settings saved locally.')
-      setUsageRefreshSignal((value) => value + 1)
-      window.setTimeout(() => setSaveFeedbackMessage(''), 1800)
-    } finally {
-      setIsSavingApiKey(false)
+  const handleProxyUrlChange = (value: string): void => {
+    setProxyUrl(value)
+    if (proxyPersistTimer.current !== null) {
+      window.clearTimeout(proxyPersistTimer.current)
     }
+    proxyPersistTimer.current = window.setTimeout(() => {
+      proxyPersistTimer.current = null
+      void window.api?.config.saveOpenAISettings?.({ proxyUrl: value })
+    }, 300)
   }
 
-  const handleSaveAdminKey = (): void => {
-    if (!isConfigLoaded) return
-    try {
-      setIsSavingAdminKey(true)
-      window.api?.config.saveOpenAISettings?.({ adminApiKey })
+  const handleSaveOpenAIKey = async (key: string): Promise<{ ok: boolean; error?: string }> => {
+    await window.api?.config.saveOpenAISettings?.({ apiKey: key })
+    setHasOpenAIKey(true)
+    setOpenaiKeySource('config')
+    setUsageRefreshSignal((value) => value + 1)
+    return { ok: true }
+  }
 
-      setAdminKeyFeedbackMessage('Admin API key saved locally.')
-      setUsageRefreshSignal((value) => value + 1)
-      window.setTimeout(() => setAdminKeyFeedbackMessage(''), 1800)
-    } finally {
-      setIsSavingAdminKey(false)
-    }
+  const handleClearOpenAIKey = async (): Promise<void> => {
+    await window.api?.config.saveOpenAISettings?.({ apiKey: '' })
+    await refreshKeyStatus()
+    setUsageRefreshSignal((value) => value + 1)
+  }
+
+  const handleSaveAdminKey = async (key: string): Promise<{ ok: boolean; error?: string }> => {
+    await window.api?.config.saveOpenAISettings?.({ adminApiKey: key })
+    setHasAdminKey(true)
+    setUsageRefreshSignal((value) => value + 1)
+    return { ok: true }
+  }
+
+  const handleClearAdminKey = async (): Promise<void> => {
+    await window.api?.config.saveOpenAISettings?.({ adminApiKey: '' })
+    setHasAdminKey(false)
+    setUsageRefreshSignal((value) => value + 1)
   }
 
   const handleUsageProjectChange = (projectId: string): void => {
@@ -737,22 +796,19 @@ const handleMinimizeWindow = (): void => {
   }
 
   const handleChatModelChange = (model: string): void => {
-    setChatModel(model)
+    setOpenaiChatModel(model)
     window.api?.config.updateChatModel?.(model)
   }
 
   const handleChatProviderChange = (provider: ChatProviderId): void => {
+    chatProviderRef.current = provider
     setChatProvider(provider)
     window.api?.config.updateChatProvider?.(provider)
-    const nextModel =
-      provider === 'opencode' ? opencodeChatModel : chatModel
-    setChatModel(nextModel)
   }
 
   const handleOpencodeChatModelChange = (model: string): void => {
     setOpencodeChatModel(model)
     window.api?.config.updateOpencodeChatModel?.(model)
-    if (chatProvider === 'opencode') setChatModel(model)
   }
 
   const handleOpencodePlanChange = (plan: OpenCodePlan): void => {
@@ -768,35 +824,27 @@ const handleMinimizeWindow = (): void => {
     })
   }
 
-  const handleSaveOpencodeKey = (): void => {
-    if (!opencodeKey.trim()) return
-    setOpencodeFeedback('Saving…')
-    void window.api?.ai?.setOpencodeKey?.(opencodeKey.trim()).then((result) => {
-      if (result?.ok) {
-        setHasOpenCodeKey(true)
-        setOpencodeKey('')
-        setOpencodeFeedback('Key saved.')
-        handleRefreshOpencodeModels()
-      } else {
-        setOpencodeFeedback(result && !result.ok ? result.error : 'Failed to save key.')
-      }
-    })
+  const handleSaveOpencodeKey = async (key: string): Promise<{ ok: boolean; error?: string }> => {
+    const result = await window.api?.ai?.setOpencodeKey?.(key)
+    if (result?.ok) {
+      setHasOpenCodeKey(true)
+      handleRefreshOpencodeModels()
+      return { ok: true }
+    }
+    return {
+      ok: false,
+      error: result && !result.ok ? result.error : 'Failed to save key.'
+    }
   }
 
-  const handleClearOpencodeKey = (): void => {
-    void window.api?.ai?.clearOpencodeKey?.().then(() => {
-      setHasOpenCodeKey(false)
-      setOpencodeFeedback('Key removed.')
-    })
+  const handleClearOpencodeKey = async (): Promise<void> => {
+    await window.api?.ai?.clearOpencodeKey?.()
+    setHasOpenCodeKey(false)
   }
 
-  const handleTestOpencodeKey = (): void => {
-    setOpencodeTesting(true)
-    setOpencodeFeedback('')
-    void window.api?.ai?.testOpencodeKey?.().then((result) => {
-      setOpencodeTesting(false)
-      setOpencodeFeedback(result?.ok ? 'Connection successful.' : result?.error ?? 'Connection failed.')
-    })
+  const handleTestOpencodeKey = async (): Promise<{ ok: boolean; error?: string }> => {
+    const result = await window.api?.ai?.testOpencodeKey?.()
+    return result ?? { ok: false, error: 'Connection failed.' }
   }
 
   const updateWebSearchSettings = (patch: Record<string, unknown>): void => {
@@ -843,33 +891,34 @@ const handleMinimizeWindow = (): void => {
     updateWebSearchSettings({ webSearchTimeoutMs: value })
   }
 
-  const handleSaveSearchSecret = (): void => {
-    if (!webSearchSearxngSecret.trim()) return
-    setWebSearchFeedback('Saving…')
-    void window.api?.ai?.setSearchSecret?.(webSearchProvider, webSearchSearxngSecret.trim()).then((result) => {
-      if (result?.ok) {
-        setWebSearchSearxngSecret('')
-        setWebSearchFeedback('Credential saved.')
-      } else {
-        setWebSearchFeedback(result && !result.ok ? result.error : 'Failed to save credential.')
-      }
-    })
+  const handleSaveSearchSecret = async (
+    provider: 'searxng' | 'tavily' | 'exa',
+    secret: string
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const result = await window.api?.ai?.setSearchSecret?.(provider, secret)
+    if (result?.ok) {
+      setHasSearchSecrets((current) => ({ ...current, [provider]: true }))
+      return { ok: true }
+    }
+    return {
+      ok: false,
+      error: result && !result.ok ? result.error : 'Failed to save credential.'
+    }
   }
 
-  const handleClearSearchSecret = (): void => {
-    void window.api?.ai?.clearSearchSecret?.(webSearchProvider).then((result) => {
-      if (result?.ok) setWebSearchSearxngSecret('')
-      setWebSearchFeedback(result?.ok ? 'Credential removed.' : result?.error ?? 'Failed to remove credential.')
-    })
+  const handleClearSearchSecret = async (provider: 'searxng' | 'tavily' | 'exa'): Promise<void> => {
+    const result = await window.api?.ai?.clearSearchSecret?.(provider)
+    if (!result?.ok) {
+      throw new Error(result && !result.ok ? result.error : 'Failed to remove credential.')
+    }
+    setHasSearchSecrets((current) => ({ ...current, [provider]: false }))
   }
 
-  const handleTestWebSearch = (): void => {
-    setWebSearchTesting(true)
-    setWebSearchFeedback('')
-    void window.api?.ai?.testWebSearch?.().then((result) => {
-      setWebSearchTesting(false)
-      setWebSearchFeedback(result?.message ?? 'Search test failed.')
-    })
+  const handleTestWebSearch = async (
+    provider?: WebSearchProviderId
+  ): Promise<{ ok: boolean; message: string }> => {
+    const result = await window.api?.ai?.testWebSearch?.(provider)
+    return result ?? { ok: false, message: 'Search test failed.' }
   }
 
   const handleReasoningEffortChange = (effort: ReasoningEffort): void => {
@@ -1086,26 +1135,11 @@ const handleMinimizeWindow = (): void => {
     })
   }
 
-  const handleSetCodeApiKey = async (key: string): Promise<{ ok: boolean; error?: string }> => {
-    const result = await window.api?.code?.setApiKey(key)
-    if (result?.success) {
-      setCodeStatus(result.status)
-      void refreshCodeStatus()
-      return { ok: true }
-    }
-    return { ok: false, error: result && !result.success ? result.error : 'Failed to save key.' }
-  }
-
-  const handleClearCodeApiKey = async (): Promise<void> => {
-    const result = await window.api?.code?.clearApiKey()
-    if (result?.success) setCodeStatus(result.status)
-  }
-
   const handleTestCodeConnection = async (): Promise<{ ok: boolean; error?: string }> => {
     const result = await window.api?.code?.testConnection()
     if (result?.success) {
       void refreshCodeStatus()
-      return { ok: result.connected, error: result.connected ? undefined : 'OpenCode Go is not connected.' }
+      return { ok: result.connected, error: result.connected ? undefined : 'OpenCode is not connected.' }
     }
     return { ok: false, error: result && !result.success ? result.error : 'Connection failed.' }
   }
@@ -1123,17 +1157,29 @@ const handleMinimizeWindow = (): void => {
     return { ok: false, error: result && !result.success ? result.error : 'Restart failed.' }
   }
 
+  const activeModelOption = useMemo(() => {
+    if (chatProvider === 'opencode') {
+      return (
+        opencodeModels.find((model) => model.id === opencodeChatModel) ??
+        getModelOptionFor('opencode', opencodeChatModel)
+      )
+    }
+    return getModelOptionsForProvider('openai').find((model) => model.id === openaiChatModel)
+  }, [chatProvider, openaiChatModel, opencodeChatModel, opencodeModels])
+
   const pageTitle = useMemo(() => {
     if (activeTab === 'general') return 'General'
-    if (activeTab === 'providers') return 'AI Provider'
-    if (activeTab === 'usage') return 'Usage & Cost'
+    if (activeTab === 'providers') return 'Providers & Keys'
+    if (activeTab === 'websearch') return 'Web Search'
+    if (activeTab === 'shortcuts') return 'Shortcuts'
+    if (activeTab === 'usage') return 'Usage & Billing'
     if (activeTab === 'appearance') return 'Appearance'
     if (activeTab === 'terminal') return 'Terminal'
     if (activeTab === 'workflow') return 'Workflows'
     if (activeTab === 'preprompts') return 'Instructions'
     if (activeTab === 'mcp') return 'MCP Servers'
     if (activeTab === 'notes') return 'Notes & Meetings'
-    if (activeTab === 'code') return 'OpenCode'
+    if (activeTab === 'code') return 'Covenant Code'
     return 'Clipboard'
   }, [activeTab])
 
@@ -1230,27 +1276,22 @@ const handleMinimizeWindow = (): void => {
               <h2 className="mt-2 text-2xl font-semibold tracking-[-0.02em] text-neutral-100">{pageTitle}</h2>
             </header>
 
+            <Suspense fallback={null}>
             {activeTab === 'general' && (
               <GeneralTab
-                apiKey={apiKey}
-                onApiKeyChange={setApiKey}
                 proxyUrl={proxyUrl}
-                onProxyUrlChange={setProxyUrl}
-                isAdvancedOpen={isAdvancedOpen}
-                onToggleAdvanced={() => setIsAdvancedOpen((current) => !current)}
-                onSaveOpenAISettings={handleSaveOpenAISettings}
-                isSavingApiKey={isSavingApiKey}
-                isConfigLoaded={isConfigLoaded}
-                saveFeedbackMessage={saveFeedbackMessage}
+                onProxyUrlChange={handleProxyUrlChange}
                 launchOnStartup={launchOnStartup}
                 onLaunchOnStartupChange={handleLaunchOnStartupChange}
-                autoCollapseReasoning={autoCollapseReasoning}
-                onAutoCollapseReasoningChange={handleAutoCollapseReasoningChange}
                 autoUpdate={autoUpdate}
                 onAutoUpdateChange={handleAutoUpdateChange}
                 updateStatus={updateStatus}
                 onCheckForUpdates={handleCheckForUpdates}
                 onInstallUpdate={handleInstallUpdate}
+              />
+            )}
+            {activeTab === 'shortcuts' && (
+              <ShortcutsTab
                 shortcuts={shortcuts}
                 onShortcutChange={handleShortcutChange}
               />
@@ -1259,7 +1300,7 @@ const handleMinimizeWindow = (): void => {
               <ProvidersTab
                 chatProvider={chatProvider}
                 onChatProviderChange={handleChatProviderChange}
-                chatModel={chatModel}
+                chatModel={openaiChatModel}
                 onChatModelChange={handleChatModelChange}
                 opencodeChatModel={opencodeChatModel}
                 onOpencodeChatModelChange={handleOpencodeChatModelChange}
@@ -1267,18 +1308,28 @@ const handleMinimizeWindow = (): void => {
                 onOpencodePlanChange={handleOpencodePlanChange}
                 opencodeModels={opencodeModels}
                 onRefreshModels={handleRefreshOpencodeModels}
+                hasOpenAIKey={hasOpenAIKey}
+                openaiKeySource={openaiKeySource}
                 hasOpenCodeKey={hasOpenCodeKey}
-                opencodeKey={opencodeKey}
-                onOpencodeKeyChange={setOpencodeKey}
+                onSaveOpenAIKey={handleSaveOpenAIKey}
+                onClearOpenAIKey={handleClearOpenAIKey}
                 onSaveOpencodeKey={handleSaveOpencodeKey}
                 onClearOpencodeKey={handleClearOpencodeKey}
                 onTestOpencodeKey={handleTestOpencodeKey}
-                opencodeFeedback={opencodeFeedback}
-                opencodeTesting={opencodeTesting}
                 reasoningEffort={reasoningEffort}
                 onReasoningEffortChange={handleReasoningEffortChange}
+                autoCollapseReasoning={autoCollapseReasoning}
+                onAutoCollapseReasoningChange={handleAutoCollapseReasoningChange}
+                isConfigLoaded={isConfigLoaded}
+              />
+            )}
+            {activeTab === 'websearch' && (
+              <WebSearchTab
                 enableWebSearch={enableWebSearch}
                 onWebSearchChange={handleWebSearchChange}
+                chatProvider={chatProvider}
+                activeModelOption={activeModelOption}
+                hasOpenAIKey={hasOpenAIKey}
                 webSearchProvider={webSearchProvider}
                 onWebSearchProviderChange={handleWebSearchProviderChange}
                 webSearchSearxngUrl={webSearchSearxngUrl}
@@ -1287,8 +1338,6 @@ const handleMinimizeWindow = (): void => {
                 onWebSearchSearxngAuthTypeChange={handleWebSearchSearxngAuthTypeChange}
                 webSearchSearxngUsername={webSearchSearxngUsername}
                 onWebSearchSearxngUsernameChange={handleWebSearchSearxngUsernameChange}
-                webSearchSearxngSecret={webSearchSearxngSecret}
-                onWebSearchSearxngSecretChange={setWebSearchSearxngSecret}
                 webSearchSearxngAllowInsecure={webSearchSearxngAllowInsecure}
                 onWebSearchSearxngAllowInsecureChange={handleWebSearchSearxngAllowInsecureChange}
                 webSearchBypassProxyForLocal={webSearchBypassProxyForLocal}
@@ -1297,26 +1346,26 @@ const handleMinimizeWindow = (): void => {
                 onWebSearchFallbackProviderChange={handleWebSearchFallbackProviderChange}
                 webSearchTimeoutMs={webSearchTimeoutMs}
                 onWebSearchTimeoutMsChange={handleWebSearchTimeoutMsChange}
+                hasSearchSecrets={hasSearchSecrets}
                 onSaveSearchSecret={handleSaveSearchSecret}
                 onClearSearchSecret={handleClearSearchSecret}
                 onTestWebSearch={handleTestWebSearch}
-                webSearchFeedback={webSearchFeedback}
-                webSearchTesting={webSearchTesting}
+                onNavigateToProviders={() => setActiveTab('providers')}
                 isConfigLoaded={isConfigLoaded}
               />
             )}
             {activeTab === 'usage' && (
               <UsageTab
-                adminKey={adminApiKey}
-                onAdminKeyChange={setAdminApiKey}
+                hasAdminKey={hasAdminKey}
                 onSaveAdminKey={handleSaveAdminKey}
-                isSavingAdminKey={isSavingAdminKey}
+                onClearAdminKey={handleClearAdminKey}
                 isConfigLoaded={isConfigLoaded}
-                adminKeyFeedback={adminKeyFeedbackMessage}
                 refreshSignal={usageRefreshSignal}
                 projectId={usageProjectId}
                 onProjectChange={handleUsageProjectChange}
                 chatProvider={chatProvider}
+                hasOpenCodeKey={hasOpenCodeKey}
+                onNavigateToProviders={() => setActiveTab('providers')}
               />
             )}
             {activeTab === 'appearance' && (
@@ -1397,6 +1446,8 @@ const handleMinimizeWindow = (): void => {
                     ? opencodeModels
                     : getModelOptionsForProvider('openai')
                 }
+                hasOpenAIKey={hasOpenAIKey}
+                onOpenProviders={() => setActiveTab('providers')}
               />
             )}
             {activeTab === 'code' && (
@@ -1405,29 +1456,31 @@ const handleMinimizeWindow = (): void => {
                 status={codeStatus}
                 models={codeModels}
                 onSettingsChange={handleCodeSettingsChange}
-                onSetApiKey={handleSetCodeApiKey}
-                onClearApiKey={handleClearCodeApiKey}
+                onManageKey={() => setActiveTab('providers')}
                 onTestConnection={handleTestCodeConnection}
                 onRestartRuntime={handleRestartCodeRuntime}
                 onOpenLogs={() => void window.api?.code?.openLogs()}
               />
             )}
+            </Suspense>
             </motion.div>
           </main>
         </div>
       </div>
 
-      <AnimatePresence>
-        {isWorkflowFormOpen ? (
-          <WorkflowFormModal
-            initialData={editingWorkflow}
-            onCancel={handleCloseWorkflowForm}
-            onSave={(payload) => {
-              void handleSaveWorkflow(payload)
-            }}
-          />
-        ) : null}
-      </AnimatePresence>
+      <Suspense fallback={null}>
+        <AnimatePresence>
+          {isWorkflowFormOpen ? (
+            <WorkflowFormModal
+              initialData={editingWorkflow}
+              onCancel={handleCloseWorkflowForm}
+              onSave={(payload) => {
+                void handleSaveWorkflow(payload)
+              }}
+            />
+          ) : null}
+        </AnimatePresence>
+      </Suspense>
 
       <AnimatePresence>
         {deletingWorkflow ? (
@@ -1442,17 +1495,19 @@ const handleMinimizeWindow = (): void => {
         ) : null}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {isPrepromptFormOpen ? (
-          <PrepromptFormModal
-            initialData={editingPreprompt}
-            onCancel={handleClosePrepromptForm}
-            onSave={(payload) => {
-              void handleSavePreprompt(payload)
-            }}
-          />
-        ) : null}
-      </AnimatePresence>
+      <Suspense fallback={null}>
+        <AnimatePresence>
+          {isPrepromptFormOpen ? (
+            <PrepromptFormModal
+              initialData={editingPreprompt}
+              onCancel={handleClosePrepromptForm}
+              onSave={(payload) => {
+                void handleSavePreprompt(payload)
+              }}
+            />
+          ) : null}
+        </AnimatePresence>
+      </Suspense>
 
       <AnimatePresence>
         {deletingPreprompt ? (
@@ -1467,18 +1522,20 @@ const handleMinimizeWindow = (): void => {
         ) : null}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {isMcpFormOpen ? (
-          <McpServerFormModal
-            initialData={editingMcpServer}
-            seed={mcpFormSeed}
-            onCancel={handleCloseMcpForm}
-            onSave={(payload) => {
-              void handleSaveMcpServer(payload)
-            }}
-          />
-        ) : null}
-      </AnimatePresence>
+      <Suspense fallback={null}>
+        <AnimatePresence>
+          {isMcpFormOpen ? (
+            <McpServerFormModal
+              initialData={editingMcpServer}
+              seed={mcpFormSeed}
+              onCancel={handleCloseMcpForm}
+              onSave={(payload) => {
+                void handleSaveMcpServer(payload)
+              }}
+            />
+          ) : null}
+        </AnimatePresence>
+      </Suspense>
 
       <AnimatePresence>
         {deletingMcpServer ? (

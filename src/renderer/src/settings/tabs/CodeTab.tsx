@@ -10,8 +10,7 @@ interface CodeTabProps {
   status: (CodeStatus & { hasApiKey: boolean }) | null
   models: CodeModel[]
   onSettingsChange: (patch: Partial<CodeSettings>) => void
-  onSetApiKey: (key: string) => Promise<{ ok: boolean; error?: string }>
-  onClearApiKey: () => Promise<void>
+  onManageKey: () => void
   onTestConnection: () => Promise<{ ok: boolean; error?: string }>
   onRestartRuntime: () => Promise<{ ok: boolean; error?: string }>
   onOpenLogs: () => void
@@ -29,15 +28,11 @@ export default function CodeTab({
   status,
   models,
   onSettingsChange,
-  onSetApiKey,
-  onClearApiKey,
+  onManageKey,
   onTestConnection,
   onRestartRuntime,
   onOpenLogs
 }: CodeTabProps): JSX.Element {
-  const [apiKey, setApiKey] = useState('')
-  const [authMessage, setAuthMessage] = useState<string | null>(null)
-  const [authBusy, setAuthBusy] = useState(false)
   const [testMessage, setTestMessage] = useState<string | null>(null)
   const [restartMessage, setRestartMessage] = useState<string | null>(null)
   const [connections, setConnections] = useState<CodeConnection[]>([])
@@ -98,20 +93,6 @@ export default function CodeTab({
     (model) => `${model.providerID}/${model.id}` === settings.defaultModel
   )
   const variants = selectedModel?.variants ?? []
-
-  const handleSaveKey = async (): Promise<void> => {
-    if (!apiKey.trim()) return
-    setAuthBusy(true)
-    setAuthMessage(null)
-    const result = await onSetApiKey(apiKey.trim())
-    setAuthBusy(false)
-    if (result.ok) {
-      setApiKey('')
-      setAuthMessage('Connected.')
-    } else {
-      setAuthMessage(result.error ?? 'Failed to save key.')
-    }
-  }
 
   const handleTest = async (): Promise<void> => {
     setTestMessage(null)
@@ -250,38 +231,33 @@ export default function CodeTab({
         </div>
       </SectionCard>
 
-      <SectionCard title="OpenCode Go" description="Subscribe at opencode.ai, then paste your Go API key. Stored securely on this device.">
+      <SectionCard
+        title="OpenCode account"
+        description="Covenant Code uses the same OpenCode API key as chat. There is only one key to manage."
+      >
         <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              placeholder={status?.hasApiKey ? '•••••••• (saved)' : 'Paste your Go API key'}
-              className="flex-1 rounded-md border border-neutral-700/70 bg-neutral-950/60 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-500"
-            />
-            <button
-              type="button"
-              onClick={() => void handleSaveKey()}
-              disabled={authBusy || !apiKey.trim()}
-              className="pressable btn-primary rounded-md px-3 py-2 text-xs font-medium disabled:opacity-40"
-            >
-              Save
-            </button>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm text-neutral-200">
+                {status?.hasApiKey ? 'API key connected' : 'No OpenCode API key'}
+              </p>
+              <p className="mt-1 text-xs text-neutral-500">
+                {status?.hasApiKey
+                  ? 'The key is stored securely on this device and shared with chat.'
+                  : 'Add your OpenCode API key to use chat and Covenant Code.'}
+              </p>
+            </div>
+            <span className={`text-xs ${status?.hasApiKey ? 'text-emerald-300' : 'text-amber-300'}`}>
+              {status?.hasApiKey ? 'Connected' : 'Missing'}
+            </span>
           </div>
-          <div className="flex items-center justify-between text-xs text-neutral-400">
-            <span>{status?.hasApiKey ? 'A key is stored for this device.' : 'No key stored.'}</span>
-            {status?.hasApiKey && (
-              <button
-                type="button"
-                onClick={() => void onClearApiKey()}
-                className="hover:text-red-400"
-              >
-                Disconnect
-              </button>
-            )}
-          </div>
-          {authMessage && <p className="text-xs text-neutral-400">{authMessage}</p>}
+          <button
+            type="button"
+            onClick={onManageKey}
+            className="pressable rounded-md border border-neutral-700 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:border-neutral-500 hover:text-white"
+          >
+            Manage API key in Providers &amp; Keys
+          </button>
         </div>
       </SectionCard>
 

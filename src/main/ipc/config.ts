@@ -30,7 +30,15 @@ const VALID_REASONING_EFFORTS = ['low', 'medium', 'high']
 
 export function registerConfigIpc(): void {
   ipcMain.handle('get-config', () => {
-    return readConfig()
+    const config = readConfig()
+    // Secrets never cross the context bridge. The renderer receives only a
+    // "configured" flag from `ai:key-status` and writes new values back
+    // through `save-openai-settings`.
+    return {
+      ...config,
+      apiKey: '',
+      adminApiKey: ''
+    }
   })
 
   ipcMain.on('save-api-key', (_event, key: string) => {
@@ -38,7 +46,7 @@ export function registerConfigIpc(): void {
     updateConfig({ apiKey })
   })
 
-  ipcMain.on('save-openai-settings', (_event, payload: { apiKey?: string; proxyUrl?: string; adminApiKey?: string }) => {
+  ipcMain.handle('save-openai-settings', (_event, payload: { apiKey?: string; proxyUrl?: string; adminApiKey?: string }) => {
     // Only patch fields the renderer actually sends. The command bar's OpenAI
     // key save and the Usage tab's admin key save share this channel, so treating
     // an absent field as an empty string would wipe the sibling key.

@@ -5,6 +5,7 @@
 export type ChatProviderId = 'openai' | 'opencode'
 export type OpenCodePlan = 'go' | 'payg'
 export type WebSearchProviderId =
+  | 'auto'
   | 'openai'
   | 'searxng'
   | 'tavily'
@@ -42,7 +43,7 @@ export interface AiModelOption {
 
 export const DEFAULT_CHAT_PROVIDER: ChatProviderId = 'openai'
 export const DEFAULT_OPENCODE_CHAT_MODEL = 'gpt-6-luna'
-export const DEFAULT_WEB_SEARCH_PROVIDER: WebSearchProviderId = 'openai'
+export const DEFAULT_WEB_SEARCH_PROVIDER: WebSearchProviderId = 'auto'
 export const DEFAULT_WEB_SEARCH_TIMEOUT_MS = 45_000
 
 export const CHAT_PROVIDERS: Array<{ id: ChatProviderId; label: string }> = [
@@ -51,8 +52,9 @@ export const CHAT_PROVIDERS: Array<{ id: ChatProviderId; label: string }> = [
 ]
 
 export const WEB_SEARCH_PROVIDERS: Array<{ id: WebSearchProviderId; label: string }> = [
-  { id: 'openai', label: 'OpenAI (default)' },
+  { id: 'auto', label: 'Auto (recommended)' },
   { id: 'searxng', label: 'SearXNG (custom endpoint)' },
+  { id: 'openai', label: 'OpenAI' },
   { id: 'tavily', label: 'Tavily (free tier)' },
   { id: 'exa', label: 'Exa (free tier)' },
   { id: 'native', label: 'OpenCode native search' }
@@ -371,6 +373,7 @@ export function normalizeOpenCodePlan(value: unknown): OpenCodePlan {
 
 export function normalizeWebSearchProvider(value: unknown): WebSearchProviderId {
   switch (value) {
+    case 'auto':
     case 'searxng':
     case 'tavily':
     case 'exa':
@@ -384,6 +387,7 @@ export function normalizeWebSearchProvider(value: unknown): WebSearchProviderId 
 
 export function isWebSearchProvider(value: unknown): value is WebSearchProviderId {
   return (
+    value === 'auto' ||
     value === 'openai' ||
     value === 'searxng' ||
     value === 'tavily' ||

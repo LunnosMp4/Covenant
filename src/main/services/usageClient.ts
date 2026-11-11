@@ -1,4 +1,3 @@
-import { ProxyAgent, type Dispatcher } from 'undici'
 import {
   UsageApiError,
   type OrganizationCompletionsUsageResponse,
@@ -9,6 +8,7 @@ import {
   type UsageErrorCode,
   type UsageProject
 } from '../../shared/system/usage'
+import { createProxyDispatcher } from './proxyDispatcher'
 
 const OPENAI_API_BASE = 'https://api.openai.com/v1'
 // Guard against pathological pagination; the ranges we expose never need more.
@@ -24,10 +24,6 @@ interface FetchRangeOptions extends AdminQueryOptions {
   endTime: number
   limit: number
   projectId?: string
-}
-
-function createDispatcher(proxyUrl?: string): Dispatcher | undefined {
-  return proxyUrl ? new ProxyAgent(proxyUrl) : undefined
 }
 
 function mapStatusToErrorCode(status: number): UsageErrorCode {
@@ -53,7 +49,7 @@ async function adminGet<T>(
     }
   }
 
-  const dispatcher = createDispatcher(options.proxyUrl)
+  const dispatcher = await createProxyDispatcher(options.proxyUrl)
 
   let response: Response
   try {

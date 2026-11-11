@@ -1,9 +1,13 @@
 import { app, ipcMain } from 'electron'
 import {
   DEFAULT_OPENCODE_CHAT_MODEL,
+  getActiveChatModel,
+  getModelOptionFor,
   getModelOptionsForProvider,
-  normalizeChatProvider
+  normalizeChatProvider,
+  resolveWebSearchProviderForConfig
 } from '../../shared/config'
+import { webSearchProviderLabel } from '../../shared/ai/webSearch'
 import { isWebSearchProvider } from '../../shared/ai/models'
 import { readConfig } from '../config/configStore'
 import {
@@ -14,9 +18,13 @@ import {
 } from '../code/codeCredentials'
 import { createOpenAIClient } from '../openai/client'
 import { resolveOpenAIProxyUrl } from '../proxy'
-import { clearOpenCodeModelCache, listOpenCodeModels } from '../ai/modelCatalog'
-import { getOpenCodeBaseUrl } from '../ai/provider'
-import { clearSearchSecret, saveSearchSecret } from '../ai/search/credentials'
+import {
+  clearOpenCodeModelCache,
+  getCachedOpenCodeModel,
+  listOpenCodeModels
+} from '../ai/modelCatalog'
+import { getOpenAIKey, getOpenCodeBaseUrl } from '../ai/provider'
+import { clearSearchSecret, getSearchSecret, saveSearchSecret } from '../ai/search/credentials'
 import { searchWithOpenAI } from '../ai/search/openai'
 import { searchSearxng } from '../ai/search/searxng'
 import { searchTavily } from '../ai/search/tavily'
@@ -28,7 +36,7 @@ async function testOpenCodeKey(): Promise<{ ok: boolean; error?: string }> {
 
   const config = readConfig()
   const baseURL = getOpenCodeBaseUrl(config.opencodePlan)
-  const client = createOpenAIClient(apiKey, resolveOpenAIProxyUrl(config.proxyUrl), {
+  const client = await createOpenAIClient(apiKey, resolveOpenAIProxyUrl(config.proxyUrl), {
     baseURL,
     timeout: 20_000,
     maxRetries: 0,
@@ -53,10 +61,29 @@ async function testOpenCodeKey(): Promise<{ ok: boolean; error?: string }> {
   }
 }
 
-async function testWebSearch(): Promise<{ ok: boolean; message: string; resultCount?: number }> {
+async function testWebSearch(
+  requestedProvider?: unknown
+): Promise<{ ok: boolean; message: string; resultCount?: number }> {
   const config = readConfig()
+  const activeModel = getActiveChatModel(config)
+  const modelOption =
+    (config.chatProvider === 'opencode' ? getCachedOpenCodeModel(activeModel) : undefined) ??
+    getModelOptionFor(config.chatProvider, activeModel)
+  const resolvedProvider = resolveWebSearchProviderForConfig(config, {
+    modelOption,
+    hasOpenAIKey: Boolean(getOpenAIKey(config))
+  })
+  const provider =
+    requestedProvider === 'searxng' ||
+    requestedProvider === 'tavily' ||
+    requestedProvider === 'exa' ||
+    requestedProvider === 'openai' ||
+    requestedProvider === 'native'
+      ? requestedProvider
+      : resolvedProvider
+
   try {
-    switch (config.webSearchProvider) {
+    switch (provider) {
       case 'searxng': {
         const results = await searchSearxng('Covenant web search test', config)
         return { ok: true, message: `SearXNG returned ${results.length} results.`, resultCount: results.length }
@@ -69,8 +96,15 @@ async function testWebSearch(): Promise<{ ok: boolean; message: string; resultCo
         const results = await searchExa('Covenant web search test', config)
         return { ok: true, message: `Exa returned ${results.length} results.`, resultCount: results.length }
       }
-      case 'native':
-        return { ok: true, message: 'Native OpenCode search is used when the selected model supports it.' }
+      case 'native': {
+        const supported = modelOption?.webSearch === 'native'
+        return {
+          ok: supported,
+          message: supported
+            ? 'Native OpenCode search is used by the selected model.'
+            : 'Native search requires an OpenCode model that supports it.'
+        }
+      }
       case 'openai':
       default: {
         const result = await searchWithOpenAI('Covenant web search test', config)
@@ -84,7 +118,7 @@ async function testWebSearch(): Promise<{ ok: boolean; message: string; resultCo
   } catch (error) {
     return {
       ok: false,
-      message: error instanceof Error ? error.message : 'Web search test failed.'
+      message: error instanceof Error ? error.message : `Web search test failed (${webSearchProviderLabel(provider)}).`
     }
   }
 }
@@ -108,7 +142,25 @@ export function registerAiIpc(): void {
   })
 
   ipcMain.handle('ai:key-status', () => {
-    return { opencode: hasGoApiKey() }
+    const config = readConfig()
+    const openaiKey = getOpenAIKey(config)
+    return {
+      openai: {
+        configured: Boolean(openaiKey),
+        source: config.apiKey?.trim()
+          ? ('config' as const)
+          : process.env.OPENAI_API_KEY
+            ? ('env' as const)
+            : ('none' as const)
+      },
+      admin: { configured: Boolean(config.adminApiKey?.trim()) },
+      opencode: { configured: hasGoApiKey() },
+      search: {
+        searxng: Boolean(getSearchSecret('searxng')),
+        tavily: Boolean(getSearchSecret('tavily')),
+        exa: Boolean(getSearchSecret('exa'))
+      }
+    }
   })
 
   ipcMain.handle('ai:opencode-key:set', async (_event, key: unknown) => {
@@ -154,5 +206,7 @@ export function registerAiIpc(): void {
     return { ok: true as const }
   })
 
-  ipcMain.handle('ai:web-search:test', async () => testWebSearch())
+  ipcMain.handle('ai:web-search:test', async (_event, provider: unknown) =>
+    testWebSearch(provider)
+  )
 }

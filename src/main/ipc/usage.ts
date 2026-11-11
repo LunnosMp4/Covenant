@@ -13,8 +13,6 @@ import {
   fetchOrganizationProjects
 } from '../services/usageClient'
 import { fetchOpenCodeUsage } from '../ai/opencodeUsageClient'
-import { buildLocalUsageMetrics } from '../../shared/ai/usage'
-import { getAiUsageEntries, clearAiUsageEntries } from '../ai/usageLedger'
 
 export function registerUsageIpc(): void {
   ipcMain.handle('usage:get-metrics', async (_event, payload?: { rangeDays?: unknown; projectId?: unknown; provider?: unknown }) => {
@@ -22,12 +20,10 @@ export function registerUsageIpc(): void {
     const storedConfig = readConfig()
 
     if (payload?.provider === 'opencode') {
-      try {
-        const metrics = await fetchOpenCodeUsage(storedConfig, rangeDays)
-        return { ok: true, metrics }
-      } catch {
-        const metrics = buildLocalUsageMetrics(getAiUsageEntries(), rangeDays)
-        return { ok: true, metrics }
+      return {
+        ok: false,
+        code: 'UNKNOWN',
+        message: 'OpenCode usage is loaded through the dedicated OpenCode endpoint.'
       }
     }
 
@@ -71,6 +67,11 @@ export function registerUsageIpc(): void {
     }
   })
 
+  ipcMain.handle('usage:get-opencode', async (_event, payload?: { rangeDays?: unknown }) => {
+    const storedConfig = readConfig()
+    return fetchOpenCodeUsage(storedConfig, payload?.rangeDays)
+  })
+
   ipcMain.handle('usage:get-projects', async () => {
     const storedConfig = readConfig()
     const adminKey = typeof storedConfig.adminApiKey === 'string' ? storedConfig.adminApiKey.trim() : ''
@@ -99,9 +100,5 @@ export function registerUsageIpc(): void {
 
   ipcMain.on('update-usage-project', (_event, projectId: unknown) => {
     updateConfig({ usageProjectId: normalizeUsageProjectId(projectId) })
-  })
-
-  ipcMain.on('usage:clear-local', () => {
-    clearAiUsageEntries()
   })
 }

@@ -210,7 +210,13 @@ function TerminalView({
     const disposers: Array<() => void> = []
 
     const dataSub = terminal.onData((input) => {
-      void window.api?.terminal.sendInput(sessionId, input)
+      // Keystrokes don't need a reply; the invoke round-trip was pure overhead.
+      const terminalApi = window.api?.terminal
+      if (terminalApi?.typeInput) {
+        terminalApi.typeInput(sessionId, input)
+      } else {
+        void terminalApi?.sendInput(sessionId, input)
+      }
     })
     disposers.push(() => dataSub.dispose())
 
