@@ -94,6 +94,9 @@ import {
 import { splitWorkflowLogLines } from './app/utils/workflow'
 import {
   CHAT_SCROLL_HEIGHT,
+  COMMAND_BAR_MAX_INPUT_HEIGHT,
+  COMMAND_BAR_RESERVED_HEIGHT,
+  COMMAND_BAR_TOP_OFFSET,
   DEFAULT_GAMIFICATION_STATE,
   MAX_ATTACHED_IMAGES,
   MAX_WORKFLOW_LOG_LINES,
@@ -148,6 +151,28 @@ function scheduleSurfacePrefetch(): void {
   window.setTimeout(run, 200)
 }
 
+/**
+ * Serialize one node of the command input, preserving line breaks. The input is
+ * a `contentEditable` div, so Shift+Enter inserts `<br>` and pasted text may
+ * produce block elements — both must become `\n` or the prompt is flattened.
+ */
+function serializeEditableNode(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) return node.nodeValue ?? ''
+  if (!(node instanceof HTMLElement)) return ''
+  if (node.hasAttribute('data-instruction-id')) return ''
+  if (node.tagName === 'BR') return '\n'
+
+  let inner = ''
+  node.childNodes.forEach((child) => {
+    inner += serializeEditableNode(child)
+  })
+
+  // Block-level nodes (Enter in some engines) imply a line break after their
+  // content, unless the content already ends with one.
+  const isBlock = node.tagName === 'DIV' || node.tagName === 'P' || node.tagName === 'LI'
+  return isBlock && !inner.endsWith('\n') ? `${inner}\n` : inner
+}
+
 
 export default function App(): JSX.Element {
   const [visible, setVisible] = useState(false)
@@ -184,7 +209,6 @@ export default function App(): JSX.Element {
   const [isAltHeld, setIsAltHeld] = useState(false)
   const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight)
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
-  const [barHeight, setBarHeight] = useState(0)
   const [mode, setMode] = useState<AppMode>('ai')
   const [hasInitializedTerminal, setHasInitializedTerminal] = useState(false)
   const [terminalSessionId, setTerminalSessionId] = useState<string | null>(null)
@@ -235,7 +259,6 @@ export default function App(): JSX.Element {
   // Prompt handed off from the Paste Manager; consumed once the window is shown.
   const [pendingExternalPrompt, setPendingExternalPrompt] = useState<string | null>(null)
   const inputRef = useRef<HTMLDivElement>(null)
-  const barRef = useRef<HTMLDivElement>(null)
   const updateBannerRef = useRef<HTMLDivElement>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const pasteBlocksRef = useRef<Map<string, string>>(new Map())
@@ -372,14 +395,11 @@ export default function App(): JSX.Element {
     if (!div) return ''
     let result = ''
     for (const node of div.childNodes) {
-      if (node instanceof HTMLElement && node.hasAttribute('data-instruction-id')) {
-        continue
-      }
       if (node instanceof HTMLElement && node.hasAttribute('data-paste-id')) {
         const id = node.getAttribute('data-paste-id')!
         result += pasteBlocksRef.current.get(id) ?? node.textContent ?? ''
       } else {
-        result += node.textContent ?? ''
+        result += serializeEditableNode(node)
       }
     }
     return result
@@ -390,10 +410,7 @@ export default function App(): JSX.Element {
     if (!div) return ''
     let result = ''
     for (const node of div.childNodes) {
-      if (node instanceof HTMLElement && node.hasAttribute('data-instruction-id')) {
-        continue
-      }
-      result += node.textContent ?? ''
+      result += serializeEditableNode(node)
     }
     return result
   }
@@ -669,27 +686,6 @@ export default function App(): JSX.Element {
     onResize()
     return () => window.removeEventListener('resize', onResize)
   }, [])
-
-  // The terminal surface stacks above the command bar, so track the bar's
-  // height to offset it precisely. Re-run when `visible` changes because the
-  // bar (and its ref) only exists while the window is shown. A layout effect
-  // measures before paint so the terminal never flashes over the bar.
-  useLayoutEffect(() => {
-    const bar = barRef.current
-    if (!bar) return
-    const measure = (): void => {
-      // offsetHeight includes the bar's padding; contentRect does not, which
-      // would place the terminal 16px too low and overlap the bar.
-      const height = bar.offsetHeight
-      if (height > 0) {
-        setBarHeight((previous) => (Math.abs(previous - height) < 1 ? previous : height))
-      }
-    }
-    const observer = new ResizeObserver(measure)
-    observer.observe(bar)
-    measure()
-    return () => observer.disconnect()
-  }, [visible])
 
   // Measure the update notice so the terminal surface (which floats above the
   // bar) and the expanded surfaces can make room for it instead of overlapping.
@@ -2528,6 +2524,12 @@ export default function App(): JSX.Element {
         handleClose()
       } else if (e.key === 'Enter') {
         if (isComposingRef.current) return
+        if (e.shiftKey) {
+          // Shift+Enter adds a line without submitting. Let the browser handle
+          // the default `insertLineBreak` so undo and caret auto-scrolling keep
+          // working; `onInput` refreshes `query` afterwards.
+          return
+        }
         e.preventDefault()
         if (isCodeOpen) {
           handleCodeSubmit()
@@ -2825,7 +2827,13 @@ export default function App(): JSX.Element {
             exit={{ opacity: 0, y: 18, scale: 0.98, transition: WINDOW_EXIT_TRANSITION }}
             transition={WINDOW_SPRING}
             className="relative flex flex-col w-full max-w-full items-center pointer-events-none"
-            style={themeStyles}
+            style={{
+              ...themeStyles,
+              // Reserve the collapsed bar's footprint so the bar (which is
+              // absolutely positioned at the bottom) can grow upward over the
+              // surface above instead of pushing it higher.
+              paddingBottom: isFullSurface ? undefined : COMMAND_BAR_RESERVED_HEIGHT
+            }}
           >
             <AnimatePresence>
               {updateBannerVisible && updateStatus && (
@@ -2893,7 +2901,7 @@ export default function App(): JSX.Element {
                 <MeasuredPanel
                   key="surface-panel"
                   contentClassName={isFullSurface ? 'p-2' : 'p-4'}
-                  className={`relative ${isFullSurface ? '' : 'mb-2'} rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} command-surface texture-surface ${isFullSurface ? '' : 'surface-shadow'} pointer-events-auto`}
+                  className={`relative rounded-2xl border border-white/10 bg-gradient-to-br ${themeGradient} command-surface texture-surface ${isFullSurface ? '' : 'surface-shadow'} pointer-events-auto`}
                   width={isWide ? wideWidth : 750}
                 >
                   <motion.div
@@ -3178,9 +3186,9 @@ export default function App(): JSX.Element {
             </AnimatePresence>
 
             {!isFullSurface && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center">
             <motion.div
-              ref={barRef}
-              className={`surface-shadow relative flex items-center w-[750px] max-w-full rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10 transition-opacity duration-100 texture-surface opacity-100 pointer-events-auto`}
+              className={`surface-shadow relative flex items-end w-[750px] max-w-full rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10 transition-opacity duration-100 texture-surface opacity-100 pointer-events-auto`}
               data-interactive-surface
             >
             <AnimatePresence>
@@ -3317,7 +3325,7 @@ export default function App(): JSX.Element {
                 e.stopPropagation()
                 togglePopup('settings')
               }}
-              className="pressable flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10"
+              className="pressable mb-2.5 flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border border-transparent hover:border-white/10"
               aria-label="Settings"
               aria-pressed={activePopup === 'settings'}
             >
@@ -3420,15 +3428,15 @@ export default function App(): JSX.Element {
                         ? 'Ask Covenant Code to change something…'
                         : 'What can I help you with today?'
                   }
-                  className="flex-1 bg-transparent text-lg tracking-[-0.01em] text-neutral-100 placeholder:text-neutral-500 border-none focus:outline-none focus:ring-0 px-4 py-3 whitespace-pre overflow-hidden empty:before:content-[attr(data-placeholder)] empty:before:text-neutral-500"
-                  style={{ caretColor: 'var(--chat-accent)' }}
+                  className="flex-1 min-w-0 bg-transparent text-lg tracking-[-0.01em] text-neutral-100 placeholder:text-neutral-500 border-none focus:outline-none focus:ring-0 px-4 py-3 whitespace-pre-wrap break-words overflow-x-hidden overflow-y-auto overscroll-contain scrollbar-hidden empty:before:content-[attr(data-placeholder)] empty:before:text-neutral-500"
+                  style={{ caretColor: 'var(--chat-accent)', maxHeight: COMMAND_BAR_MAX_INPUT_HEIGHT }}
                   spellCheck={false}
                 />
               )}
 
               <button
                 onClick={(e) => { e.stopPropagation(); void toggleRecording() }}
-                className={`pressable flex items-center justify-center w-8 h-8 rounded-lg border ${
+                className={`pressable mb-2.5 flex items-center justify-center w-8 h-8 rounded-lg border ${
                   voiceState === 'error'
                     ? 'bg-red-500/60 border-red-400/50 text-red-200'
                     : voiceState === 'recording'
@@ -3465,7 +3473,7 @@ export default function App(): JSX.Element {
                       }
                     }}
                     disabled={!barBusy && !query.trim()}
-                    className={`pressable flex items-center justify-center w-8 h-8 mr-1 rounded-lg border disabled:opacity-30 disabled:cursor-not-allowed ${
+                    className={`pressable mb-2.5 flex items-center justify-center w-8 h-8 mr-1 rounded-lg border disabled:opacity-30 disabled:cursor-not-allowed ${
                       barBusy
                         ? 'border-red-400/40 bg-red-500/70 text-[color:var(--on-danger)] hover:bg-red-500/80'
                         : 'border-[color:var(--chat-accent-strong)] bg-[color:var(--chat-accent)] text-[color:var(--chat-on-accent)] hover:opacity-90'
@@ -3492,7 +3500,7 @@ export default function App(): JSX.Element {
                 <button
                   ref={imageButtonRef}
                   onClick={(e) => { e.stopPropagation(); setShowImagePanel(v => !v) }}
-                  className={`pressable flex items-center justify-center w-8 h-8 rounded-lg border ${
+                  className={`pressable mb-2.5 flex items-center justify-center w-8 h-8 rounded-lg border ${
                     showImagePanel
                       ? 'border-white/20 bg-white/10 text-neutral-200'
                       : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/10 border-transparent hover:border-white/10'
@@ -3509,7 +3517,7 @@ export default function App(): JSX.Element {
                 </button>
               )}
 
-              <div ref={moduleButtonsRef} className="flex items-center gap-1">
+              <div ref={moduleButtonsRef} className="mb-2.5 flex items-center gap-1">
                 {buttonVisibility.workflow && (
                   <button
                     onClick={(e) => {
@@ -3558,6 +3566,7 @@ export default function App(): JSX.Element {
 
               </div>
             </motion.div>
+            </div>
             )}
           </motion.div>
         )}
@@ -3572,7 +3581,7 @@ export default function App(): JSX.Element {
           transition={{ height: { duration: 0.24, ease: EASE_OUT } }}
           style={{
             pointerEvents: 'none',
-            bottom: (barHeight > 0 ? barHeight + 28 : 112) + updateBannerOffset
+            bottom: COMMAND_BAR_TOP_OFFSET + updateBannerOffset
           }}
           aria-hidden={mode !== 'terminal' || !visible}
         >
