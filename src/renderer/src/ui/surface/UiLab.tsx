@@ -224,44 +224,66 @@ const GENERATED: UiSpec = {
       type: 'Generated',
       props: {
         title: 'A little room for reading',
-        height: 360,
+        height: 400,
         fallback:
           'Reading time: Monday 20 min, Tuesday 35 min, Wednesday 25 min, Thursday 45 min. ' +
           'Total 125 min; average 31.25 min per day. Choose a daily goal between 10 and 60 minutes.',
         html: `
-          <p class="cv-note">Small moments add up. Here is your reading time this week.</p>
-          <div id="reading-chart" class="cv-chart" role="img" aria-label="Reading minutes by day" style="height:190px"></div>
-          <div class="cv-field" style="margin-top: var(--ui-space-sm)">
-            <label class="cv-field-label" for="goal">Daily goal <output id="goal-value">30 min</output></label>
-          </div>
-          <input id="goal" class="cv-range" type="range" min="10" max="60" value="30" step="5" aria-label="Daily reading goal">
-          <div id="goal-action" class="cv-row" style="margin-top: var(--ui-space-sm)"></div>
+          <div id="reading-surface" class="cv-surface"></div>
         `,
         css: `
-          #reading-chart { margin-top: var(--ui-space-sm); }
+          #reading-surface .cv-chart { margin-top: var(--ui-space-xs); }
         `,
         javascript: `
-          const goal = document.getElementById('goal')
+          const surface = document.getElementById('reading-surface')
           const saved = Covenant.state.get()
-          goal.value = String(saved.minutes || 30)
 
-          const chart = await Covenant.chart(document.getElementById('reading-chart'), {
-            grid: { left: 30, right: 8, top: 16, bottom: 24, containLabel: true },
-            tooltip: { trigger: 'axis' },
-            xAxis: { type: 'category', data: ['Mon', 'Tue', 'Wed', 'Thu'] },
-            yAxis: { type: 'value', name: 'min', max: 60 },
-            series: [{ name: 'Reading', type: 'bar', barMaxWidth: 24, data: [20, 35, 25, 45] }]
+          const goal = Covenant.ui.range({
+            min: 10,
+            max: 60,
+            step: 5,
+            value: saved.minutes || 30,
+            ariaLabel: 'Daily reading goal'
+          })
+          const goalField = Covenant.ui.field('Daily goal', goal, '30 min')
+          const output = goalField.querySelector('output')
+          const chartSlot = Covenant.ui.chartSlot('default', 'Reading minutes by day')
+
+          surface.append(
+            Covenant.ui.metricRow([
+              { label: 'This week', value: 125, unit: 'min', hint: '4 sessions' },
+              { label: 'Daily average', value: 31.3, unit: 'min', delta: { value: 6, tone: 'positive' } }
+            ]),
+            chartSlot,
+            goalField,
+            Covenant.ui.callout(
+              'Two days below the goal',
+              'Monday and Wednesday trail the average; Thursday already carries the week.',
+              'info'
+            ),
+            Covenant.ui.actions(
+              Covenant.ui.button('Plan around this goal', {
+                variant: 'primary',
+                onClick: () => Covenant.submit({ minutes: Number(goal.value) })
+              })
+            )
+          )
+
+          await Covenant.chart(chartSlot, {
+            title: 'Reading minutes',
+            kind: 'bar',
+            categories: ['Mon', 'Tue', 'Wed', 'Thu'],
+            series: [{ label: 'Reading', values: [20, 35, 25, 45] }],
+            unit: 'min',
+            height: 190
           })
 
           function update() {
-            document.getElementById('goal-value').textContent = goal.value + ' min'
+            output.textContent = goal.value + ' min'
             Covenant.state.set({ minutes: Number(goal.value) })
           }
 
           goal.addEventListener('input', update)
-          document.getElementById('goal-action').append(
-            Covenant.ui.button('Plan around this goal', { variant: 'primary', onClick: () => Covenant.submit({ minutes: goal.value }) })
-          )
           update()
         `
       }

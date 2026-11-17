@@ -39,7 +39,10 @@ const FORBIDDEN_AT_RULES = new Set([
   'property',
   'namespace',
   'page',
-  'custom-media'
+  'custom-media',
+  'keyframes',
+  'font-feature-values',
+  'counter-style'
 ])
 
 const RESOURCE_ATTRIBUTES = new Set([
@@ -196,12 +199,66 @@ function checkCssValue(property: string, value: string, path: string, issues: st
   checkColorValue(value, lowerProperty, path, issues)
   checkTypography(lowerProperty, value, path, issues)
 
+  if (lowerProperty === 'position' && /fixed|sticky|absolute/i.test(value)) {
+    issues.push(
+      `${path}: "${value.trim()}" is not allowed; the surface lays out in normal flow`
+    )
+  }
+
   if (lowerProperty === 'content' && /url\(/i.test(value)) {
     issues.push(`${path}: content cannot reference external resources`)
   }
   if (/\burl\(/i.test(value) && !/url\(\s*["']?data:image\//i.test(value)) {
     issues.push(`${path}: url() must be an inline data:image resource`)
   }
+}
+
+/** The class that replaces a presentational declaration the model tried to write. */
+const PRESENTATION_HINTS: Record<string, string> = {
+  color: 'text colour comes from .cv-h1/.cv-h2/.cv-body/.cv-caption/.cv-badge',
+  'background-color': 'use .cv-card, .cv-callout or .cv-badge',
+  background: 'use .cv-card or .cv-callout',
+  'background-image': 'gradients and images are not part of the kit',
+  border: 'use .cv-card, .cv-callout or .cv-table',
+  'border-color': 'use .cv-card, .cv-callout or .cv-badge',
+  'border-width': 'use .cv-card, .cv-callout or .cv-table',
+  'border-style': 'use .cv-card, .cv-callout or .cv-table',
+  'border-radius': 'use .cv-card (--ui-radius-md) or .cv-badge (pill)',
+  'box-shadow': 'elevation is owned by the host; cards have no shadow',
+  'text-shadow': 'elevation is owned by the host',
+  'font-family': 'use the host font (var(--ui-font)) or a .cv-* text class',
+  'font-size': 'use .cv-h1/.cv-h2/.cv-h3/.cv-body/.cv-caption/.cv-label',
+  'font-weight': 'use .cv-h1/.cv-h2/.cv-h3/.cv-body/.cv-label',
+  'font-style': 'not part of the kit',
+  'letter-spacing': 'tracking is set per size by the type classes',
+  'line-height': 'leading is set per size by the type classes',
+  'text-transform': 'use .cv-label for small caps',
+  'text-align': 'use a .cv-table column with data-align="right"',
+  'text-decoration': 'not part of the kit',
+  'white-space': 'layout is owned by the kit',
+  opacity: 'use .cv-caption/.cv-badge for muted content',
+  filter: 'filters are not part of the kit',
+  'backdrop-filter': 'materials are owned by the host',
+  'mix-blend-mode': 'blending is not part of the kit',
+  transform: 'motion is owned by the host',
+  transition: 'motion is owned by the host',
+  animation: 'motion is owned by the host',
+  'z-index': 'stacking is owned by the host',
+  'box-sizing': 'set globally by the frame',
+  'caret-color': 'not part of the kit',
+  'list-style': 'use .cv-list'
+}
+
+function checkLayoutOnly(property: string, path: string, issues: string[]): void {
+  if (property.startsWith('--cv-')) return
+  if (GENERATED_LAYOUT_PROPERTIES.has(property)) return
+
+  const hint = PRESENTATION_HINTS[property]
+  issues.push(
+    hint
+      ? `${path}: "${property}" is styling, not layout — ${hint}`
+      : `${path}: "${property}" is not allowed; generated CSS is layout-only (compose from .cv-* classes)`
+  )
 }
 
 export function validateGeneratedCss(css: string, path: string): string[] {
@@ -255,6 +312,7 @@ export function validateGeneratedCss(css: string, path: string): string[] {
       return
     }
 
+    checkLayoutOnly(property, declPath, issues)
     checkCssValue(property, decl.value, declPath, issues)
   })
 
@@ -273,8 +331,10 @@ export function validateGeneratedHtml(html: string, path: string): string[] {
 
   let count = 0
   let depth = 0
+  let kitClasses = 0
+  let chartSlots = 0
 
-  const walk = (nodes: WalkNode[] | undefined, level: number): void => {
+  const walk = (nodes: WalkNode[] | undefined, level: number, insideCard: boolean): void => {
     if (!nodes) return
     for (const node of nodes) {
       count += 1
@@ -283,6 +343,25 @@ export function validateGeneratedHtml(html: string, path: string): string[] {
       const tag = node.tagName?.toLowerCase()
       if (tag && FORBIDDEN_TAGS.has(tag)) {
         issues.push(`${path}: <${tag}> is not allowed in generated markup`)
+      }
+
+      const classes = (node.attrs ?? [])
+        .filter((attr) => attr.name.toLowerCase() === 'class')
+        .flatMap((attr) => attr.value.split(/\s+/))
+        .filter(Boolean)
+
+      if (classes.some((entry) => entry.startsWith('cv-'))) kitClasses += 1
+      if (classes.includes('cv-chart')) chartSlots += 1
+
+      const isCard = classes.includes('cv-card')
+      if (isCard && insideCard) {
+        issues.push(
+          `${path}: a .cv-card cannot contain another .cv-card (use .cv-section or .cv-divider inside it)`
+        )
+      }
+
+      if (tag === 'table' && !classes.includes('cv-table')) {
+        issues.push(`${path}: tables must use class="cv-table" (or Covenant.ui.table)`)
       }
 
       for (const attr of node.attrs ?? []) {
@@ -313,22 +392,31 @@ export function validateGeneratedHtml(html: string, path: string): string[] {
             .map((entry) => entry.split(':'))
             .filter((entry) => entry.length >= 2)
             .map((entry) => [entry[0].trim(), entry.slice(1).join(':').trim()] as const)) {
+            checkLayoutOnly(property.toLowerCase(), `${path} (style) (${property})`, issues)
             checkCssValue(property, rawValue, `${path} (style)`, issues)
           }
         }
       }
 
-      walk(node.childNodes, level + 1)
+      walk(node.childNodes, level + 1, insideCard || isCard)
     }
   }
 
-  walk(fragment.childNodes, 1)
+  walk(fragment.childNodes, 1, false)
 
   if (count > GENERATED_LIMITS.maxHtmlNodes) {
     issues.push(`${path}: ${count} markup nodes exceeds the limit of ${GENERATED_LIMITS.maxHtmlNodes}`)
   }
   if (depth > GENERATED_LIMITS.maxHtmlDepth) {
     issues.push(`${path}: nesting depth ${depth} exceeds the limit of ${GENERATED_LIMITS.maxHtmlDepth}`)
+  }
+  if (count > 12 && kitClasses === 0) {
+    issues.push(
+      `${path}: compose from the kit (Covenant.ui.* or .cv-* classes) instead of ad-hoc markup; raw divs have no styling`
+    )
+  }
+  if (chartSlots > 2) {
+    issues.push(`${path}: at most 2 chart slots per surface (found ${chartSlots})`)
   }
 
   return Array.from(new Set(issues))

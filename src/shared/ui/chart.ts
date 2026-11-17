@@ -336,6 +336,36 @@ export const CHART_FALLBACK_PALETTE = [
   '#93AFB5'
 ]
 
+/** Anything that can read a CSS custom property (a computed style, a stub, …). */
+export interface ChartThemeSource {
+  getPropertyValue(name: string): string
+}
+
+/**
+ * One reader for both the chat window and the generated sandbox, so a chart
+ * looks the same wherever it is mounted and a theme switch repaints both.
+ */
+export function chartThemeFrom(source: ChartThemeSource, mode: string): ChartTheme {
+  const dark = mode !== 'light'
+  const read = (name: string, fallback: string): string =>
+    source.getPropertyValue(name).trim() || fallback
+
+  return {
+    palette: [1, 2, 3, 4, 5, 6].map((index) =>
+      read(`--ui-series-${index}`, CHART_FALLBACK_PALETTE[index - 1])
+    ),
+    text: read('--chat-assistant-text', dark ? '#F1F1EF' : '#262624'),
+    muted: read('--chat-meta-text', dark ? '#9A9A98' : '#6B6B68'),
+    grid: read('--ui-grid', dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'),
+    border: read('--chat-assistant-border', dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'),
+    surface: read('--ui-surface', dark ? '#1B1C1F' : '#FFFFFF'),
+    fontFamily: read('--ui-font', 'system-ui, sans-serif'),
+    fontSize: 10,
+    radius: 6,
+    dark
+  }
+}
+
 function paletteFor(theme: ChartTheme, count: number): string[] {
   const palette = theme.palette.length > 0 ? theme.palette : CHART_FALLBACK_PALETTE
   return Array.from({ length: count }, (_, index) => palette[index % palette.length])

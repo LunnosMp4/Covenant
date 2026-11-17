@@ -6,6 +6,13 @@
  */
 
 import {
+  buildChartOption,
+  chartThemeFrom,
+  clampChartHeight,
+  validateChartData,
+  type ChartData
+} from '../../../../../shared/ui/chart'
+import {
   GENERATED_BRIDGE_VERSION,
   GENERATED_LIMITS,
   isGeneratedState
@@ -103,8 +110,213 @@ function element(
 }
 
 function buildUiApi(): Record<string, unknown> {
+  let fieldSequence = 0
+
+  const stack = (
+    gap: 'sm' | 'md' | 'lg' | undefined,
+    ...children: Array<Node | string | null>
+  ): HTMLElement =>
+    element(
+      'div',
+      { className: `cv-stack${gap && gap !== 'md' ? ` cv-stack--${gap}` : ''}` },
+      ...children
+    )
+
   return {
     el: element,
+
+    /* Layout ---------------------------------------------------------------- */
+    stack(...children: Array<Node | string | null>): HTMLElement {
+      return stack(undefined, ...children)
+    },
+    stackSm(...children: Array<Node | string | null>): HTMLElement {
+      return stack('sm', ...children)
+    },
+    stackLg(...children: Array<Node | string | null>): HTMLElement {
+      return stack('lg', ...children)
+    },
+    section(title: string, ...children: Array<Node | string | null>): HTMLElement {
+      return element(
+        'section',
+        { className: 'cv-section' },
+        title ? element('h2', { className: 'cv-h2' }, title) : null,
+        ...children
+      )
+    },
+    card(...children: Array<Node | string | null>): HTMLElement {
+      return element('div', { className: 'cv-card' }, ...children)
+    },
+    row(...children: Array<Node | string | null>): HTMLElement {
+      return element('div', { className: 'cv-row' }, ...children)
+    },
+    rowBetween(...children: Array<Node | string | null>): HTMLElement {
+      return element('div', { className: 'cv-row cv-row--between' }, ...children)
+    },
+    grid(...children: Array<Node | string | null>): HTMLElement {
+      return element('div', { className: 'cv-grid cv-grid--auto' }, ...children)
+    },
+    split(...children: Array<Node | string | null>): HTMLElement {
+      return element('div', { className: 'cv-split' }, ...children)
+    },
+    surface(...children: Array<Node | string | null>): HTMLElement {
+      return element('div', { className: 'cv-surface' }, ...children)
+    },
+    divider(): HTMLElement {
+      return element('div', { className: 'cv-divider', role: 'separator' })
+    },
+
+    /* Type ------------------------------------------------------------------ */
+    heading(text: string, level: 1 | 2 | 3 = 2): HTMLElement {
+      return element(level === 1 ? 'h1' : level === 2 ? 'h2' : 'h3', { className: `cv-h${level}` }, text)
+    },
+    text(text: string): HTMLElement {
+      return element('p', { className: 'cv-body' }, text)
+    },
+    caption(text: string): HTMLElement {
+      return element('p', { className: 'cv-caption' }, text)
+    },
+    label(text: string): HTMLElement {
+      return element('span', { className: 'cv-label' }, text)
+    },
+    note(text: string): HTMLElement {
+      return element('p', { className: 'cv-note' }, text)
+    },
+
+    /* Data ------------------------------------------------------------------ */
+    badge(text: string, tone: 'neutral' | 'positive' | 'negative' | 'accent' = 'neutral'): HTMLElement {
+      return element('span', { className: 'cv-badge', 'data-tone': tone }, text)
+    },
+    callout(
+      title: string,
+      body: string,
+      tone: 'info' | 'positive' | 'danger' = 'info'
+    ): HTMLElement {
+      return element(
+        'div',
+        { className: 'cv-callout', 'data-tone': tone },
+        title ? element('span', { className: 'cv-callout-title' }, title) : null,
+        body ? element('p', { className: 'cv-callout-body' }, body) : null
+      )
+    },
+    list(items: Array<{ label: string; value?: string }>): HTMLElement {
+      const ul = element('ul', { className: 'cv-list' }) as HTMLUListElement
+      for (const item of items) {
+        ul.append(
+          element(
+            'li',
+            null,
+            element('span', { className: 'cv-caption' }, item.label),
+            item.value ? element('span', { className: 'cv-list-value' }, item.value) : null
+          )
+        )
+      }
+      return ul
+    },
+    kpi(
+      label: string,
+      value: string | number,
+      options: { unit?: string; hint?: string; delta?: { value: number; tone?: string } } = {}
+    ): HTMLElement {
+      const delta = options.delta
+      return element(
+        'div',
+        { className: 'cv-kpi' },
+        element('span', { className: 'cv-kpi-label' }, label),
+        element(
+          'span',
+          { className: 'cv-kpi-value' },
+          String(value),
+          options.unit ? element('span', { className: 'cv-kpi-unit' }, ` ${options.unit}`) : null
+        ),
+        delta
+          ? element(
+              'span',
+              {
+                className: 'cv-kpi-delta',
+                ...(delta.tone ? { 'data-tone': delta.tone } : {})
+              },
+              `${delta.value > 0 ? '↑' : delta.value < 0 ? '↓' : '='} ${Math.abs(delta.value)}%`
+            )
+          : null,
+        options.hint ? element('span', { className: 'cv-kpi-hint' }, options.hint) : null
+      )
+    },
+    metricRow(
+      items: Array<{
+        label: string
+        value: string | number
+        unit?: string
+        hint?: string
+        delta?: { value: number; tone?: string }
+      }>
+    ): HTMLElement {
+      const row = element('div', { className: 'cv-kpi-row' })
+      for (const item of items) {
+        row.append(
+          element(
+            'div',
+            { className: 'cv-kpi' },
+            element('span', { className: 'cv-kpi-label' }, item.label),
+            element(
+              'span',
+              { className: 'cv-kpi-value' },
+              String(item.value),
+              item.unit ? element('span', { className: 'cv-kpi-unit' }, ` ${item.unit}`) : null
+            ),
+            item.delta
+              ? element(
+                  'span',
+                  {
+                    className: 'cv-kpi-delta',
+                    ...(item.delta.tone ? { 'data-tone': item.delta.tone } : {})
+                  },
+                  `${item.delta.value > 0 ? '↑' : item.delta.value < 0 ? '↓' : '='} ${Math.abs(item.delta.value)}%`
+                )
+              : null,
+            item.hint ? element('span', { className: 'cv-kpi-hint' }, item.hint) : null
+          )
+        )
+      }
+      return row
+    },
+    table(columns: string[], rows: Array<Array<string | number>>, alignRight: number[] = []): HTMLElement {
+      const table = element('table', { className: 'cv-table' }) as HTMLTableElement
+      const thead = document.createElement('thead')
+      const headRow = document.createElement('tr')
+      columns.forEach((column, index) => {
+        const th = document.createElement('th')
+        th.textContent = column
+        if (alignRight.includes(index)) th.dataset.align = 'right'
+        headRow.append(th)
+      })
+      thead.append(headRow)
+      const tbody = document.createElement('tbody')
+      rows.forEach((row) => {
+        const tr = document.createElement('tr')
+        row.forEach((cell, index) => {
+          const td = document.createElement('td')
+          td.textContent = String(cell)
+          if (alignRight.includes(index)) td.dataset.align = 'right'
+          tr.append(td)
+        })
+        tbody.append(tr)
+      })
+      table.append(thead, tbody)
+      return table
+    },
+    chartSlot(
+      height: 'short' | 'default' | 'tall' = 'default',
+      label = 'Chart'
+    ): HTMLElement {
+      return element('div', {
+        className: 'cv-chart',
+        role: 'img',
+        'aria-label': label,
+        ...(height !== 'default' ? { 'data-height': height } : {})
+      })
+    },
+
+    /* Controls -------------------------------------------------------------- */
     button(
       label: string,
       options: { variant?: 'primary' | 'secondary'; onClick?: () => void } = {}
@@ -160,73 +372,73 @@ function buildUiApi(): Record<string, unknown> {
       input.checked = options.checked ?? false
       return element('label', { className: 'cv-toggle' }, input, label) as HTMLLabelElement
     },
-    kpi(
-      label: string,
-      value: string | number,
-      options: { unit?: string; hint?: string } = {}
-    ): HTMLElement {
-      return element(
-        'div',
-        { className: 'cv-kpi' },
-        element('span', { className: 'cv-kpi-label' }, label),
-        element(
-          'span',
-          { className: 'cv-kpi-value' },
-          String(value),
-          options.unit ? element('span', { className: 'cv-kpi-unit' }, ` ${options.unit}`) : null
-        ),
-        options.hint ? element('span', { className: 'cv-kpi-label' }, options.hint) : null
+    range(
+      options: { min?: number; max?: number; step?: number; value?: number; ariaLabel?: string } = {}
+    ): HTMLInputElement {
+      const input = element('input', {
+        className: 'cv-range',
+        type: 'range',
+        min: options.min,
+        max: options.max,
+        step: options.step,
+        'aria-label': options.ariaLabel
+      }) as HTMLInputElement
+      if (options.value !== undefined) input.value = String(options.value)
+      return input
+    },
+    field(labelText: string, control: HTMLElement, valueText?: string): HTMLElement {
+      if (!control.id) {
+        fieldSequence += 1
+        control.id = `cv-field-${fieldSequence}`
+      }
+      const label = element(
+        'label',
+        { className: 'cv-field-label', for: control.id },
+        labelText
       )
+      const head = valueText
+        ? element(
+            'div',
+            { className: 'cv-field' },
+            label,
+            element('output', { for: control.id }, valueText)
+          )
+        : label
+      return element('div', { className: 'cv-stack cv-stack--sm' }, head, control)
     },
-    card(...children: Array<Node | string>): HTMLElement {
-      return element('div', { className: 'cv-card' }, ...children)
-    },
-    row(...children: Array<Node | string | null>): HTMLElement {
-      return element('div', { className: 'cv-row' }, ...children)
-    },
-    table(columns: string[], rows: Array<Array<string | number>>, alignRight: number[] = []): HTMLElement {
-      const table = element('table', { className: 'cv-table' }) as HTMLTableElement
-      const thead = document.createElement('thead')
-      const headRow = document.createElement('tr')
-      columns.forEach((column, index) => {
-        const th = document.createElement('th')
-        th.textContent = column
-        if (alignRight.includes(index)) th.dataset.align = 'right'
-        headRow.append(th)
-      })
-      thead.append(headRow)
-      const tbody = document.createElement('tbody')
-      rows.forEach((row) => {
-        const tr = document.createElement('tr')
-        row.forEach((cell, index) => {
-          const td = document.createElement('td')
-          td.textContent = String(cell)
-          if (alignRight.includes(index)) td.dataset.align = 'right'
-          tr.append(td)
-        })
-        tbody.append(tr)
-      })
-      table.append(thead, tbody)
-      return table
+    actions(...children: Array<Node | string | null>): HTMLElement {
+      return element('div', { className: 'cv-actions' }, ...children)
     }
   }
 }
 
 function installApi(): void {
   window.Covenant = {
-    chart(
-      target: HTMLElement | string,
-      option: Record<string, unknown>
-    ): Promise<ChartHandle> {
+    /**
+     * Semantic chart: the same data contract as the native `Chart` node. The
+     * option is built by the shared, themed builder — a generated chart is
+     * pixel-identical to a native one and can never ship its own palette,
+     * fonts, grid or animation.
+     */
+    chart(target: HTMLElement | string, data: unknown): Promise<ChartHandle> {
       const host = typeof target === 'string' ? document.querySelector(target) : target
       if (!(host instanceof HTMLElement)) {
         return Promise.reject(new Error('Covenant.chart needs an element or selector.'))
       }
+      const issues = validateChartData(data)
+      if (issues.length > 0) {
+        return Promise.reject(new Error(issues.join('; ')))
+      }
+      const chart = data as ChartData
+      if (chart.height !== undefined) host.style.height = `${clampChartHeight(chart.height)}px`
+
       return track(
         ensureCharts().then(() => {
           const runtime = window.covenantChartsRuntime
           if (!runtime) throw new Error('Chart runtime is unavailable.')
-          return runtime.chartEngine.create(host, option)
+          const styles = getComputedStyle(document.documentElement)
+          const mode = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark'
+          return runtime.chartEngine.create(host, buildChartOption(chart, chartThemeFrom(styles, mode)))
         })
       )
     },

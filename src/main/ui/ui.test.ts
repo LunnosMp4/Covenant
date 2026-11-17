@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { UI_SPEC_VERSION } from '../../shared/ui/spec'
+import { validateGeneratedSource } from '../../shared/ui/generated'
 import {
   validateGeneratedCss,
   validateGeneratedHtml,
@@ -36,17 +37,48 @@ describe('generated HTML validation', () => {
     expect(
       validateGeneratedHtml('<div style="color: #ff0000">x</div>', 'html').join(' ')
     ).toMatch(/colour token/)
+    expect(validateGeneratedHtml('<div style="padding: var(--ui-space-sm)">x</div>', 'html')).toEqual(
+      []
+    )
+  })
+
+  it('nudges ad-hoc markup towards the kit', () => {
+    const raw = Array.from({ length: 14 }, (_, index) => `<div><span>${index}</span></div>`).join('')
+    expect(validateGeneratedHtml(raw, 'html').join(' ')).toMatch(/compose from the kit/)
+
+    const nested =
+      '<div class="cv-card"><div class="cv-section"><div class="cv-card">x</div></div></div>'
+    expect(validateGeneratedHtml(nested, 'html').join(' ')).toMatch(/cannot contain another .cv-card/)
+
+    const tables = '<table><tr><td>x</td></tr></table>'
+    expect(validateGeneratedHtml(tables, 'html').join(' ')).toMatch(/class="cv-table"/)
+
+    const slots = Array.from({ length: 3 }, () => '<div class="cv-chart"></div>').join('')
+    expect(validateGeneratedHtml(slots, 'html').join(' ')).toMatch(/at most 2 chart slots/)
   })
 })
 
 describe('generated CSS validation', () => {
-  it('accepts token-based styling', () => {
+  it('accepts layout-only styling', () => {
     expect(
       validateGeneratedCss(
-        '.a { color: var(--chat-assistant-text); font-family: var(--ui-font); border-radius: var(--ui-radius-md); }',
+        '.a { display: flex; gap: var(--ui-space-sm); padding: var(--ui-space-md); width: 100%; }',
         'css'
       )
     ).toEqual([])
+    expect(validateGeneratedCss('.a { position: relative; inset: auto; }', 'css')).toEqual([])
+  })
+
+  it('rejects presentation styling, pointing at the kit', () => {
+    const issues = validateGeneratedCss(
+      '.a { color: var(--chat-assistant-text); font-family: var(--ui-font); border-radius: var(--ui-radius-md); box-shadow: none; animation: spin 1s; }',
+      'css'
+    ).join(' ')
+    expect(issues).toMatch(/color.*styling, not layout/)
+    expect(issues).toMatch(/font-family/)
+    expect(issues).toMatch(/border-radius/)
+    expect(issues).toMatch(/box-shadow/)
+    expect(issues).toMatch(/animation/)
   })
 
   it('rejects literal colours and unknown tokens', () => {
@@ -66,6 +98,15 @@ describe('generated CSS validation', () => {
     expect(validateGeneratedCss('@font-face { font-family: x }', 'css').join(' ')).toMatch(
       /@font-face/
     )
+    expect(validateGeneratedCss('@keyframes spin { to { opacity: 0 } }', 'css').join(' ')).toMatch(
+      /@keyframes/
+    )
+  })
+
+  it('rejects out-of-flow positioning', () => {
+    expect(
+      validateGeneratedCss('.a { position: fixed; }', 'css').join(' ')
+    ).toMatch(/not allowed; the surface lays out in normal flow/)
   })
 
   it('keeps shared controls to layout properties', () => {
@@ -80,8 +121,35 @@ describe('generated CSS validation', () => {
   })
 })
 
-describe('generated JavaScript validation', () => {
-  it('accepts valid syntax without executing it', () => {
+describe('generated design contract', () => {
+  it('accepts the documented kit example', () => {
+    const source = {
+      title: 'Reading minutes',
+      fallback: 'Monday 20 min, Tuesday 35 min, Wednesday 25 min, Thursday 45 min.',
+      html: '<div id="reading" class="cv-surface"></div>',
+      css: '#reading .cv-chart { margin-top: var(--ui-space-xs); }',
+      javascript: `
+        const surface = document.getElementById('reading')
+        surface.append(
+          Covenant.ui.metricRow([{ label: 'This week', value: 125, unit: 'min' }]),
+          Covenant.ui.chartSlot('default', 'Reading minutes by day'),
+          Covenant.ui.callout('Two days below the goal', 'Monday and Wednesday trail.', 'info')
+        )
+        await Covenant.chart(surface.querySelector('.cv-chart'), {
+          title: 'Reading minutes',
+          kind: 'bar',
+          categories: ['Mon', 'Tue', 'Wed', 'Thu'],
+          series: [{ label: 'Reading', values: [20, 35, 25, 45] }],
+          unit: 'min'
+        })
+      `
+    }
+
+    expect(validateGeneratedSource(source)).toEqual([])
+  })
+})
+
+describe('generated JavaScript validation', () => {  it('accepts valid syntax without executing it', () => {
     expect(validateGeneratedJavascript('const x = 1; if (x) console.log(x)', 'js')).toEqual([])
   })
 

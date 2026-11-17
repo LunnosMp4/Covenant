@@ -1,48 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
-import { CHART_FALLBACK_PALETTE, type ChartTheme } from '../../../../../shared/ui/chart'
+import { chartThemeFrom, type ChartTheme } from '../../../../../shared/ui/chart'
 
-function readVar(styles: CSSStyleDeclaration, name: string, fallback: string): string {
-  const value = styles.getPropertyValue(name).trim()
-  return value || fallback
-}
+const EMPTY_STYLE = { getPropertyValue: (): string => '' }
 
 function readChartTheme(): ChartTheme {
-  if (typeof window === 'undefined') {
-    return {
-      palette: [...CHART_FALLBACK_PALETTE],
-      text: '#EDEDEB',
-      muted: '#9A9A98',
-      grid: 'rgba(255,255,255,0.08)',
-      border: 'rgba(255,255,255,0.1)',
-      surface: '#1B1C1F',
-      fontFamily: 'system-ui, sans-serif',
-      fontSize: 10,
-      radius: 6,
-      dark: true
-    }
-  }
+  if (typeof window === 'undefined') return chartThemeFrom(EMPTY_STYLE, 'dark')
 
-  const styles = getComputedStyle(document.documentElement)
-  const dark = document.documentElement.getAttribute('data-theme') !== 'light'
-
-  return {
-    palette: [1, 2, 3, 4, 5, 6].map((index) =>
-      readVar(styles, `--ui-series-${index}`, CHART_FALLBACK_PALETTE[index - 1])
-    ),
-    text: readVar(styles, '--chat-assistant-text', dark ? '#F1F1EF' : '#262624'),
-    muted: readVar(styles, '--chat-meta-text', dark ? '#9A9A98' : '#6B6B68'),
-    grid: readVar(styles, '--ui-grid', dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'),
-    border: readVar(
-      styles,
-      '--chat-assistant-border',
-      dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'
-    ),
-    surface: readVar(styles, '--ui-surface', dark ? '#1B1C1F' : '#FFFFFF'),
-    fontFamily: readVar(styles, '--ui-font', 'system-ui, sans-serif'),
-    fontSize: 10,
-    radius: 6,
-    dark
-  }
+  const mode = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark'
+  return chartThemeFrom(getComputedStyle(document.documentElement), mode)
 }
 
 /**

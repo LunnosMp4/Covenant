@@ -156,8 +156,9 @@ export function buildUiToolDefinitions(): Array<Record<string, unknown>> {
       description:
         'Publish a bespoke visual answer as an isolated HTML/CSS/JS surface. Use only when the composition or interaction cannot be expressed with the native nodes: ' +
         'a coordinated dashboard-style layout, a chart type outside line/area/bar/pie/donut, custom SVG, or local what-if controls. ' +
-        'The surface runs sandboxed with no network, storage, filesystem or tool access. Always include a readable fallback with every value. ' +
-        'Use design tokens and the shared Covenant runtime; never literal colours, fonts or radii.',
+        'Compose it from the kit (Covenant.ui.* and .cv-* classes); generated CSS is layout-only — colours, type, borders, radii, shadows and motion come from the app theme and are rejected. ' +
+        'Charts use Covenant.chart(el, data) with the semantic contract, never ECharts options. ' +
+        'The surface runs sandboxed with no network, storage, filesystem or tool access. Always include a readable fallback with every value.',
       parameters: {
         type: 'object',
         properties: { source: GENERATED_SCHEMA },
