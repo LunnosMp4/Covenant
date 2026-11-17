@@ -1,20 +1,23 @@
 /**
- * Builds the trusted bootstrap document for a generated surface.
+ * Static bootstrap document for a generated surface.
  *
- * The document is loaded through a blob URL so it does not inherit the app's
- * CSP. `sandbox="allow-scripts"` (without `allow-same-origin`) gives it an
- * opaque origin: it can run its own code but cannot read the host DOM, storage,
- * cookies, or the preload API.
+ * It is written next to the runtime asset and loaded by URL, not from a blob:
+ * `blob:` and `data:` documents inherit the app's CSP, whose `script-src 'self'`
+ * silently blocks the frame's script — the frame then never announces itself and
+ * the host times out ("The visual did not start in time"). A real URL gets its
+ * own policy (the CSP below), while `sandbox="allow-scripts"` (no
+ * `allow-same-origin`) still gives the frame an opaque origin: it can run its own
+ * code but cannot read the host DOM, storage, cookies, or the preload API.
  */
 
-import {
-  GENERATED_BRIDGE_VERSION,
-  type GeneratedThemeContext
-} from '../../../../../shared/ui/generated'
+export const FRAME_FILE = 'frame.html'
 
 const FRAME_CSP = [
   "default-src 'none'",
-  "script-src 'unsafe-inline' blob:",
+  // `'self'` loads the runtime asset; `'unsafe-inline'` runs the authored script
+  // and the injected chart engine. Inline execution is inherent to the sandbox
+  // contract — the boundary is the opaque origin plus `connect-src 'none'`.
+  "script-src 'self' 'unsafe-inline'",
   "style-src 'unsafe-inline'",
   "img-src data: blob:",
   "font-src data:",
@@ -116,6 +119,15 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 }
 `
 
+/**
+ * The document written to {@link FRAME_FILE} beside the chart engine.
+ *
+ * The runtime is inlined rather than referenced: a sandboxed frame has an opaque
+ * origin, and Chromium refuses to load `file:` subresources from one — an
+ * external `<script src>` works in dev and is silently blocked in a packaged
+ * build. Inline execution is already part of the contract (the authored script
+ * runs inline), so inlining the runtime adds no capability.
+ */
 export function buildFrameDocument(runtimeSource: string): string {
   return `<!doctype html>
 <html lang="en">
@@ -133,13 +145,4 @@ export function buildFrameDocument(runtimeSource: string): string {
     <script>${runtimeSource}</script>
   </body>
 </html>`
-}
-
-export interface FrameInitializeMessage {
-  version: typeof GENERATED_BRIDGE_VERSION
-  type: 'initialize'
-  source: { html: string; css?: string; javascript?: string }
-  state: Record<string, unknown>
-  context: GeneratedThemeContext
-  height: number
 }

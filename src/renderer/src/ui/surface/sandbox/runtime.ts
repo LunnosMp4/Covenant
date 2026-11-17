@@ -24,21 +24,25 @@ declare global {
   }
 }
 
-let port: MessagePort | null = null
 let state: Record<string, unknown> = {}
 let initialized = false
+let chartsRequested = false
 let chartsRequest: Promise<void> | null = null
 let resolveCharts: (() => void) | null = null
 const pendingVisuals = new Set<Promise<unknown>>()
 const messageTimes: number[] = []
 
-function post(message: Record<string, unknown>, transfer?: Transferable[]): void {
-  if (!port) return
+/**
+ * Everything travels over `window.postMessage`: the host validates
+ * `event.source`, so a MessageChannel buys nothing and its lifecycle (transfer,
+ * `start()`, closing on remount) is exactly where this bridge used to break.
+ */
+function post(message: Record<string, unknown>): void {
   const now = performance.now()
   while (messageTimes.length > 0 && now - messageTimes[0] > 1_000) messageTimes.shift()
   if (messageTimes.length >= GENERATED_LIMITS.maxMessageRatePerSecond) return
   messageTimes.push(now)
-  port.postMessage({ version: GENERATED_BRIDGE_VERSION, ...message }, transfer ?? [])
+  window.parent.postMessage({ version: GENERATED_BRIDGE_VERSION, ...message }, '*')
 }
 
 function reportError(error: unknown): void {
@@ -262,6 +266,7 @@ function ensureCharts(): Promise<void> {
   if (window.covenantChartsRuntime) return Promise.resolve()
   if (chartsRequest) return chartsRequest
 
+  chartsRequested = true
   chartsRequest = new Promise<void>((resolve, reject) => {
     resolveCharts = resolve
     post({ type: 'charts' })
@@ -286,20 +291,41 @@ function runScript(javascript: string | undefined): void {
   script.remove()
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+/**
+ * One paint, with a timer fallback: Chromium throttles rAF in cross-origin
+ * frames that are scrolled out of view, and a surface often mounts offscreen.
+ */
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = (): void => {
+      if (settled) return
+      settled = true
+      resolve()
+    }
+    window.requestAnimationFrame(finish)
+    window.setTimeout(finish, 80)
+  })
+}
+
 async function settle(): Promise<void> {
   if (typeof document.fonts?.ready?.then === 'function') {
-    await document.fonts.ready.catch(() => undefined)
+    await Promise.race([document.fonts.ready.catch(() => undefined), delay(500)])
   }
 
   for (let round = 0; round < 12; round += 1) {
     const pending = [...pendingVisuals]
     if (pending.length === 0) break
-    await Promise.allSettled(pending)
+    await Promise.race([Promise.allSettled(pending), delay(2_000)])
     if (pendingVisuals.size === 0) break
   }
 
-  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  await nextFrame()
+  await nextFrame()
   post({ type: 'rendered' })
 }
 
@@ -339,29 +365,40 @@ function boot(payload: {
 }
 
 window.addEventListener('message', (event) => {
+  // Only the embedding page may drive the frame.
+  if (event.source !== window.parent) return
   const data = event.data as Record<string, unknown> | null
   if (!data || data.version !== GENERATED_BRIDGE_VERSION) return
 
-  if (data.type === 'initialize') {
-    const channelPort = event.ports?.[0]
-    if (channelPort) port = channelPort
-    port?.addEventListener('message', (messageEvent) => {
-      const message = messageEvent.data as Record<string, unknown> | null
-      if (!message) return
-      if (message.type === 'charts' && typeof message.source === 'string') {
-        const script = document.createElement('script')
-        script.textContent = message.source
-        script.addEventListener('load', () => resolveCharts?.())
-        document.head.append(script)
-        resolveCharts?.()
-        return
-      }
-      if (message.type === 'context' && message.context) {
-        applyContext(message.context as Parameters<typeof applyContext>[0])
-      }
-    })
-    boot(data as Parameters<typeof boot>[0])
+  // The host asks for this when its bridge listener (re)attaches, so a remount
+  // always gets a fresh handshake instead of relying on the first broadcast.
+  if (data.type === 'handshake') {
+    announceReady()
     return
+  }
+
+  if (data.type === 'charts' && typeof data.source === 'string') {
+    const script = document.createElement('script')
+    script.textContent = data.source
+    script.addEventListener('load', () => resolveCharts?.())
+    document.head.append(script)
+    resolveCharts?.()
+    return
+  }
+
+  if (data.type === 'context' && data.context) {
+    applyContext(data.context as Parameters<typeof applyContext>[0])
+    return
+  }
+
+  if (data.type === 'initialize') {
+    const wasInitialized = initialized
+    boot(data as Parameters<typeof boot>[0])
+    // A re-handshake re-initializes; if the authored code already asked for the
+    // chart engine, ask again.
+    if (wasInitialized && chartsRequested && !window.covenantChartsRuntime) {
+      post({ type: 'charts' })
+    }
   }
 })
 

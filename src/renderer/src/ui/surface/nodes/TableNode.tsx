@@ -3,11 +3,12 @@ import DataTable from '../DataTable'
 import { useSurfaceContext, type NodeViewProps } from '../types'
 
 export default function TableNode({ nodeId }: NodeViewProps): JSX.Element | null {
-  const { spec } = useSurfaceContext()
+  const { spec, interactive, onAction } = useSurfaceContext()
   const node = spec.elements[nodeId]
   if (!node) return null
 
   const props = node.props as unknown as TableProps
+  const action = props.rowAction
 
   return (
     <DataTable
@@ -17,6 +18,11 @@ export default function TableNode({ nodeId }: NodeViewProps): JSX.Element | null
       title={props.title}
       caption={props.caption}
       searchable={props.searchable}
+      rowAction={
+        action
+          ? { label: action.label, prompt: action.prompt, interactive, onAction }
+          : undefined
+      }
     />
   )
 }

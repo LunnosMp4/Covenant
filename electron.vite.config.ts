@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 import fs from 'fs'
 import type { Plugin } from 'vite'
+import { FRAME_FILE, buildFrameDocument } from './src/shared/ui/frame'
 
 // Custom plugin to copy assets from src/main/assets to out/main/assets
 const copyAssetsPlugin = (): Plugin => ({
@@ -43,13 +44,14 @@ const buildSandboxRuntimePlugin = (): Plugin => {
       if (built) return
       built = true
 
+      const outdir = resolve(__dirname, 'src/renderer/public/sandbox')
       const esbuild = await import('esbuild')
       await esbuild.build({
         entryPoints: {
           runtime: resolve(__dirname, 'src/renderer/src/ui/surface/sandbox/runtime.ts'),
           charts: resolve(__dirname, 'src/renderer/src/ui/surface/sandbox/charts.ts')
         },
-        outdir: resolve(__dirname, 'src/renderer/public/sandbox'),
+        outdir,
         bundle: true,
         format: 'iife',
         platform: 'browser',
@@ -58,6 +60,13 @@ const buildSandboxRuntimePlugin = (): Plugin => {
         legalComments: 'none',
         logLevel: 'silent'
       })
+
+      // A real URL, not a blob: blob documents inherit the app's CSP, which
+      // blocks the frame outright. The runtime is inlined into the document so
+      // the frame never loads a `file:` subresource (blocked in packaged builds).
+      const runtime = fs.readFileSync(resolve(outdir, 'runtime.js'), 'utf8')
+      fs.writeFileSync(resolve(outdir, FRAME_FILE), buildFrameDocument(runtime), 'utf8')
+      fs.rmSync(resolve(outdir, 'runtime.js'), { force: true })
     }
   }
 }

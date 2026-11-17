@@ -19,10 +19,8 @@ export type UiNodeType =
   | 'Table'
   | 'Compare'
   | 'Actions'
+  | 'Timeline'
   | 'Generated'
-
-/** Nodes the model may no longer author but old conversations may still replay. */
-export const RETIRED_UI_NODE_TYPES: readonly UiNodeType[] = []
 
 export const UI_LIMITS = {
   maxNodes: 24,
@@ -36,11 +34,16 @@ export const UI_LIMITS = {
   maxTableRows: 50,
   maxTableCellLength: 160,
   maxMetricItems: 4,
+  maxSparklinePoints: 32,
   maxCompareOptions: 4,
   maxCompareCriteria: 8,
   maxActionPrompts: 4,
   maxActionLabelLength: 60,
-  maxPromptLength: 600
+  maxPromptLength: 600,
+  maxTimelineItems: 8,
+  maxTimelineLabelLength: 80,
+  maxTimelineMetaLength: 40,
+  maxTimelineDetailLength: 240
 } as const
 
 export interface StackProps {
@@ -64,6 +67,8 @@ export interface MetricItem {
     suffix?: string
   }
   hint?: string
+  /** Recent history behind the number, drawn as a sparkline. Null = gap. */
+  sparkline?: Array<number | null>
 }
 
 export interface MetricProps {
@@ -77,6 +82,14 @@ export interface TableProps {
   rows: string[][]
   align?: Array<'left' | 'right'>
   searchable?: boolean
+  /**
+   * One clickable prompt per row. `{row}` / `{row.0}` interpolate cells,
+   * `{index}` is the 1-based position the user sees.
+   */
+  rowAction?: {
+    label: string
+    prompt: string
+  }
 }
 
 export interface CompareProps {
@@ -97,6 +110,22 @@ export interface ActionsProps {
   prompts: ActionPrompt[]
 }
 
+export interface TimelineItem {
+  label: string
+  /** Short right-aligned note: a time, a duration, an owner. */
+  meta?: string
+  detail?: string
+  state?: 'done' | 'current' | 'todo'
+}
+
+export interface TimelineProps {
+  title?: string
+  caption?: string
+  /** `timeline` shows dots, `steps` numbers them. */
+  variant?: 'timeline' | 'steps'
+  items: TimelineItem[]
+}
+
 export interface UiNode {
   type: UiNodeType
   props: Record<string, unknown>
@@ -114,6 +143,7 @@ export type ChartNode = TypedUiNode<'Chart', ChartData>
 export type TableNode = TypedUiNode<'Table', TableProps>
 export type CompareNode = TypedUiNode<'Compare', CompareProps>
 export type ActionsNode = TypedUiNode<'Actions', ActionsProps>
+export type TimelineNode = TypedUiNode<'Timeline', TimelineProps>
 export type GeneratedNode = TypedUiNode<'Generated', GeneratedSource>
 
 export interface UiSpec {
@@ -148,25 +178,6 @@ export const UI_NODE_TYPES: readonly UiNodeType[] = [
   'Table',
   'Compare',
   'Actions',
+  'Timeline',
   'Generated'
 ]
-
-export function isAuthoringNodeType(type: unknown): type is UiNodeType {
-  return typeof type === 'string' && UI_NODE_TYPES.includes(type as UiNodeType)
-}
-
-export function isReplayNodeType(type: unknown): type is UiNodeType {
-  return (
-    typeof type === 'string' &&
-    (UI_NODE_TYPES.includes(type as UiNodeType) ||
-      RETIRED_UI_NODE_TYPES.includes(type as UiNodeType))
-  )
-}
-
-export function countSurfaceBytes(surfaces: readonly UiSurface[]): number {
-  try {
-    return JSON.stringify(surfaces).length
-  } catch {
-    return Number.POSITIVE_INFINITY
-  }
-}

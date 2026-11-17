@@ -79,7 +79,7 @@ const NODE_SCHEMA = {
   properties: {
     type: {
       type: 'string',
-      enum: ['Stack', 'Text', 'Metric', 'Chart', 'Table', 'Compare', 'Actions', 'Generated']
+      enum: ['Stack', 'Text', 'Metric', 'Chart', 'Table', 'Compare', 'Actions', 'Timeline', 'Generated']
     },
     props: { type: 'object', additionalProperties: true }
   },

@@ -40,8 +40,6 @@ export const GENERATED_MESSAGE = {
   error: 'error'
 } as const
 
-export type GeneratedMessageType = (typeof GENERATED_MESSAGE)[keyof typeof GENERATED_MESSAGE]
-
 export interface GeneratedField {
   name: string
   label: string
@@ -202,10 +200,6 @@ export function validateGeneratedSource(value: unknown, path = 'generated'): str
   return issues
 }
 
-export function isGeneratedSource(value: unknown): value is GeneratedSource {
-  return validateGeneratedSource(value).length === 0
-}
-
 /** Bounded JSON only: no functions, DOM nodes, or unbounded arrays. */
 export function isGeneratedState(value: unknown): value is Record<string, unknown> {
   if (!isRecord(value)) return false
@@ -214,17 +208,5 @@ export function isGeneratedState(value: unknown): value is Record<string, unknow
     return typeof serialized === 'string' && serialized.length <= GENERATED_LIMITS.maxStateCharacters
   } catch {
     return false
-  }
-}
-
-export function clampGeneratedState(
-  value: unknown
-): Record<string, unknown> | undefined {
-  if (!isGeneratedState(value)) return undefined
-  try {
-    const cloned = JSON.parse(JSON.stringify(value)) as unknown
-    return isRecord(cloned) ? cloned : undefined
-  } catch {
-    return undefined
   }
 }

@@ -250,7 +250,7 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
   }
   openExternal: (url: string) => Promise<{ success: boolean }>
   ui: {
-    getSandboxSource: () => Promise<{ runtime: string; charts: string; error?: string }>
+    getSandboxSource: () => Promise<{ charts: string; error?: string }>
   }
   excalidraw: {
     readCheckpoint: (

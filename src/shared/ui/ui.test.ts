@@ -1,9 +1,28 @@
 import { describe, expect, it } from 'vitest'
-import { buildChartOption, describeChart, validateChartData, type ChartData } from './chart'
+import {
+  buildChartOption,
+  describeChart,
+  validateChartData,
+  type ChartData,
+  type ChartTheme
+} from './chart'
 import { describeUiSpec } from './describe'
 import { validateGeneratedSource, isGeneratedState } from './generated'
 import { UI_SPEC_VERSION, type UiSpec } from './spec'
 import { normalizeUiParts, normalizeUiSurface, validateUiSpec } from './validate'
+
+const chartTheme: ChartTheme = {
+  palette: ['#8899aa', '#aa9988'],
+  text: '#eee',
+  muted: '#999',
+  grid: 'rgba(255,255,255,0.06)',
+  border: 'rgba(255,255,255,0.1)',
+  surface: '#111',
+  fontFamily: 'system-ui',
+  fontSize: 10,
+  radius: 6,
+  dark: true
+}
 
 const chart: ChartData = {
   title: 'Revenue by month',
@@ -17,8 +36,8 @@ function specWith(elements: UiSpec['elements'], root = 'root'): UiSpec {
   return { version: UI_SPEC_VERSION, root, elements }
 }
 
-function issuesOf(value: unknown, mode: 'authoring' | 'replay' = 'authoring'): string[] {
-  const result = validateUiSpec(value, { mode })
+function issuesOf(value: unknown): string[] {
+  const result = validateUiSpec(value)
   return result.ok ? [] : result.issues
 }
 
@@ -100,6 +119,46 @@ describe('chart contract', () => {
     expect(option).toHaveProperty('series')
     expect(option).toHaveProperty('xAxis')
   })
+
+  it('mixes bars and a trend line, with an optional second axis', () => {
+    const option = buildChartOption(
+      {
+        ...chart,
+        kind: 'bar',
+        series: [
+          { label: 'Revenue', values: [12, 18, 15] },
+          { label: 'Growth', values: [4, 6, 5], as: 'line', axis: 'right' }
+        ]
+      },
+      chartTheme
+    )
+    const series = option.series as Array<Record<string, unknown>>
+    expect(series[0].type).toBe('bar')
+    expect(series[1].type).toBe('line')
+    expect(series[1].yAxisIndex).toBe(1)
+    expect(Array.isArray(option.yAxis)).toBe(true)
+    expect((option.yAxis as unknown[]).length).toBe(2)
+  })
+
+  it('only adds zoom when asked, and never for a pie', () => {
+    const plain = buildChartOption(chart, chartTheme)
+    expect(plain).not.toHaveProperty('dataZoom')
+
+    const zoomed = buildChartOption({ ...chart, zoom: true }, chartTheme)
+    expect(Array.isArray(zoomed.dataZoom)).toBe(true)
+    expect(validateChartData({ ...chart, kind: 'pie', zoom: true }).join(' ')).toMatch(
+      /zoom: not supported/
+    )
+  })
+
+  it('rejects unknown series forms and axes', () => {
+    const issues = validateChartData({
+      ...chart,
+      series: [{ label: 'Revenue', values: [1, 2, 3], as: 'scatter', axis: 'top' }]
+    }).join(' ')
+    expect(issues).toMatch(/as: must be one of/)
+    expect(issues).toMatch(/axis: must be one of/)
+  })
 })
 
 describe('spec validation', () => {
@@ -178,6 +237,73 @@ describe('spec validation', () => {
       } as unknown as UiSpec['elements'])
     )
     expect(issues.join(' ')).toMatch(/byte limit/)
+  })
+
+  it('accepts a sparkline, a row action and a timeline', () => {
+    const spec = specWith({
+      root: { type: 'Stack', props: { children: ['metrics', 'table', 'steps'] } },
+      metrics: {
+        type: 'Metric',
+        props: { items: [{ label: 'ARR', value: 1.2, sparkline: [1, 2, null, 3] }] }
+      },
+      table: {
+        type: 'Table',
+        props: {
+          columns: ['Run', 'Status'],
+          rows: [['nightly-1', 'Passed']],
+          rowAction: { label: 'Explain', prompt: 'Why did {row} end as {row.1}?' }
+        }
+      },
+      steps: {
+        type: 'Timeline',
+        props: {
+          variant: 'steps',
+          items: [
+            { label: 'Back up', state: 'done', meta: '2 min' },
+            { label: 'Migrate', state: 'current', detail: 'Runs while you read this' }
+          ]
+        }
+      }
+    } as unknown as UiSpec['elements'])
+
+    expect(issuesOf(spec)).toEqual([])
+    const text = describeUiSpec(spec)
+    expect(text).toContain('Metrics: ARR 1.2, trend 1 → 3')
+    expect(text).toContain('Timeline: 1. Back up (2 min) ✓; 2. Migrate — Runs while you read this →')
+  })
+
+  it('rejects a one-point sparkline and a malformed row action', () => {
+    const issues = issuesOf(
+      specWith({
+        root: { type: 'Stack', props: { children: ['metrics', 'table'] } },
+        metrics: {
+          type: 'Metric',
+          props: { items: [{ label: 'ARR', value: 1, sparkline: [3] }] }
+        },
+        table: {
+          type: 'Table',
+          props: {
+            columns: ['Run'],
+            rows: [['nightly-1']],
+            rowAction: { label: '', prompt: '' }
+          }
+        }
+      } as unknown as UiSpec['elements'])
+    ).join(' ')
+    expect(issues).toMatch(/sparkline: at least two points/)
+    expect(issues).toMatch(/rowAction\/label/)
+    expect(issues).toMatch(/rowAction\/prompt/)
+  })
+
+  it('bounds the timeline', () => {
+    const items = Array.from({ length: 9 }, (_, index) => ({ label: `step ${index}` }))
+    const issues = issuesOf(
+      specWith({
+        root: { type: 'Timeline', props: { items, state: 'done' } }
+      } as unknown as UiSpec['elements'])
+    ).join(' ')
+    expect(issues).toMatch(/at most 8 steps/)
+    expect(issues).toMatch(/unsupported property/)
   })
 
   it('normalizes surfaces for replay and drops invalid ones', () => {

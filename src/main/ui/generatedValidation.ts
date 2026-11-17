@@ -346,10 +346,7 @@ export function validateGeneratedJavascript(javascript: string, path: string): s
   }
 }
 
-export function validateGeneratedSourceDeep(
-  source: GeneratedSource,
-  path: string
-): string[] {
+function validateGeneratedSourceDeep(source: GeneratedSource, path: string): string[] {
   const issues = [
     ...validateGeneratedHtml(source.html, `${path}/html`),
     ...(source.css ? validateGeneratedCss(source.css, `${path}/css`) : []),

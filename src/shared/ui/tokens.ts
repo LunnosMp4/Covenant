@@ -6,7 +6,7 @@
  * one place is what lets the app and the validator agree.
  */
 
-export const GENERATED_COLOR_TOKENS = [
+const GENERATED_COLOR_TOKENS = [
   '--chat-accent',
   '--chat-accent-soft',
   '--chat-accent-strong',
@@ -40,7 +40,7 @@ export const GENERATED_COLOR_TOKENS = [
   '--n-950'
 ] as const
 
-export const GENERATED_SPACE_TOKENS = [
+const GENERATED_SPACE_TOKENS = [
   '--ui-space-2xs',
   '--ui-space-xs',
   '--ui-space-sm',
@@ -49,14 +49,14 @@ export const GENERATED_SPACE_TOKENS = [
   '--ui-space-xl'
 ] as const
 
-export const GENERATED_RADIUS_TOKENS = [
+const GENERATED_RADIUS_TOKENS = [
   '--ui-radius-sm',
   '--ui-radius-md',
   '--ui-radius-lg',
   '--ui-radius-pill'
 ] as const
 
-export const GENERATED_TYPE_TOKENS = [
+const GENERATED_TYPE_TOKENS = [
   '--ui-font',
   '--ui-font-size-xs',
   '--ui-font-size-sm',
@@ -69,43 +69,12 @@ export const GENERATED_TYPE_TOKENS = [
   '--ui-leading-normal'
 ] as const
 
-export const GENERATED_TOKEN_GROUPS = {
-  color: GENERATED_COLOR_TOKENS,
-  space: GENERATED_SPACE_TOKENS,
-  radius: GENERATED_RADIUS_TOKENS,
-  type: GENERATED_TYPE_TOKENS
-} as const
-
-export type GeneratedColorToken = (typeof GENERATED_COLOR_TOKENS)[number]
-
 export const GENERATED_TOKENS: readonly string[] = [
   ...GENERATED_COLOR_TOKENS,
   ...GENERATED_SPACE_TOKENS,
   ...GENERATED_RADIUS_TOKENS,
   ...GENERATED_TYPE_TOKENS
 ]
-
-const TOKEN_SET = new Set<string>(GENERATED_TOKENS)
-
-export function isGeneratedToken(name: string): boolean {
-  return TOKEN_SET.has(name)
-}
-
-/** Tokens whose values are colours (used by the literal-colour checker). */
-export const COLOR_TOKEN_SET = new Set<string>(GENERATED_COLOR_TOKENS)
-
-/**
- * Values that are not literal colours but are still valid in `color`,
- * `background`, `border-color`, etc.
- */
-export const ALLOWED_COLOR_KEYWORDS = new Set([
-  'transparent',
-  'currentcolor',
-  'inherit',
-  'none',
-  'initial',
-  'unset'
-])
 
 /**
  * Presentational controls the runtime injects into every generated frame.

@@ -780,7 +780,6 @@ const api = {
   ui: {
     getSandboxSource: () =>
       ipcRenderer.invoke('covenant:ui-sandbox-source') as Promise<{
-        runtime: string
         charts: string
         error?: string
       }>

@@ -73,7 +73,15 @@ function ChatMessageRow({
     .filter(Boolean)
     .join(` \u00b7 `)
   const rowJustify = isUser && !fullWidthBubbles ? 'justify-end' : 'justify-start'
-  const bubbleWidth = fullWidthBubbles ? 'w-full' : 'max-w-[78%]'
+  // A bubble carrying a visual takes the full column (capped like any bubble), so
+  // the chart has a stable width that follows the transcript. A shrink-to-fit
+  // bubble would otherwise be sized by the chart's own canvas and freeze.
+  const hasParts = (message.parts?.length ?? 0) > 0
+  const bubbleWidth = fullWidthBubbles
+    ? 'w-full'
+    : hasParts
+      ? 'w-full max-w-[78%]'
+      : 'max-w-[78%]'
   const copyText = [
     message.content,
     ...(message.parts ?? []).map((part) => describeUiSpec(part.surface.spec))

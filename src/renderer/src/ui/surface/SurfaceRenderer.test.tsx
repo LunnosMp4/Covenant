@@ -118,4 +118,56 @@ describe('SurfaceRenderer', () => {
     expect(screen.getByRole('img', { name: /Revenue/ })).toBeTruthy()
     expect(screen.getByText('View data')).toBeTruthy()
   })
+
+  it('renders a timeline with its states', () => {
+    const spec: UiSpec = {
+      version: UI_SPEC_VERSION,
+      root: 'plan',
+      elements: {
+        plan: {
+          type: 'Timeline',
+          props: {
+            title: 'Sunday roast',
+            items: [
+              { label: 'Beef in', meta: '17:20', state: 'current' },
+              { label: 'Rest', detail: 'Twenty minutes, covered' }
+            ]
+          }
+        }
+      }
+    }
+
+    render(<SurfaceRenderer surface={surface(spec)} interactive={false} onAction={() => undefined} />)
+    expect(screen.getByText('Beef in')).toBeTruthy()
+    expect(screen.getByText('17:20')).toBeTruthy()
+    expect(screen.getByText('Twenty minutes, covered')).toBeTruthy()
+  })
+
+  it('expands a surface into a dialog and closes it again', () => {
+    const spec: UiSpec = {
+      version: UI_SPEC_VERSION,
+      root: 'table',
+      elements: {
+        table: {
+          type: 'Table',
+          props: {
+            title: 'Runs',
+            columns: ['Run', 'Status'],
+            rows: [['nightly-1', 'Passed']]
+          }
+        }
+      }
+    }
+
+    render(<SurfaceRenderer surface={surface(spec)} interactive onAction={() => undefined} />)
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /expand/i }))
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    // The panel renders the same tree a second time.
+    expect(screen.getAllByText('Runs')).toHaveLength(2)
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
 })

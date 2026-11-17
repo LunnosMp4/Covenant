@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { rowActionPrompt } from './rowAction'
 
 type Alignment = 'left' | 'right'
 
@@ -10,6 +11,13 @@ interface DataTableProps {
   caption?: string
   /** Show the filter field. Defaults to on once a table has more than 8 rows. */
   searchable?: boolean
+  /** One clickable prompt per row (only the latest answer may act). */
+  rowAction?: {
+    label: string
+    prompt: string
+    interactive: boolean
+    onAction: (prompt: string) => void
+  }
 }
 
 type SortState = { index: number; direction: 'asc' | 'desc' } | null
@@ -25,7 +33,8 @@ export default function DataTable({
   align,
   title,
   caption,
-  searchable
+  searchable,
+  rowAction
 }: DataTableProps): JSX.Element {
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<SortState>(null)
@@ -104,6 +113,7 @@ export default function DataTable({
                   </th>
                 )
               })}
+              {rowAction ? <th scope="col" className="surface-table-action-cell" /> : null}
             </tr>
           </thead>
           <tbody>
@@ -114,6 +124,26 @@ export default function DataTable({
                     {row[cellIndex] ?? ''}
                   </td>
                 ))}
+                {rowAction ? (
+                  <td className="surface-table-action-cell">
+                    <button
+                      type="button"
+                      className="surface-table-row-action pressable"
+                      disabled={!rowAction.interactive}
+                      title={
+                        rowAction.interactive
+                          ? rowActionPrompt(rowAction.prompt, row, rowIndex + 1)
+                          : 'Only the latest answer can act.'
+                      }
+                      aria-label={`${rowAction.label}: ${row[0] ?? ''}`}
+                      onClick={() =>
+                        rowAction.onAction(rowActionPrompt(rowAction.prompt, row, rowIndex + 1))
+                      }
+                    >
+                      {rowAction.label}
+                    </button>
+                  </td>
+                ) : null}
               </tr>
             ))}
           </tbody>

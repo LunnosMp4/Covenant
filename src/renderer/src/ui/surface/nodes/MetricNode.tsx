@@ -1,11 +1,29 @@
 import { formatChartValue } from '../../../../../shared/ui/chart'
 import type { MetricProps } from '../../../../../shared/ui/spec'
+import { buildSparklinePath, SPARKLINE_VIEWBOX } from '../sparkline'
 import { useSurfaceContext, type NodeViewProps } from '../types'
 
 function deltaClass(sentiment: 'positive' | 'negative' | 'neutral' | undefined): string {
   if (sentiment === 'positive') return 'surface-metric-delta surface-metric-delta--positive'
   if (sentiment === 'negative') return 'surface-metric-delta surface-metric-delta--negative'
   return 'surface-metric-delta'
+}
+
+function Sparkline({ values }: { values: Array<number | null> }): JSX.Element {
+  const { line, area, last } = buildSparklinePath(values)
+  return (
+    <svg
+      className="surface-sparkline"
+      viewBox={SPARKLINE_VIEWBOX}
+      preserveAspectRatio="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {area ? <path className="surface-sparkline-area" d={area} /> : null}
+      <path className="surface-sparkline-line" d={line} vectorEffect="non-scaling-stroke" />
+      {last ? <circle className="surface-sparkline-dot" cx={last.x} cy={last.y} r={1.8} /> : null}
+    </svg>
+  )
 }
 
 export default function MetricNode({ nodeId }: NodeViewProps): JSX.Element | null {
@@ -34,6 +52,9 @@ export default function MetricNode({ nodeId }: NodeViewProps): JSX.Element | nul
               {formatChartValue(Math.abs(item.delta.value), 'number')}
               {item.delta.suffix ?? '%'}
             </span>
+          ) : null}
+          {item.sparkline && item.sparkline.length > 1 ? (
+            <Sparkline values={item.sparkline} />
           ) : null}
           {item.hint ? <span className="surface-metric-hint">{item.hint}</span> : null}
         </div>

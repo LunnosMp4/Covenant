@@ -45,7 +45,8 @@ export default function ChartWidget({ data, onSettled }: ChartWidgetProps): JSX.
   const option = useMemo(() => {
     try {
       return buildChartOption(data, theme)
-    } catch {
+    } catch (error) {
+      console.warn('[Covenant] chart option could not be built', error)
       return null
     }
   }, [data, theme])
@@ -61,6 +62,7 @@ export default function ChartWidget({ data, onSettled }: ChartWidgetProps): JSX.
 
     const initial = initialOptionRef.current
     if (!initial) {
+      console.warn('[Covenant] chart has no option to draw', data.title)
       setFailed(true)
       return
     }
@@ -76,7 +78,8 @@ export default function ChartWidget({ data, onSettled }: ChartWidgetProps): JSX.
         setReady(true)
         onSettled?.()
       })
-      .catch(() => {
+      .catch((error) => {
+        console.warn('[Covenant] chart failed', error)
         if (!cancelled) setFailed(true)
       })
 

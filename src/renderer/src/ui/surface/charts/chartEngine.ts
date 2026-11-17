@@ -10,6 +10,7 @@ import {
 } from 'echarts/components'
 import { init, use, type EChartsType } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
+import { mergeChartOption } from './chartOption'
 
 use([
   DatasetComponent,
@@ -39,13 +40,16 @@ interface ChartEntry {
   element: HTMLElement
   observer: ResizeObserver | null
   option: Record<string, unknown>
+  /** Last size applied to the instance, so redundant resizes are skipped. */
+  width: number
+  height: number
 }
 
-export const MAXIMUM_LIVE_CHARTS = 8
-const MAXIMUM_CHART_WIDTH = 2_048
-const MAXIMUM_CHART_HEIGHT = 640
-const MINIMUM_CHART_WIDTH = 240
-const MINIMUM_CHART_HEIGHT = 120
+/**
+ * Bounded so a long transcript cannot accumulate canvases forever. The expanded
+ * panel renders a second copy of the same tree, so the ceiling accounts for it.
+ */
+const MAXIMUM_LIVE_CHARTS = 16
 
 const entries = new Map<HTMLElement, ChartEntry>()
 
@@ -61,33 +65,21 @@ function disposeEntry(entry: ChartEntry): void {
 }
 
 function applyOption(entry: ChartEntry, option: Record<string, unknown>): void {
-  // Preserve the legend selection (and any zoom) the user set across theme
-  // refreshes; a repaint must never reset the interface.
-  const previous = entry.chart.getOption() as Record<string, unknown>
-  const next: Record<string, unknown> = { ...option, animation: false, aria: { enabled: true } }
-
-  const previousLegend = Array.isArray(previous.legend) ? previous.legend[0] : undefined
-  if (next.legend && previousLegend && typeof previousLegend === 'object') {
-    const selected = (previousLegend as { selected?: unknown }).selected
-    if (selected && typeof selected === 'object') {
-      next.legend = { ...(next.legend as object), selected }
-    }
-  }
-
+  // A fresh instance has no option at all, so `getOption()` is `undefined`;
+  // `mergeChartOption` treats that as "nothing to preserve" (the first paint).
+  const previous = entry.chart.getOption() as Record<string, unknown> | undefined
+  const next = mergeChartOption(previous, option)
   entry.option = next
-  try {
-    entry.chart.setOption(next as never, { notMerge: false, lazyUpdate: true })
-  } catch {
-    // A malformed option should degrade to the data table, not crash the feed.
-  }
-}
 
-function boundedSize(element: HTMLElement): { width: number; height: number } {
-  const width = Math.round(element.clientWidth || 320)
-  const height = Math.round(element.clientHeight || 220)
-  return {
-    width: Math.min(MAXIMUM_CHART_WIDTH, Math.max(MINIMUM_CHART_WIDTH, width)),
-    height: Math.min(MAXIMUM_CHART_HEIGHT, Math.max(MINIMUM_CHART_HEIGHT, height))
+  try {
+    // `lazyUpdate` defers the paint to the next animation frame, which Chromium
+    // throttles in cross-origin frames that are scrolled out of view: the canvas
+    // would not exist until the user scrolled back. These updates are small and
+    // infrequent, so paint synchronously instead.
+    entry.chart.setOption(next as never, { notMerge: false, lazyUpdate: false })
+  } catch (error) {
+    // A malformed option should degrade to the data table, not crash the feed.
+    console.warn('[Covenant] chart option rejected', error)
   }
 }
 
@@ -102,29 +94,47 @@ export const chartEngine = {
       disposeEntry(oldest)
     }
 
-    const { width, height } = boundedSize(element)
+    // Never pass `width`/`height` here: zrender keeps them as sticky painter
+    // opts, and every later `resize()` then reuses them instead of measuring the
+    // element — which leaves the chart frozen at its mount size when the
+    // transcript is narrowed again. Without them, the DOM is the source of truth.
     const chart = init(element, undefined, {
       renderer: 'canvas',
-      width,
-      height,
       devicePixelRatio: Math.min(2, window.devicePixelRatio || 1)
     })
 
-    const entry: ChartEntry = { chart, element, observer: null, option }
+    const entry: ChartEntry = { chart, element, observer: null, option, width: 0, height: 0 }
     entries.set(element, entry)
-    applyOption(entry, option)
+    try {
+      applyOption(entry, option)
+    } catch (error) {
+      // Never keep a half-initialised instance around: it would hold the element
+      // (and its canvas) for the lifetime of the page.
+      disposeEntry(entry)
+      throw error
+    }
+
+    const resizeToElement = (): void => {
+      const width = Math.round(element.clientWidth)
+      const height = Math.round(element.clientHeight)
+      // A collapsed or hidden surface measures 0; the observer calls us again as
+      // soon as it has a real box.
+      if (width === 0 || height === 0) return
+      if (width === entry.width && height === entry.height) return
+      entry.width = width
+      entry.height = height
+      try {
+        chart.resize()
+      } catch {
+        // Ignore resize races while the surface is being torn down.
+      }
+    }
 
     if (typeof ResizeObserver !== 'undefined') {
-      const observer = new ResizeObserver(() => {
-        if (element.clientWidth === 0 || element.clientHeight === 0) return
-        try {
-          chart.resize({ animation: { duration: 0 } })
-        } catch {
-          // Ignore resize races while the surface is being torn down.
-        }
-      })
+      const observer = new ResizeObserver(resizeToElement)
       observer.observe(element)
       entry.observer = observer
+      resizeToElement()
     }
 
     return {
@@ -133,11 +143,9 @@ export const chartEngine = {
         applyOption(entry, next)
       },
       resize() {
-        try {
-          chart.resize({ animation: { duration: 0 } })
-        } catch {
-          // no-op
-        }
+        entry.width = 0
+        entry.height = 0
+        resizeToElement()
       },
       refresh() {
         if (!entries.has(element)) return

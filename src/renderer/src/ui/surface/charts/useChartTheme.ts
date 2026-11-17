@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ChartTheme } from '../../../../../shared/ui/chart'
+import { CHART_FALLBACK_PALETTE, type ChartTheme } from '../../../../../shared/ui/chart'
 
 function readVar(styles: CSSStyleDeclaration, name: string, fallback: string): string {
   const value = styles.getPropertyValue(name).trim()
@@ -9,7 +9,7 @@ function readVar(styles: CSSStyleDeclaration, name: string, fallback: string): s
 function readChartTheme(): ChartTheme {
   if (typeof window === 'undefined') {
     return {
-      palette: ['#8FA3B8', '#B39A82', '#8FAF9A', '#A99BBB', '#B7A87F', '#93AFB5'],
+      palette: [...CHART_FALLBACK_PALETTE],
       text: '#EDEDEB',
       muted: '#9A9A98',
       grid: 'rgba(255,255,255,0.08)',
@@ -27,7 +27,7 @@ function readChartTheme(): ChartTheme {
 
   return {
     palette: [1, 2, 3, 4, 5, 6].map((index) =>
-      readVar(styles, `--ui-series-${index}`, dark ? '#8FA3B8' : '#5F7288')
+      readVar(styles, `--ui-series-${index}`, CHART_FALLBACK_PALETTE[index - 1])
     ),
     text: readVar(styles, '--chat-assistant-text', dark ? '#F1F1EF' : '#262624'),
     muted: readVar(styles, '--chat-meta-text', dark ? '#9A9A98' : '#6B6B68'),

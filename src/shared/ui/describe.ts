@@ -12,6 +12,7 @@ import type {
   MetricProps,
   TableProps,
   TextProps,
+  TimelineProps,
   UiSpec
 } from './spec'
 
@@ -37,9 +38,20 @@ function describeMetric(props: MetricProps): string {
         : ` (${item.delta.value > 0 ? '+' : ''}${formatChartValue(item.delta.value, 'number')}${
             item.delta.suffix ?? '%'
           })`
-    return `${clip(item.label, 40)} ${value}${unit}${delta}`
+    const trend = describeSparkline(item.sparkline)
+    return `${clip(item.label, 40)} ${value}${unit}${delta}${trend}`
   })
   return `Metrics: ${items.join('; ')}`
+}
+
+/** The endpoints of a sparkline, so a text fallback keeps the direction. */
+function describeSparkline(points: Array<number | null> | undefined): string {
+  if (!points) return ''
+  const numbers = points.filter((point): point is number => typeof point === 'number')
+  if (numbers.length < 2) return ''
+  const first = numbers[0]
+  const last = numbers[numbers.length - 1]
+  return `, trend ${formatChartValue(first, 'compact')} → ${formatChartValue(last, 'compact')}`
 }
 
 function describeTable(props: TableProps): string {
@@ -64,6 +76,18 @@ function describeActions(props: ActionsProps): string {
   return `Suggested follow-ups: ${props.prompts
     .map((prompt) => `"${clip(prompt.label, 40)}"`)
     .join(', ')}`
+}
+
+function describeTimeline(props: TimelineProps): string {
+  const title = props.title ? ` "${clip(props.title, 60)}"` : ''
+  const steps = props.items.map((item, index) => {
+    const marker = props.variant === 'steps' ? `${index + 1}. ` : ''
+    const meta = item.meta ? ` (${clip(item.meta, 40)})` : ''
+    const detail = item.detail ? ` — ${clip(item.detail, 160)}` : ''
+    const state = item.state === 'done' ? ' ✓' : item.state === 'current' ? ' →' : ''
+    return `${marker}${clip(item.label, 80)}${meta}${detail}${state}`
+  })
+  return `Timeline${title}: ${steps.join('; ')}`
 }
 
 function describeGenerated(props: GeneratedSource): string {
@@ -119,6 +143,9 @@ export function describeUiSpec(
       case 'Actions':
         lines.push(describeActions(asProps<ActionsProps>(node)))
         return
+      case 'Timeline':
+        lines.push(describeTimeline(asProps<TimelineProps>(node)))
+        return
       case 'Generated':
         lines.push(describeGenerated(asProps<GeneratedSource>(node)))
         return
@@ -131,12 +158,4 @@ export function describeUiSpec(
 
   const joined = lines.join('\n')
   return joined.length > maxCharacters ? `${joined.slice(0, maxCharacters - 1)}…` : joined
-}
-
-/** Short label for a single node, used by the renderer for `aria-label`. */
-export function describeUiNode(spec: UiSpec, nodeId: string): string {
-  const node = spec.elements[nodeId]
-  if (!node) return ''
-  const single: UiSpec = { ...spec, root: nodeId }
-  return describeUiSpec(single, { maxCharacters: 600 })
 }

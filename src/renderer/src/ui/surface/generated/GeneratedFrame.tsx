@@ -6,8 +6,8 @@ import {
   type GeneratedSource,
   type GeneratedThemeContext
 } from '../../../../../shared/ui/generated'
+import { FRAME_FILE } from '../../../../../shared/ui/frame'
 import { GENERATED_TOKENS } from '../../../../../shared/ui/tokens'
-import { buildFrameDocument } from './frameDocument'
 
 interface GeneratedFrameProps {
   identity: string
@@ -19,25 +19,28 @@ interface GeneratedFrameProps {
 type FrameStatus = 'starting' | 'ready' | 'failed'
 
 interface SandboxSource {
-  runtime: string
   charts: string
   error?: string
 }
 
 let sandboxSourcePromise: Promise<SandboxSource> | null = null
 
-function loadSandboxSource(): Promise<SandboxSource> {
+/**
+ * The frame document itself is static (`sandbox/frame.html`, written next to the
+ * runtime by the vite plugin); this only fetches the chart engine when authored
+ * code asks for one.
+ */
+function loadSandboxCharts(): Promise<SandboxSource> {
   if (!sandboxSourcePromise) {
     const api = window.api?.ui
     const attempt = api
       ? api.getSandboxSource()
-      : Promise.resolve({ runtime: '', charts: '', error: 'Sandbox is unavailable.' })
+      : Promise.resolve({ charts: '', error: 'Sandbox is unavailable.' })
     sandboxSourcePromise = attempt.catch((error: unknown) => {
       // Do not cache a miss: in development the bundler may still be writing
       // the sandbox assets when the first generated surface opens.
       sandboxSourcePromise = null
       return {
-        runtime: '',
         charts: '',
         error: error instanceof Error ? error.message : 'Sandbox is unavailable.'
       }
@@ -45,6 +48,9 @@ function loadSandboxSource(): Promise<SandboxSource> {
   }
   return sandboxSourcePromise
 }
+
+/** Same-origin static frame, relative to the app document in dev and packaged builds. */
+const FRAME_URL = `sandbox/${FRAME_FILE}`
 
 function readThemeContext(): GeneratedThemeContext {
   const styles = getComputedStyle(document.documentElement)
@@ -115,47 +121,32 @@ export default function GeneratedFrame({
   onAction
 }: GeneratedFrameProps): JSX.Element {
   const frameRef = useRef<HTMLIFrameElement | null>(null)
-  const portRef = useRef<MessagePort | null>(null)
   const submittedRef = useRef(false)
-  const initializedRef = useRef(false)
-  const [documentUrl, setDocumentUrl] = useState('')
   const [status, setStatus] = useState<FrameStatus>('starting')
   const [height, setHeight] = useState(() => clampGeneratedHeight(source.height))
   const [proposal, setProposal] = useState<Record<string, unknown> | null>(null)
   const [failure, setFailure] = useState('')
 
+  // Fail fast when the sandbox assets were never built, instead of waiting for
+  // the frame's startup timeout.
   useEffect(() => {
     let cancelled = false
-    let url = ''
-
-    void loadSandboxSource()
-      .then((result) => {
-        if (cancelled) return
-        if (result.error || !result.runtime) {
-          setFailure(result.error ?? 'The visual runtime is unavailable.')
-          setStatus('failed')
-          return
-        }
-        const html = buildFrameDocument(result.runtime)
-        url = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
-        setDocumentUrl(url)
-      })
-      .catch(() => {
-        if (!cancelled) setStatus('failed')
-      })
-
+    void loadSandboxCharts().then((result) => {
+      if (cancelled || !result.error) return
+      setFailure(result.error)
+      setStatus('failed')
+    })
     return () => {
       cancelled = true
-      if (url) URL.revokeObjectURL(url)
     }
   }, [])
 
   useEffect(() => {
-    if (!documentUrl) return
     const frame = frameRef.current
     if (!frame) return
 
     let disposed = false
+    let initialized = false
     const startupTimer = window.setTimeout(() => {
       if (!disposed) {
         setFailure('The visual did not start in time.')
@@ -163,17 +154,17 @@ export default function GeneratedFrame({
       }
     }, GENERATED_LIMITS.startupTimeoutMs)
 
-    const portMessage = (message: unknown): void => {
+    const send = (message: Record<string, unknown>): void => {
+      frame.contentWindow?.postMessage({ version: GENERATED_BRIDGE_VERSION, ...message }, '*')
+    }
+
+    const handleMessage = (message: unknown): void => {
       const data = message as Record<string, unknown> | null
       if (!data || data.version !== GENERATED_BRIDGE_VERSION) return
 
       if (data.type === 'charts') {
-        void loadSandboxSource().then((result) => {
-          portRef.current?.postMessage({
-            version: GENERATED_BRIDGE_VERSION,
-            type: 'charts',
-            source: result.charts
-          })
+        void loadSandboxCharts().then((result) => {
+          send({ type: 'charts', source: result.charts })
         })
         return
       }
@@ -211,59 +202,51 @@ export default function GeneratedFrame({
       if (!data || data.version !== GENERATED_BRIDGE_VERSION) return
 
       if (data.type === 'ready') {
-        // The frame re-announces readiness until it is initialized.
-        if (initializedRef.current) return
-        initializedRef.current = true
+        if (initialized) return
+        initialized = true
         window.clearTimeout(startupTimer)
-        const channel = new MessageChannel()
-        portRef.current = channel.port1
-        channel.port1.onmessage = (messageEvent) => portMessage(messageEvent.data)
-        channel.port1.start()
-
-        const target = frame.contentWindow
-        target?.postMessage(
-          {
-            version: GENERATED_BRIDGE_VERSION,
-            type: 'initialize',
-            source: {
-              html: source.html,
-              css: source.css,
-              javascript: source.javascript
-            },
-            state: readState(identity),
-            context: readThemeContext(),
-            height
+        send({
+          type: 'initialize',
+          source: {
+            html: source.html,
+            css: source.css,
+            javascript: source.javascript
           },
-          '*',
-          [channel.port2]
-        )
+          state: readState(identity),
+          context: readThemeContext(),
+          height
+        })
         return
       }
 
-      portMessage(data)
+      handleMessage(data)
     }
 
     window.addEventListener('message', onMessage)
+    // The frame may have announced itself before this listener existed, and a
+    // remount (StrictMode, HMR) must re-initialize it: ask for a handshake.
+    send({ type: 'handshake' })
 
     return () => {
       disposed = true
       window.clearTimeout(startupTimer)
       window.removeEventListener('message', onMessage)
-      portRef.current?.close()
-      portRef.current = null
     }
-    // The bridge is rebuilt when the document or the surface identity changes.
+    // The bridge is rebuilt when the surface identity changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [documentUrl, identity])
+  }, [identity])
 
   // Theme changes repaint the frame without remounting it.
   useEffect(() => {
     const observer = new MutationObserver(() => {
-      portRef.current?.postMessage({
-        version: GENERATED_BRIDGE_VERSION,
-        type: 'context',
-        context: readThemeContext()
-      })
+      frameRef.current?.contentWindow?.postMessage(
+        {
+          version: GENERATED_BRIDGE_VERSION,
+          type: 'context',
+          context: readThemeContext()
+        },
+        '*'
+      )
     })
     observer.observe(document.documentElement, {
       attributes: true,
@@ -287,11 +270,11 @@ export default function GeneratedFrame({
         </p>
       ) : null}
 
-      {documentUrl ? (
+      {status !== 'failed' ? (
         <div className="surface-generated-frame" style={{ height }}>
           <iframe
             ref={frameRef}
-            src={documentUrl}
+            src={FRAME_URL}
             sandbox="allow-scripts"
             referrerPolicy="no-referrer"
             title={source.title}

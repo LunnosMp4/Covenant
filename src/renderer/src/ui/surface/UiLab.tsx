@@ -49,6 +49,37 @@ const BARS: UiSpec = {
   }
 }
 
+const COMBO: UiSpec = {
+  version: UI_SPEC_VERSION,
+  root: 'chart',
+  elements: {
+    chart: {
+      type: 'Chart',
+      props: {
+        title: 'Revenue and growth',
+        description: 'Bars are revenue; the line is year-over-year growth.',
+        kind: 'bar',
+        categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct'],
+        series: [
+          {
+            label: 'Revenue',
+            values: [182, 176, 195, 201, 214, 208, 226, 232, 241, 255]
+          },
+          {
+            label: 'Growth',
+            values: [4, 3, 6, 7, 9, 8, 10, 11, 12, 13],
+            as: 'line',
+            axis: 'right'
+          }
+        ],
+        unit: 'USD k',
+        zoom: true,
+        valueFormat: 'number'
+      }
+    }
+  }
+}
+
 const PIE: UiSpec = {
   version: UI_SPEC_VERSION,
   root: 'chart',
@@ -75,9 +106,27 @@ const METRICS: UiSpec = {
       type: 'Metric',
       props: {
         items: [
-          { label: 'ARR', value: 1_240_000, unit: 'USD', format: 'compact', delta: { value: 12, sentiment: 'positive' } },
-          { label: 'Active teams', value: 184, delta: { value: 4, sentiment: 'positive' } },
-          { label: 'Churn', value: 2.4, format: 'percent', delta: { value: -0.6, sentiment: 'positive' } }
+          {
+            label: 'ARR',
+            value: 1_240_000,
+            unit: 'USD',
+            format: 'compact',
+            delta: { value: 12, sentiment: 'positive' },
+            sparkline: [720, 780, 810, 900, 960, 1_020, 1_100, 1_240]
+          },
+          {
+            label: 'Active teams',
+            value: 184,
+            delta: { value: 4, sentiment: 'positive' },
+            sparkline: [148, 152, 149, 165, 171, 176, 180, 184]
+          },
+          {
+            label: 'Churn',
+            value: 2.4,
+            format: 'percent',
+            delta: { value: -0.6, sentiment: 'positive' },
+            sparkline: [3.4, 3.2, 3.1, 2.9, 2.7, 2.6, 2.5, 2.4]
+          }
         ]
       }
     },
@@ -116,7 +165,31 @@ const TABLE: UiSpec = {
           ['nightly-2404', 'Failed', '0m 47s'],
           ['nightly-2403', 'Passed', '1m 43s']
         ],
-        align: ['left', 'left', 'right']
+        align: ['left', 'left', 'right'],
+        rowAction: { label: 'Explain', prompt: 'Why did {row} end as {row.1} ({row.2})?' }
+      }
+    }
+  }
+}
+
+const TIMELINE: UiSpec = {
+  version: UI_SPEC_VERSION,
+  root: 'root',
+  elements: {
+    root: { type: 'Stack', props: { children: ['plan'], gap: 'sm' } },
+    plan: {
+      type: 'Timeline',
+      props: {
+        title: 'Sunday roast',
+        caption: 'Everything lands at 19:30.',
+        variant: 'timeline',
+        items: [
+          { label: 'Score and salt the beef', meta: '16:45', state: 'done' },
+          { label: 'Oven on at 220°C', meta: '17:00', state: 'done' },
+          { label: 'Beef in, then baste every 20 min', meta: '17:20', state: 'current' },
+          { label: 'Potatoes in the lower shelf', meta: '18:15' },
+          { label: 'Rest for 20 minutes, make gravy', meta: '19:10' }
+        ]
       }
     }
   }
@@ -199,9 +272,11 @@ const GENERATED: UiSpec = {
 const SECTIONS: Array<{ title: string; spec: UiSpec }> = [
   { title: 'Line · trend with a highlighted partial period', spec: LINE },
   { title: 'Bar · grouped comparison', spec: BARS },
+  { title: 'Combo · bars + growth line on a second axis, zoomable', spec: COMBO },
   { title: 'Donut · parts of one whole', spec: PIE },
-  { title: 'Metric + Compare', spec: METRICS },
-  { title: 'Table', spec: TABLE },
+  { title: 'Metric + Compare · sparklines', spec: METRICS },
+  { title: 'Table · row actions', spec: TABLE },
+  { title: 'Timeline · plan with states', spec: TIMELINE },
   { title: 'Actions', spec: ACTIONS },
   { title: 'Generated · sandboxed layout', spec: GENERATED }
 ]

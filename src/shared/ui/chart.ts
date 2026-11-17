@@ -15,6 +15,10 @@ export interface ChartSeries {
   label: string
   /** `null` means "no data" and is drawn as a gap, never as zero. */
   values: Array<number | null>
+  /** Draw this series as a line, bar or area regardless of the chart kind. */
+  as?: 'line' | 'bar' | 'area'
+  /** Plot against a second, right-hand value axis (a different unit/scale). */
+  axis?: 'left' | 'right'
 }
 
 export interface ChartData {
@@ -29,6 +33,8 @@ export interface ChartData {
   /** Category to emphasise; the rest of the chart steps back. */
   highlight?: string
   valueFormat?: ChartValueFormat
+  /** Pan/zoom the category axis (line, area and bar only). */
+  zoom?: boolean
   /** Plot height in CSS pixels. Clamped by the renderer. */
   height?: number
 }
@@ -36,6 +42,11 @@ export interface ChartData {
 export const CHART_KINDS: readonly ChartKind[] = ['line', 'area', 'bar', 'pie', 'donut']
 
 export const CHART_VALUE_FORMATS: readonly ChartValueFormat[] = ['number', 'percent', 'compact']
+
+/** Per-series drawing form, so one chart can mix bars and a trend line. */
+export const CHART_SERIES_FORMS = ['line', 'bar', 'area'] as const
+
+export const CHART_AXES = ['left', 'right'] as const
 
 export const CHART_LIMITS = {
   maxTitleLength: 160,
@@ -106,7 +117,7 @@ export function validateChartData(value: unknown, path = 'chart'): string[] {
   if (!isRecord(value)) return [`${path}: expected an object`]
 
   const issues: string[] = []
-  const { title, description, kind, categories, series, unit, stacked, highlight, valueFormat, height } =
+  const { title, description, kind, categories, series, unit, stacked, highlight, valueFormat, zoom, height } =
     value
 
   if (!isNonEmptyString(title, CHART_LIMITS.maxTitleLength)) {
@@ -188,6 +199,22 @@ export function validateChartData(value: unknown, path = 'chart'): string[] {
           )
         }
       })
+
+      if (entry.as !== undefined) {
+        if (!(CHART_SERIES_FORMS as readonly string[]).includes(String(entry.as))) {
+          issues.push(`${path}/series/${index}/as: must be one of ${CHART_SERIES_FORMS.join(', ')}`)
+        } else if (safeKind === 'pie' || safeKind === 'donut') {
+          issues.push(`${path}/series/${index}/as: not supported for ${safeKind} charts`)
+        }
+      }
+
+      if (entry.axis !== undefined) {
+        if (!(CHART_AXES as readonly string[]).includes(String(entry.axis))) {
+          issues.push(`${path}/series/${index}/axis: must be one of ${CHART_AXES.join(', ')}`)
+        } else if (safeKind === 'pie' || safeKind === 'donut') {
+          issues.push(`${path}/series/${index}/axis: not supported for ${safeKind} charts`)
+        }
+      }
     })
   }
 
@@ -207,6 +234,10 @@ export function validateChartData(value: unknown, path = 'chart'): string[] {
 
   if (height !== undefined && !isFiniteNumber(height)) {
     issues.push(`${path}/height: expected a number of pixels`)
+  }
+
+  if (zoom !== undefined && typeof zoom !== 'boolean') {
+    issues.push(`${path}/zoom: expected a boolean`)
   }
 
   if (highlight !== undefined) {
@@ -237,13 +268,12 @@ export function validateChartData(value: unknown, path = 'chart'): string[] {
     if (stacked === true) {
       issues.push(`${path}/stacked: not supported for ${safeKind} charts`)
     }
+    if (zoom === true) {
+      issues.push(`${path}/zoom: not supported for ${safeKind} charts`)
+    }
   }
 
   return issues
-}
-
-export function isChartData(value: unknown): value is ChartData {
-  return validateChartData(value).length === 0
 }
 
 /**
@@ -296,10 +326,18 @@ export interface ChartTheme {
   dark: boolean
 }
 
-const FALLBACK_PALETTE = ['#8FA3B8', '#B39A82', '#8FAF9A', '#A99BBB', '#B7A87F', '#93AFB5']
+/** Used when a CSS-token palette is unavailable (SSR, or a theme mid-swap). */
+export const CHART_FALLBACK_PALETTE = [
+  '#8FA3B8',
+  '#B39A82',
+  '#8FAF9A',
+  '#A99BBB',
+  '#B7A87F',
+  '#93AFB5'
+]
 
 function paletteFor(theme: ChartTheme, count: number): string[] {
-  const palette = theme.palette.length > 0 ? theme.palette : FALLBACK_PALETTE
+  const palette = theme.palette.length > 0 ? theme.palette : CHART_FALLBACK_PALETTE
   return Array.from({ length: count }, (_, index) => palette[index % palette.length])
 }
 
@@ -333,7 +371,7 @@ export function buildChartOption(
   theme: ChartTheme
 ): Record<string, unknown> {
   const format = chart.valueFormat ?? 'number'
-  const primary = theme.palette[0] ?? FALLBACK_PALETTE[0]
+  const primary = theme.palette[0] ?? CHART_FALLBACK_PALETTE[0]
   const colors = paletteFor(theme, Math.max(1, chart.series.length))
   const showLegend = chart.series.length > 1 && chart.kind !== 'pie' && chart.kind !== 'donut'
   const highlightColor = withAlpha(primary, 0.1)
@@ -417,20 +455,66 @@ export function buildChartOption(
     }
   }
 
-  const showSymbol = chart.kind === 'line' || chart.kind === 'area'
+  const showZoom = chart.zoom === true && (chart.kind === 'line' || chart.kind === 'area' || chart.kind === 'bar')
+  const useRightAxis = chart.series.some((entry) => entry.axis === 'right')
   const highlightIndex = chart.highlight ? chart.categories.indexOf(chart.highlight) : -1
+
+  const formOf = (entry: ChartSeries): 'line' | 'bar' | 'area' => {
+    if (entry.as) return entry.as
+    if (chart.kind === 'bar') return 'bar'
+    if (chart.kind === 'area') return 'area'
+    return 'line'
+  }
+
+  const valueAxis: Record<string, unknown> = {
+    type: 'value',
+    ...(chart.unit ? { name: chart.unit, nameGap: 14 } : {}),
+    nameTextStyle: {
+      color: theme.muted,
+      fontFamily: theme.fontFamily,
+      fontSize: theme.fontSize,
+      align: 'left'
+    },
+    splitNumber: 4,
+    axisLine: { show: false },
+    axisTick: { show: false },
+    axisLabel: {
+      color: theme.muted,
+      fontFamily: theme.fontFamily,
+      fontSize: theme.fontSize,
+      margin: 8,
+      formatter: (value: number) =>
+        format === 'compact' || Math.abs(value) >= 10_000
+          ? formatChartValue(value, 'compact')
+          : formatChartValue(value, format)
+    },
+    splitLine: {
+      lineStyle: { color: theme.grid, type: 'dashed', width: 1 }
+    }
+  }
+
+  // A second axis for a series in a different unit; its gridlines would double
+  // up with the left axis, so they stay hidden.
+  const rightAxis: Record<string, unknown> = {
+    ...valueAxis,
+    name: undefined,
+    position: 'right',
+    splitLine: { show: false }
+  }
 
   const series = chart.series.map((entry, seriesIndex) => {
     const color = colors[seriesIndex] ?? colors[0]
+    const form = formOf(entry)
+    const stacked = chart.stacked === true && (form === 'bar' || form === 'area')
     const base: Record<string, unknown> = {
       name: entry.label,
-      type: chart.kind === 'bar' ? 'bar' : 'line',
+      type: form === 'bar' ? 'bar' : 'line',
+      yAxisIndex: entry.axis === 'right' ? 1 : 0,
       data: entry.values,
       connectNulls: false,
-      ...(chart.kind === 'bar' ? { stack: chart.stacked ? 'total' : undefined } : {}),
-      ...(chart.kind === 'area' ? { stack: chart.stacked ? 'total' : undefined } : {}),
+      ...(stacked ? { stack: 'total' } : {}),
       itemStyle:
-        chart.kind === 'bar'
+        form === 'bar'
           ? {
               color,
               borderRadius: [theme.radius, theme.radius, 0, 0]
@@ -441,9 +525,9 @@ export function buildChartOption(
       symbol: 'circle',
       symbolSize: 5,
       showSymbol: false,
-      smooth: showSymbol ? 0.22 : false,
+      smooth: form === 'bar' ? false : 0.22,
       lineStyle: { width: 2, color },
-      ...(chart.kind === 'area'
+      ...(form === 'area'
         ? {
             areaStyle: {
               color: withAlpha(color, 0.16),
@@ -472,7 +556,7 @@ export function buildChartOption(
       ? {
           legend: {
             type: 'scroll',
-            bottom: 0,
+            bottom: showZoom ? 20 : 0,
             left: 'center',
             icon: 'circle',
             itemWidth: 8,
@@ -493,8 +577,11 @@ export function buildChartOption(
       left: 2,
       right: 10,
       top: 26,
-      bottom: showLegend ? 34 : 6,
-      containLabel: true
+      bottom: (showLegend ? 34 : 6) + (showZoom ? 22 : 0),
+      // ECharts 6 replacement for the deprecated `containLabel` (which needs the
+      // `LegacyGridContainLabel` feature and logs a warning without it).
+      outerBoundsMode: 'same',
+      outerBoundsContain: 'axisLabel'
     },
     xAxis: {
       type: 'category',
@@ -511,32 +598,36 @@ export function buildChartOption(
         interval: 'auto'
       }
     },
-    yAxis: {
-      type: 'value',
-      ...(chart.unit ? { name: chart.unit, nameGap: 14 } : {}),
-      nameTextStyle: {
-        color: theme.muted,
-        fontFamily: theme.fontFamily,
-        fontSize: theme.fontSize,
-        align: 'left'
-      },
-      splitNumber: 4,
-      axisLine: { show: false },
-      axisTick: { show: false },
-      axisLabel: {
-        color: theme.muted,
-        fontFamily: theme.fontFamily,
-        fontSize: theme.fontSize,
-        margin: 8,
-        formatter: (value: number) =>
-          format === 'compact' || Math.abs(value) >= 10_000
-            ? formatChartValue(value, 'compact')
-            : formatChartValue(value, format)
-      },
-      splitLine: {
-        lineStyle: { color: theme.grid, type: 'dashed', width: 1 }
-      }
-    },
+    yAxis: useRightAxis ? [valueAxis, rightAxis] : valueAxis,
+    ...(showZoom
+      ? {
+          dataZoom: [
+            { type: 'inside', xAxisIndex: [0], minValueSpan: 2, throttle: 50 },
+            {
+              type: 'slider',
+              xAxisIndex: [0],
+              height: 14,
+              bottom: 0,
+              borderColor: 'transparent',
+              backgroundColor: 'transparent',
+              fillerColor: withAlpha(primary, 0.18),
+              handleStyle: { color: theme.muted, borderColor: theme.border },
+              moveHandleStyle: { color: theme.border },
+              dataBackground: {
+                lineStyle: { color: theme.grid },
+                areaStyle: { color: withAlpha(theme.grid, 0.6) }
+              },
+              selectedDataBackground: {
+                lineStyle: { color: withAlpha(primary, 0.6) },
+                areaStyle: { color: withAlpha(primary, 0.18) }
+              },
+              textStyle: { color: theme.muted, fontSize: theme.fontSize - 1 },
+              showDetail: false,
+              brushSelect: false
+            }
+          ]
+        }
+      : {}),
     series
   }
 }

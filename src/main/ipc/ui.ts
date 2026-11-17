@@ -3,7 +3,6 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 
 interface SandboxSourceResult {
-  runtime: string
   charts: string
   error?: string
 }
@@ -34,25 +33,21 @@ function readSandboxFile(name: string): string {
 }
 
 /**
- * The sandbox runtime is served to the renderer through IPC rather than fetch:
+ * The chart engine is served to the renderer through IPC rather than fetch:
  * packaged builds load the window from `file://`, where `fetch` cannot read
- * local files. Reading it here also keeps the frame's script source trusted.
+ * local files. The frame document itself is a static asset next to it.
  */
 export function readSandboxSource(): SandboxSourceResult {
   if (cached) return cached
 
   try {
-    const source = {
-      runtime: readSandboxFile('runtime.js'),
-      charts: readSandboxFile('charts.js')
-    }
+    const source = { charts: readSandboxFile('charts.js') }
     cached = source
     return source
   } catch (error) {
     // Do not cache a miss forever: the bundler may still be writing the file
     // when the first generated surface is opened in development.
     return {
-      runtime: '',
       charts: '',
       error: error instanceof Error ? error.message : 'Sandbox assets are missing.'
     }

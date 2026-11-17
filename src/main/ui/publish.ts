@@ -3,9 +3,9 @@ import { UI_LIMITS, type UiPart, type UiSurface } from '../../shared/ui/spec'
 import { validateUiSpec } from '../../shared/ui/validate'
 import { validateGeneratedNodes } from './generatedValidation'
 
-export type PublishResult = { ok: true; part: UiPart } | { ok: false; issues: string[] }
+type PublishResult = { ok: true; part: UiPart } | { ok: false; issues: string[] }
 
-export interface SurfacePublisher {
+interface SurfacePublisher {
   publish(rawSpec: unknown): PublishResult
   published: number
 }
@@ -25,7 +25,7 @@ export function createSurfacePublisher(
     },
 
     publish(rawSpec: unknown): PublishResult {
-      const validated = validateUiSpec(rawSpec, { mode: 'authoring' })
+      const validated = validateUiSpec(rawSpec)
       if (!validated.ok) {
         return { ok: false, issues: validated.issues }
       }

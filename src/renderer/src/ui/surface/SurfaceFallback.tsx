@@ -1,5 +1,5 @@
 import { describeUiSpec } from '../../../../shared/ui/describe'
-import { UI_SPEC_VERSION, type UiSpec } from '../../../../shared/ui/spec'
+import type { UiSpec } from '../../../../shared/ui/spec'
 
 /**
  * The readable answer when a visual cannot be drawn. It is also what screen
@@ -27,10 +27,4 @@ export default function SurfaceFallback({ spec }: { spec: UiSpec }): JSX.Element
       ))}
     </div>
   )
-}
-
-export const EMPTY_SPEC: UiSpec = {
-  version: UI_SPEC_VERSION,
-  root: '',
-  elements: {}
 }

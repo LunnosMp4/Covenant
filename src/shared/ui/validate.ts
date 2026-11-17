@@ -8,7 +8,6 @@
 import { validateChartData } from './chart'
 import { validateGeneratedSource } from './generated'
 import {
-  RETIRED_UI_NODE_TYPES,
   UI_LIMITS,
   UI_NODE_TYPES,
   UI_SPEC_VERSION,
@@ -17,8 +16,6 @@ import {
   type UiSpec,
   type UiSurface
 } from './spec'
-
-export type UiValidationMode = 'authoring' | 'replay'
 
 export type UiValidationResult =
   | { ok: true; spec: UiSpec }
@@ -163,6 +160,28 @@ function validateMetricProps(
         )
       }
     }
+    if (item.sparkline !== undefined) {
+      const sparkline = item.sparkline
+      if (!Array.isArray(sparkline) || sparkline.length < 2) {
+        issues.push(`${itemPath}/sparkline: at least two points are required`)
+        return
+      }
+      if (sparkline.length > UI_LIMITS.maxSparklinePoints) {
+        issues.push(
+          `${itemPath}/sparkline: at most ${UI_LIMITS.maxSparklinePoints} points`
+        )
+      }
+      sparkline.forEach((point, pointIndex) => {
+        if (point !== null && !isFiniteNumber(point)) {
+          issues.push(
+            `${itemPath}/sparkline/${pointIndex}: use a finite number, or null for a gap`
+          )
+        }
+      })
+      if (!sparkline.some((point) => isFiniteNumber(point))) {
+        issues.push(`${itemPath}/sparkline: needs at least one number`)
+      }
+    }
   })
 }
 
@@ -230,6 +249,49 @@ function validateTableProps(
       })
     }
   }
+
+  if (props.rowAction !== undefined) {
+    if (!isRecord(props.rowAction)) {
+      issues.push(`${path}/rowAction: expected an object with label and prompt`)
+      return
+    }
+    text(props.rowAction.label, `${path}/rowAction/label`, UI_LIMITS.maxActionLabelLength, issues)
+    text(props.rowAction.prompt, `${path}/rowAction/prompt`, UI_LIMITS.maxPromptLength, issues)
+  }
+}
+
+function validateTimelineProps(
+  props: Record<string, unknown>,
+  path: string,
+  issues: string[]
+): void {
+  optionalText(props.title, `${path}/title`, 160, issues)
+  optionalText(props.caption, `${path}/caption`, 240, issues)
+  if (props.variant !== undefined) {
+    oneOf(props.variant, ['timeline', 'steps'] as const, `${path}/variant`, issues)
+  }
+
+  const items = props.items
+  if (!Array.isArray(items) || items.length === 0) {
+    issues.push(`${path}/items: at least one step is required`)
+    return
+  }
+  if (items.length > UI_LIMITS.maxTimelineItems) {
+    issues.push(`${path}/items: at most ${UI_LIMITS.maxTimelineItems} steps`)
+  }
+  items.forEach((item, index) => {
+    const itemPath = `${path}/items/${index}`
+    if (!isRecord(item)) {
+      issues.push(`${itemPath}: expected an object`)
+      return
+    }
+    text(item.label, `${itemPath}/label`, UI_LIMITS.maxTimelineLabelLength, issues)
+    optionalText(item.meta, `${itemPath}/meta`, UI_LIMITS.maxTimelineMetaLength, issues)
+    optionalText(item.detail, `${itemPath}/detail`, UI_LIMITS.maxTimelineDetailLength, issues)
+    if (item.state !== undefined) {
+      oneOf(item.state, ['done', 'current', 'todo'] as const, `${itemPath}/state`, issues)
+    }
+  })
 }
 
 function validateCompareProps(
@@ -332,12 +394,7 @@ function validateAllowsUnknownProps(
   }
 }
 
-function validateNode(
-  id: string,
-  node: unknown,
-  mode: UiValidationMode,
-  issues: string[]
-): string[] {
+function validateNode(id: string, node: unknown, issues: string[]): string[] {
   const path = `/elements/${id}`
   if (!isRecord(node)) {
     issues.push(`${path}: expected an object with type and props`)
@@ -351,10 +408,7 @@ function validateNode(
   }
 
   const type = node.type
-  const isKnown =
-    typeof type === 'string' &&
-    (UI_NODE_TYPES.includes(type as UiNodeType) ||
-      (mode === 'replay' && RETIRED_UI_NODE_TYPES.includes(type as UiNodeType)))
+  const isKnown = typeof type === 'string' && UI_NODE_TYPES.includes(type as UiNodeType)
 
   if (!isKnown) {
     issues.push(`${path}/type: unknown node type "${String(type)}"`)
@@ -385,7 +439,7 @@ function validateNode(
     case 'Table':
       validateAllowsUnknownProps(
         props,
-        ['title', 'caption', 'columns', 'rows', 'align', 'searchable'],
+        ['title', 'caption', 'columns', 'rows', 'align', 'searchable', 'rowAction'],
         `${path}/props`,
         issues
       )
@@ -404,6 +458,15 @@ function validateNode(
       validateAllowsUnknownProps(props, ['title', 'prompts'], `${path}/props`, issues)
       validateActionsProps(props, `${path}/props`, issues)
       return []
+    case 'Timeline':
+      validateAllowsUnknownProps(
+        props,
+        ['title', 'caption', 'variant', 'items'],
+        `${path}/props`,
+        issues
+      )
+      validateTimelineProps(props, `${path}/props`, issues)
+      return []
     case 'Generated':
       issues.push(...validateGeneratedSource(props, `${path}/props`))
       return []
@@ -412,11 +475,7 @@ function validateNode(
   }
 }
 
-export function validateUiSpec(
-  value: unknown,
-  options: { mode?: UiValidationMode } = {}
-): UiValidationResult {
-  const mode = options.mode ?? 'authoring'
+export function validateUiSpec(value: unknown): UiValidationResult {
   const issues: string[] = []
 
   if (!isRecord(value)) {
@@ -459,7 +518,7 @@ export function validateUiSpec(
 
   const childRefs = new Map<string, string[]>()
   for (const id of ids) {
-    childRefs.set(id, validateNode(id, elements[id], mode, issues))
+    childRefs.set(id, validateNode(id, elements[id], issues))
   }
 
   // Graph checks: one root, one parent per node, no cycles, bounded depth.
@@ -557,7 +616,7 @@ export function normalizeUiSurface(payload: unknown): UiSurface | null {
   const status = payload.status === 'ready' ? 'ready' : 'draft'
   const createdAt = isFiniteNumber(payload.createdAt) ? payload.createdAt : Date.now()
 
-  const validated = validateUiSpec(payload.spec, { mode: 'replay' })
+  const validated = validateUiSpec(payload.spec)
   if (!validated.ok) return null
 
   return {
@@ -584,14 +643,6 @@ export function normalizeUiParts(payload: unknown): UiPart[] | undefined {
     .slice(0, UI_LIMITS.maxSurfacesPerAnswer)
 
   return parts.length > 0 ? parts : undefined
-}
-
-export function totalSurfaceBytes(parts: readonly UiPart[]): number {
-  try {
-    return JSON.stringify(parts.map((part) => part.surface)).length
-  } catch {
-    return Number.POSITIVE_INFINITY
-  }
 }
 
 export function markSurfacesReady(parts: readonly UiPart[] | undefined): UiPart[] | undefined {
