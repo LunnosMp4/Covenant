@@ -3,6 +3,8 @@ import type { AppConfig } from '../../shared/config'
 import {
   DEFAULT_AUTO_COLLAPSE_REASONING,
   DEFAULT_CHAT_MODEL,
+  DEFAULT_ENABLE_GENERATED_UI,
+  DEFAULT_ENABLE_GENERATIVE_UI,
   DEFAULT_ENABLE_WEB_SEARCH,
   DEFAULT_LAUNCHER_SHOW_SYSTEM_APPS,
   DEFAULT_OPENCODE_CHAT_MODEL,
@@ -258,6 +260,16 @@ export function registerConfigIpc(): void {
     const nextAutoCollapse = typeof autoCollapseReasoning === 'boolean' ? autoCollapseReasoning : DEFAULT_AUTO_COLLAPSE_REASONING
     updateConfig({ autoCollapseReasoning: nextAutoCollapse })
     broadcast('auto-collapse-reasoning-updated', nextAutoCollapse)
+  })
+
+  ipcMain.on('update-generative-ui', (_event, enableGenerativeUi: boolean) => {
+    const next = typeof enableGenerativeUi === 'boolean' ? enableGenerativeUi : DEFAULT_ENABLE_GENERATIVE_UI
+    updateConfig({ enableGenerativeUi: next })
+  })
+
+  ipcMain.on('update-generated-ui', (_event, enableGeneratedUi: boolean) => {
+    const next = typeof enableGeneratedUi === 'boolean' ? enableGeneratedUi : DEFAULT_ENABLE_GENERATED_UI
+    updateConfig({ enableGeneratedUi: next })
   })
 
   ipcMain.on('update-texture-intensity', (_event, textureIntensity: number) => {

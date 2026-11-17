@@ -52,6 +52,8 @@ export function normalizeChatModelId(modelId: string | undefined): string {
 export const DEFAULT_REASONING_EFFORT: ReasoningEffort = 'low'
 export const DEFAULT_ENABLE_WEB_SEARCH = true
 export const DEFAULT_AUTO_COLLAPSE_REASONING = true
+export const DEFAULT_ENABLE_GENERATIVE_UI = true
+export const DEFAULT_ENABLE_GENERATED_UI = true
 export const DEFAULT_LAUNCHER_SHOW_SYSTEM_APPS = false
 export const DEFAULT_TEXTURE_INTENSITY = 0
 export const MAX_TEXTURE_INTENSITY = 100
@@ -300,6 +302,10 @@ export interface AppConfig {
   reasoningEffort: ReasoningEffort
   enableWebSearch: boolean
   autoCollapseReasoning: boolean
+  /** Publish validated visuals (charts, metrics, tables) inside chat answers. */
+  enableGenerativeUi?: boolean
+  /** Allow the sandboxed HTML/CSS/JS surface path. */
+  enableGeneratedUi?: boolean
   launcherShowSystemApps: boolean
   shortcuts: ShortcutConfig
   textureIntensity: number

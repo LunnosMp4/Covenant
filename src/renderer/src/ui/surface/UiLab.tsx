@@ -1,0 +1,264 @@
+import { useEffect, useMemo, useState } from 'react'
+import { THEME_OPTIONS, getThemeMode } from '../../../../shared/theme/theme'
+import { UI_SPEC_VERSION, type UiSpec, type UiSurface } from '../../../../shared/ui/spec'
+import { applyThemeToDocument } from '../../utils/themeDom'
+import SurfaceRenderer from './SurfaceRenderer'
+
+function surface(id: string, spec: UiSpec): UiSurface {
+  return { id, revision: 1, status: 'ready', createdAt: 1, spec }
+}
+
+const LINE: UiSpec = {
+  version: UI_SPEC_VERSION,
+  root: 'root',
+  elements: {
+    root: { type: 'Stack', props: { children: ['chart'], gap: 'sm' } },
+    chart: {
+      type: 'Chart',
+      props: {
+        title: 'Monthly token usage',
+        description: 'November is a partial month.',
+        kind: 'line',
+        categories: ['Jul', 'Aug', 'Sep', 'Oct', 'Nov'],
+        series: [{ label: 'Tokens', values: [412, 468, 441, 519, 287] }],
+        unit: 'k',
+        valueFormat: 'compact',
+        highlight: 'Nov'
+      }
+    }
+  }
+}
+
+const BARS: UiSpec = {
+  version: UI_SPEC_VERSION,
+  root: 'chart',
+  elements: {
+    chart: {
+      type: 'Chart',
+      props: {
+        title: 'Revenue by region',
+        kind: 'bar',
+        categories: ['Asia Pacific', 'Europe', 'North America'],
+        series: [
+          { label: 'Q2', values: [182, 141, 205] },
+          { label: 'Q3', values: [204, 132, 228] }
+        ],
+        unit: 'USD k'
+      }
+    }
+  }
+}
+
+const PIE: UiSpec = {
+  version: UI_SPEC_VERSION,
+  root: 'chart',
+  elements: {
+    chart: {
+      type: 'Chart',
+      props: {
+        title: 'Where the time went',
+        kind: 'donut',
+        categories: ['Build', 'Review', 'Meetings', 'Writing'],
+        series: [{ label: 'Hours', values: [18, 7, 9, 6] }],
+        unit: 'h'
+      }
+    }
+  }
+}
+
+const METRICS: UiSpec = {
+  version: UI_SPEC_VERSION,
+  root: 'root',
+  elements: {
+    root: { type: 'Stack', props: { children: ['metrics', 'compare'], gap: 'md' } },
+    metrics: {
+      type: 'Metric',
+      props: {
+        items: [
+          { label: 'ARR', value: 1_240_000, unit: 'USD', format: 'compact', delta: { value: 12, sentiment: 'positive' } },
+          { label: 'Active teams', value: 184, delta: { value: 4, sentiment: 'positive' } },
+          { label: 'Churn', value: 2.4, format: 'percent', delta: { value: -0.6, sentiment: 'positive' } }
+        ]
+      }
+    },
+    compare: {
+      type: 'Compare',
+      props: {
+        title: 'Plans',
+        options: ['Free', 'Pro', 'Team'],
+        criteria: [
+          { label: 'Price', values: ['$0', '$20', '$40'] },
+          { label: 'Projects', values: ['3', 'Unlimited', 'Unlimited'] },
+          { label: 'Shared views', values: ['—', '—', 'Yes'] }
+        ]
+      }
+    }
+  }
+}
+
+const TABLE: UiSpec = {
+  version: UI_SPEC_VERSION,
+  root: 'table',
+  elements: {
+    table: {
+      type: 'Table',
+      props: {
+        title: 'Recent runs',
+        columns: ['Run', 'Status', 'Duration'],
+        rows: [
+          ['nightly-2411', 'Passed', '1m 42s'],
+          ['nightly-2410', 'Passed', '1m 39s'],
+          ['nightly-2409', 'Failed', '0m 51s'],
+          ['nightly-2408', 'Passed', '1m 45s'],
+          ['nightly-2407', 'Passed', '1m 41s'],
+          ['nightly-2406', 'Passed', '1m 38s'],
+          ['nightly-2405', 'Passed', '1m 40s'],
+          ['nightly-2404', 'Failed', '0m 47s'],
+          ['nightly-2403', 'Passed', '1m 43s']
+        ],
+        align: ['left', 'left', 'right']
+      }
+    }
+  }
+}
+
+const ACTIONS: UiSpec = {
+  version: UI_SPEC_VERSION,
+  root: 'root',
+  elements: {
+    root: {
+      type: 'Stack',
+      props: { children: ['text', 'actions'], gap: 'sm' }
+    },
+    text: { type: 'Text', props: { text: 'November is a partial month, so the drop is expected.', tone: 'body' } },
+    actions: {
+      type: 'Actions',
+      props: {
+        prompts: [
+          { label: 'Compare to October', prompt: 'Compare November to October, adjusting for the partial month.' },
+          { label: 'Forecast December', prompt: 'Forecast December usage from the last five months.' }
+        ]
+      }
+    }
+  }
+}
+
+const GENERATED: UiSpec = {
+  version: UI_SPEC_VERSION,
+  root: 'visual',
+  elements: {
+    visual: {
+      type: 'Generated',
+      props: {
+        title: 'A little room for reading',
+        height: 360,
+        fallback:
+          'Reading time: Monday 20 min, Tuesday 35 min, Wednesday 25 min, Thursday 45 min. ' +
+          'Total 125 min; average 31.25 min per day. Choose a daily goal between 10 and 60 minutes.',
+        html: `
+          <p class="cv-note">Small moments add up. Here is your reading time this week.</p>
+          <div id="reading-chart" class="cv-chart" role="img" aria-label="Reading minutes by day" style="height:190px"></div>
+          <div class="cv-field" style="margin-top: var(--ui-space-sm)">
+            <label class="cv-field-label" for="goal">Daily goal <output id="goal-value">30 min</output></label>
+          </div>
+          <input id="goal" class="cv-range" type="range" min="10" max="60" value="30" step="5" aria-label="Daily reading goal">
+          <div id="goal-action" class="cv-row" style="margin-top: var(--ui-space-sm)"></div>
+        `,
+        css: `
+          #reading-chart { margin-top: var(--ui-space-sm); }
+        `,
+        javascript: `
+          const goal = document.getElementById('goal')
+          const saved = Covenant.state.get()
+          goal.value = String(saved.minutes || 30)
+
+          const chart = await Covenant.chart(document.getElementById('reading-chart'), {
+            grid: { left: 30, right: 8, top: 16, bottom: 24, containLabel: true },
+            tooltip: { trigger: 'axis' },
+            xAxis: { type: 'category', data: ['Mon', 'Tue', 'Wed', 'Thu'] },
+            yAxis: { type: 'value', name: 'min', max: 60 },
+            series: [{ name: 'Reading', type: 'bar', barMaxWidth: 24, data: [20, 35, 25, 45] }]
+          })
+
+          function update() {
+            document.getElementById('goal-value').textContent = goal.value + ' min'
+            Covenant.state.set({ minutes: Number(goal.value) })
+          }
+
+          goal.addEventListener('input', update)
+          document.getElementById('goal-action').append(
+            Covenant.ui.button('Plan around this goal', { variant: 'primary', onClick: () => Covenant.submit({ minutes: goal.value }) })
+          )
+          update()
+        `
+      }
+    }
+  }
+}
+
+const SECTIONS: Array<{ title: string; spec: UiSpec }> = [
+  { title: 'Line · trend with a highlighted partial period', spec: LINE },
+  { title: 'Bar · grouped comparison', spec: BARS },
+  { title: 'Donut · parts of one whole', spec: PIE },
+  { title: 'Metric + Compare', spec: METRICS },
+  { title: 'Table', spec: TABLE },
+  { title: 'Actions', spec: ACTIONS },
+  { title: 'Generated · sandboxed layout', spec: GENERATED }
+]
+
+/**
+ * Development lab for visual surfaces. Open `#ui-lab` in the dev renderer to
+ * iterate on the widgets without waiting for the model.
+ */
+export default function UiLab(): JSX.Element {
+  const [themeId, setThemeId] = useState(THEME_OPTIONS[0].id)
+  const [lastAction, setLastAction] = useState('')
+
+  const theme = useMemo(
+    () => THEME_OPTIONS.find((option) => option.id === themeId) ?? THEME_OPTIONS[0],
+    [themeId]
+  )
+
+  useEffect(() => {
+    applyThemeToDocument(theme.gradientClass)
+    document.documentElement.setAttribute('data-theme', getThemeMode(theme.gradientClass))
+  }, [theme])
+
+  return (
+    <div className="min-h-screen bg-neutral-950 p-6 text-neutral-200">
+      <header className="mb-6 flex flex-wrap items-center gap-3">
+        <h1 className="text-sm font-semibold tracking-tight">Surface lab</h1>
+        <select
+          className="rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs"
+          value={themeId}
+          onChange={(event) => setThemeId(event.target.value)}
+        >
+          {THEME_OPTIONS.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        {lastAction ? (
+          <span className="text-xs text-neutral-500">Sent: {lastAction}</span>
+        ) : null}
+      </header>
+
+      <div className="mx-auto flex max-w-[620px] flex-col gap-4">
+        {SECTIONS.map((section) => (
+          <div
+            key={section.title}
+            className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2 text-[13px] leading-relaxed"
+          >
+            <p className="mb-2 text-[11px] text-neutral-500">{section.title}</p>
+            <SurfaceRenderer
+              surface={surface(section.title, section.spec)}
+              interactive
+              onAction={(prompt) => setLastAction(prompt)}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}

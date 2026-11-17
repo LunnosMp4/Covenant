@@ -1,5 +1,6 @@
 import type { ChatConversation, ChatMessage, ChatRole } from '../../../../shared/chat/chat'
 import type { Preprompt } from '../../../../shared/domain/preprompt'
+import { describeUiSpec } from '../../../../shared/ui/describe'
 import type { SelectedSystemPrompt } from '../types'
 
 export const MAX_CONVERSATION_TITLE_LENGTH = 48
@@ -142,6 +143,9 @@ export interface SearchGroup {
 
 export function getMessageSearchText(message: ChatMessage): string {
   const parts = [message.content]
+  if (message.parts && message.parts.length > 0) {
+    parts.push(...message.parts.map((part) => describeUiSpec(part.surface.spec)))
+  }
   if (message.reasoning?.trim()) {
     parts.push(message.reasoning.trim())
   }

@@ -8,6 +8,7 @@ import { registerNotesIpc } from './notes'
 import { registerPasteIpc } from './paste'
 import { registerStoreIpc } from './store'
 import { registerTerminalIpc } from './terminal'
+import { registerUiIpc } from './ui'
 import { registerUsageIpc } from './usage'
 import { registerWindowIpc } from './window'
 import { registerAiIpc } from './ai'
@@ -25,5 +26,6 @@ export function registerIpc(): void {
   registerPasteIpc()
   registerNotesIpc()
   registerChatIpc()
+  registerUiIpc()
   registerCodeIpc()
 }

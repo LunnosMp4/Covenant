@@ -8,6 +8,8 @@ import {
   DEFAULT_CHAT_MODEL,
   DEFAULT_CHAT_PROVIDER,
   DEFAULT_CODE_SETTINGS,
+  DEFAULT_ENABLE_GENERATED_UI,
+  DEFAULT_ENABLE_GENERATIVE_UI,
   DEFAULT_ENABLE_WEB_SEARCH,
   DEFAULT_LAUNCHER_SHOW_SYSTEM_APPS,
   DEFAULT_NOTES_SETTINGS,
@@ -62,6 +64,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   reasoningEffort: DEFAULT_REASONING_EFFORT,
   enableWebSearch: DEFAULT_ENABLE_WEB_SEARCH,
   autoCollapseReasoning: DEFAULT_AUTO_COLLAPSE_REASONING,
+  enableGenerativeUi: DEFAULT_ENABLE_GENERATIVE_UI,
+  enableGeneratedUi: DEFAULT_ENABLE_GENERATED_UI,
   launcherShowSystemApps: DEFAULT_LAUNCHER_SHOW_SYSTEM_APPS,
   shortcuts: { ...DEFAULT_SHORTCUTS },
   textureIntensity: DEFAULT_TEXTURE_INTENSITY,
@@ -187,6 +191,14 @@ export function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined
       typeof rawConfig?.autoCollapseReasoning === 'boolean'
         ? rawConfig.autoCollapseReasoning
         : DEFAULT_AUTO_COLLAPSE_REASONING,
+    enableGenerativeUi:
+      typeof rawConfig?.enableGenerativeUi === 'boolean'
+        ? rawConfig.enableGenerativeUi
+        : DEFAULT_ENABLE_GENERATIVE_UI,
+    enableGeneratedUi:
+      typeof rawConfig?.enableGeneratedUi === 'boolean'
+        ? rawConfig.enableGeneratedUi
+        : DEFAULT_ENABLE_GENERATED_UI,
     launcherShowSystemApps:
       typeof rawConfig?.launcherShowSystemApps === 'boolean'
         ? rawConfig.launcherShowSystemApps

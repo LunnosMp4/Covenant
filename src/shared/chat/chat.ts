@@ -1,3 +1,5 @@
+import type { UiPart } from '../ui/spec'
+
 export type ChatRole = 'system' | 'user' | 'assistant'
 
 export type InputImageContent = { type: 'input_image'; image_url: string }
@@ -63,6 +65,8 @@ export interface ChatMessage {
   sources?: Source[]
   stopped?: boolean
   images?: ChatMessageImage[]
+  /** Visual answers rendered above the message text. */
+  parts?: UiPart[]
 }
 
 export interface ChatConversation {
@@ -89,6 +93,7 @@ export type ChatStreamEventType =
   | 'tool-query'
   | 'tool-result'
   | 'sources'
+  | 'ui-surface'
 
 export interface ChatStreamEvent {
   id: string
@@ -110,6 +115,8 @@ export interface ChatStreamEvent {
   content?: string
   sources?: Source[]
   stopped?: boolean
+  /** Published visual surface, for `ui-surface` events. */
+  part?: UiPart
 }
 
 export const CHAT_ROLE_SET = new Set<ChatRole>(['system', 'user', 'assistant'])

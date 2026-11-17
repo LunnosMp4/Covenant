@@ -1352,6 +1352,454 @@ a[href]:focus-visible,
   will-change: transform;
 }
 
+/* ------------------------------------------------------------------------- */
+/* Generative UI surfaces                                                     */
+/*                                                                            */
+/* A visual is a block of the answer, not a card inside a card: it shares the  */
+/* assistant bubble's material and is separated by a hairline rule. Avoid      */
+/* stacking a second translucent surface here — legibility collapses.          */
+/* ------------------------------------------------------------------------- */
+
+.surface {
+  margin-top: 8px;
+  padding-top: 9px;
+  border-top: 1px solid var(--chat-assistant-border);
+  display: flow-root;
+}
+
+.surface:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.surface-enter {
+  animation: surface-enter 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes surface-enter {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.surface-section {
+  display: flow-root;
+}
+
+.chat-message-surfaces {
+  display: flow-root;
+}
+
+.surface-skeleton {
+  height: 120px;
+  margin-top: 8px;
+  border-top: 1px solid var(--chat-assistant-border);
+  border-radius: 10px;
+  background: var(--chat-assistant-border);
+  opacity: 0.28;
+}
+
+.surface-header {
+  margin-bottom: 7px;
+}
+
+.surface-title {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  color: var(--chat-assistant-text);
+}
+
+.surface-description {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  letter-spacing: 0.002em;
+  color: var(--chat-meta-text);
+}
+
+.surface-stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.surface-stack--sm {
+  gap: 8px;
+}
+
+.surface-stack--md {
+  gap: 12px;
+}
+
+.surface-stack--lg {
+  gap: 16px;
+}
+
+.surface-stack-item {
+  display: flow-root;
+}
+
+.surface-body {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.surface-body:last-child {
+  margin-bottom: 0;
+}
+
+.surface-heading {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.surface-caption {
+  margin: 4px 0 0;
+  font-size: 10.5px;
+  line-height: 1.45;
+  letter-spacing: 0.01em;
+  color: var(--chat-meta-text);
+}
+
+.surface-note {
+  margin: 6px 0 0;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--chat-meta-text);
+}
+
+/* Chart ------------------------------------------------------------------- */
+
+.surface-chart-block {
+  position: relative;
+}
+
+.surface-chart {
+  width: 100%;
+  margin-top: 2px;
+}
+
+.surface-chart-canvas {
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.surface-chart-block--ready .surface-chart-canvas {
+  opacity: 1;
+}
+
+.surface-disclosure {
+  margin-top: 5px;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--chat-meta-text);
+}
+
+.surface-disclosure summary {
+  cursor: pointer;
+  width: fit-content;
+  border-radius: 4px;
+}
+
+.surface-disclosure summary:focus-visible {
+  outline: 2px solid var(--chat-accent);
+  outline-offset: 2px;
+}
+
+.surface-disclosure p {
+  margin: 5px 0 0;
+}
+
+/* Table ------------------------------------------------------------------- */
+
+.surface-table-wrap {
+  margin-top: 4px;
+}
+
+.surface-table-title {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--chat-assistant-text);
+}
+
+.surface-table-scroll {
+  overflow: auto;
+  max-height: 260px;
+}
+
+.surface-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+.surface-table th,
+.surface-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--chat-assistant-border);
+}
+
+.surface-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.surface-table th {
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--chat-meta-text);
+  white-space: nowrap;
+}
+
+.surface-table-sort {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.surface-table-sort:hover {
+  color: var(--chat-assistant-text);
+}
+
+.surface-table-sort:focus-visible {
+  outline: 2px solid var(--chat-accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.surface-table--compare th[scope='row'] {
+  text-align: left;
+  color: var(--chat-meta-text);
+  font-weight: 500;
+  white-space: normal;
+}
+
+.surface-table-corner {
+  width: 0;
+  padding: 0 !important;
+}
+
+.surface-input {
+  width: 100%;
+  margin: 0 0 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--chat-assistant-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--chat-assistant-text);
+  font: inherit;
+  font-size: 11.5px;
+}
+
+.surface-input:focus-visible {
+  outline: 2px solid var(--chat-accent);
+  outline-offset: 1px;
+}
+
+/* Metrics ----------------------------------------------------------------- */
+
+.surface-metric-row {
+  display: grid;
+  gap: 8px;
+  margin: 2px 0;
+}
+
+.surface-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 10px;
+  border: 1px solid var(--chat-assistant-border);
+  border-radius: 10px;
+  min-width: 0;
+}
+
+.surface-metric-label {
+  font-size: 10.5px;
+  letter-spacing: 0.012em;
+  color: var(--chat-meta-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.surface-metric-value {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  color: var(--chat-assistant-text);
+}
+
+.surface-metric-unit {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--chat-meta-text);
+}
+
+.surface-metric-delta {
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--chat-meta-text);
+}
+
+.surface-metric-delta--positive {
+  color: var(--ui-positive);
+}
+
+.surface-metric-delta--negative {
+  color: var(--ui-negative);
+}
+
+.surface-metric-hint {
+  font-size: 10px;
+  color: var(--chat-meta-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Actions ----------------------------------------------------------------- */
+
+.surface-actions {
+  margin-top: 8px;
+}
+
+.surface-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.surface-action {
+  appearance: none;
+  border: 1px solid var(--chat-assistant-border);
+  background: transparent;
+  color: var(--chat-assistant-text);
+  border-radius: 999px;
+  padding: 5px 11px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.002em;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    transform 100ms ease;
+}
+
+.surface-action:hover:not(:disabled) {
+  background: var(--chat-accent-soft);
+}
+
+.surface-action:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.surface-action:focus-visible {
+  outline: 2px solid var(--chat-accent);
+  outline-offset: 2px;
+}
+
+.surface-action--primary {
+  background: var(--chat-accent-soft);
+  border-color: var(--chat-accent-strong);
+}
+
+.surface-action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Generated sandbox ------------------------------------------------------- */
+
+.surface-generated {
+  margin-top: 4px;
+}
+
+.surface-generated-frame {
+  position: relative;
+  width: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.surface-generated-frame iframe {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+}
+
+.surface-generated-loading {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  background: var(--chat-assistant-border);
+  opacity: 0.35;
+}
+
+.surface-proposal {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--chat-accent-strong);
+  border-radius: 10px;
+  background: var(--chat-accent-soft);
+}
+
+.surface-proposal-text {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--chat-assistant-text);
+}
+
+.surface-fallback {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--chat-meta-text);
+}
+
+.surface-fallback p {
+  margin: 0 0 5px;
+}
+
+.surface-fallback p:last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 480px) {
+  .surface-metric-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
 @media (prefers-contrast: more) {
   button:focus-visible:not(:disabled),
   a[href]:focus-visible,
@@ -1401,5 +1849,9 @@ a[href]:focus-visible,
 
   .texture-surface::after {
     transition: none;
+  }
+
+  .surface-enter {
+    animation: none;
   }
 }

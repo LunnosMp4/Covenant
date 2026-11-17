@@ -73,6 +73,9 @@ import type {
   ReasoningStep
 } from '../../shared/chat/chat'
 import type { InstalledApp, LauncherItem } from '../../shared/launcher/launcher'
+import { describeUiSpec } from '../../shared/ui/describe'
+import { markSurfacesReady } from '../../shared/ui/validate'
+import { UI_LIMITS } from '../../shared/ui/spec'
 import type { Preprompt } from './types/renderer'
 import type { Task } from './types/renderer'
 import type { GamificationState, XpToastState } from './types/renderer'
@@ -1662,6 +1665,12 @@ export default function App(): JSX.Element {
       }
 
       if (event.type === 'tool-start') {
+        // Visual surfaces publish their own `ui-surface` event; they are not
+        // reasoning steps, so the model's tool call stays invisible.
+        if (event.toolType === 'ui') {
+          return
+        }
+
         if (event.toolType === 'web_search') {
           updateConversationMessage(conversationId, messageId, (message) => ({
             ...message,
@@ -1750,6 +1759,27 @@ export default function App(): JSX.Element {
         return
       }
 
+      if (event.type === 'ui-surface' && event.part) {
+        const part = event.part
+        // Warm the renderer chunk while the surface is still arriving so the
+        // visual paints on the same frame as the rest of the message.
+        void import('./ui/surface/SurfaceRenderer')
+        updateConversationMessage(conversationId, messageId, (message) => {
+          const parts = message.parts ?? []
+          const existing = parts.findIndex((entry) => entry.surface.id === part.surface.id)
+          if (existing >= 0) {
+            const next = parts.slice()
+            next[existing] = part
+            return { ...message, parts: next }
+          }
+          return {
+            ...message,
+            parts: [...parts, part].slice(-UI_LIMITS.maxSurfacesPerAnswer)
+          }
+        })
+        return
+      }
+
       if (event.type === 'error') {
         updateConversationMessage(conversationId, messageId, (message) => ({
           ...message,
@@ -1788,6 +1818,7 @@ export default function App(): JSX.Element {
                   reasoning: streamBufferRef.current?.reasoning ?? message.reasoning,
                   model: event.model ?? message.model,
                   stopped: event.stopped ?? message.stopped,
+                  parts: markSurfacesReady(message.parts),
                   steps: (message.steps ?? []).map((step) =>
                     step.type === 'web_search' && step.status === 'searching'
                       ? { ...step, status: 'done' as const }
@@ -1858,8 +1889,8 @@ export default function App(): JSX.Element {
     setSourcesPanelMessageId((previous) => (previous === messageId ? null : messageId))
   }, [])
 
-  const handleSubmit = useCallback(async () => {
-    const rawPrompt = getFullPrompt().trim()
+  const handleSubmit = useCallback(async (promptOverride?: string) => {
+    const rawPrompt = (typeof promptOverride === 'string' ? promptOverride : getFullPrompt()).trim()
     if (!rawPrompt || isLoading) return
 
     const now = Date.now()
@@ -1946,15 +1977,31 @@ export default function App(): JSX.Element {
         ...(terminalContextPreamble
           ? [{ role: 'system' as const, content: terminalContextPreamble }]
           : []),
-        ...userConversation.messages.map((message) => ({
-          role: message.role,
-          content: message.images && message.images.length > 0
-            ? [
-                ...(message.content ? [{ type: 'input_text' as const, text: message.content }] : []),
-                ...message.images.map(img => ({ type: 'input_image' as const, image_url: img.base64 }))
-              ]
+        ...userConversation.messages.map((message) => {
+          // Echo a visual as compact text so follow-up questions ("what caused
+          // the March dip?") stay grounded after the chart has scrolled away.
+          const visualText =
+            message.role === 'assistant' && message.parts && message.parts.length > 0
+              ? message.parts.map((part) => describeUiSpec(part.surface.spec)).join('\n')
+              : ''
+          const text = visualText
+            ? [message.content, `[visual]\n${visualText}`].filter(Boolean).join('\n\n')
             : message.content
-        }))
+
+          return {
+            role: message.role,
+            content:
+              message.images && message.images.length > 0
+                ? [
+                    ...(text ? [{ type: 'input_text' as const, text }] : []),
+                    ...message.images.map((img) => ({
+                      type: 'input_image' as const,
+                      image_url: img.base64
+                    }))
+                  ]
+                : text
+          }
+        })
       ]
 
       const assistantMessageId = createId('msg_')
@@ -2047,6 +2094,13 @@ export default function App(): JSX.Element {
     generateConversationTitleAsync,
     attachedImages
   ])
+
+  const handleSurfaceAction = useCallback(
+    (prompt: string) => {
+      void handleSubmit(prompt)
+    },
+    [handleSubmit]
+  )
 
   const handleCodeSubmit = useCallback(() => {
     const text = getFullPrompt().trim()
@@ -3134,6 +3188,7 @@ export default function App(): JSX.Element {
                         onToggleThinking={handleToggleThinking}
                         sourcesPanelMessageId={sourcesPanelMessageId}
                         onToggleSources={handleToggleSources}
+                        onSurfaceAction={handleSurfaceAction}
                         emptyLabel="No messages yet."
                       />
                     </Suspense>
@@ -3639,6 +3694,7 @@ export default function App(): JSX.Element {
                         onToggleThinking={handleToggleThinking}
                         sourcesPanelMessageId={sourcesPanelMessageId}
                         onToggleSources={handleToggleSources}
+                        onSurfaceAction={handleSurfaceAction}
                         emptyLabel="Ask about this terminal — errors, commands, or what to do next."
                         fullWidthBubbles
                       />

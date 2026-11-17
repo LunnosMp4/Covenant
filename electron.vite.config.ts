@@ -27,14 +27,49 @@ const copyAssetsPlugin = (): Plugin => ({
   }
 })
 
+/**
+ * The generated-UI sandbox runtime and its chart module are authored in
+ * TypeScript but must reach the frame as plain scripts. Bundling them with
+ * esbuild into the renderer's public directory keeps dev and packaged builds
+ * identical, and keeps ECharts out of both the app bundle and the sandbox
+ * bootstrap.
+ */
+const buildSandboxRuntimePlugin = (): Plugin => {
+  let built = false
+
+  return {
+    name: 'covenant-sandbox-runtime',
+    async buildStart() {
+      if (built) return
+      built = true
+
+      const esbuild = await import('esbuild')
+      await esbuild.build({
+        entryPoints: {
+          runtime: resolve(__dirname, 'src/renderer/src/ui/surface/sandbox/runtime.ts'),
+          charts: resolve(__dirname, 'src/renderer/src/ui/surface/sandbox/charts.ts')
+        },
+        outdir: resolve(__dirname, 'src/renderer/public/sandbox'),
+        bundle: true,
+        format: 'iife',
+        platform: 'browser',
+        target: ['chrome120'],
+        minify: true,
+        legalComments: 'none',
+        logLevel: 'silent'
+      })
+    }
+  }
+}
+
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin(), copyAssetsPlugin()]
+    plugins: [externalizeDepsPlugin({ exclude: ['parse5'] }), copyAssetsPlugin()]
   },
   preload: {
     plugins: [externalizeDepsPlugin()]
   },
   renderer: {
-    plugins: [react()]
+    plugins: [react(), buildSandboxRuntimePlugin()]
   }
 })
