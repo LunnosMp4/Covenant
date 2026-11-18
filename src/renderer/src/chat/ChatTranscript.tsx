@@ -23,6 +23,12 @@ interface ChatTranscriptProps {
   emptyLabel?: string
   /** Terminal rail uses full-width bubbles (Code-style), not chat-style. */
   fullWidthBubbles?: boolean
+  /**
+   * Wide chat layout: assistant rows span the readable column while user rows
+   * stay right-aligned at a narrower measure. Keeps the roomy layout from
+   * simply stretching every bubble.
+   */
+  wide?: boolean
 }
 
 interface ChatMessageRowProps {
@@ -34,6 +40,7 @@ interface ChatMessageRowProps {
   onToggleSources: (messageId: string) => void
   onSurfaceAction: (prompt: string) => void
   fullWidthBubbles: boolean
+  wide: boolean
   isLatest: boolean
 }
 
@@ -53,6 +60,7 @@ function ChatMessageRow({
   onToggleSources,
   onSurfaceAction,
   fullWidthBubbles,
+  wide,
   isLatest
 }: ChatMessageRowProps): JSX.Element {
   const isAssistant = message.role === 'assistant'
@@ -79,9 +87,13 @@ function ChatMessageRow({
   const hasParts = (message.parts?.length ?? 0) > 0
   const bubbleWidth = fullWidthBubbles
     ? 'w-full'
-    : hasParts
-      ? 'w-full max-w-[78%]'
-      : 'max-w-[78%]'
+    : wide
+      ? isAssistant
+        ? 'w-full'
+        : 'max-w-[78%]'
+      : hasParts
+        ? 'w-full max-w-[78%]'
+        : 'max-w-[78%]'
   const copyText = [
     message.content,
     ...(message.parts ?? []).map((part) => describeUiSpec(part.surface.spec))
@@ -310,7 +322,8 @@ export default function ChatTranscript({
   onToggleSources,
   onSurfaceAction,
   emptyLabel = 'No messages yet.',
-  fullWidthBubbles = false
+  fullWidthBubbles = false,
+  wide = false
 }: ChatTranscriptProps): JSX.Element {
   if (messages.length === 0) {
     return <p className="text-xs text-neutral-500">{emptyLabel}</p>
@@ -335,6 +348,7 @@ export default function ChatTranscript({
             onToggleSources={onToggleSources}
             onSurfaceAction={handleSurfaceAction}
             fullWidthBubbles={fullWidthBubbles}
+            wide={wide}
             isLatest={index === messages.length - 1}
           />
         )

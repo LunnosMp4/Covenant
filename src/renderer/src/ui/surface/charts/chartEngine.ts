@@ -1,30 +1,28 @@
-import { BarChart, HeatmapChart, LineChart, PieChart, ScatterChart } from 'echarts/charts'
+import { BarChart, LineChart, PieChart } from 'echarts/charts'
 import {
   AriaComponent,
   DataZoomComponent,
-  DatasetComponent,
   GridComponent,
   LegendComponent,
-  TooltipComponent,
-  VisualMapComponent
+  TooltipComponent
 } from 'echarts/components'
 import { init, use, type EChartsType } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { mergeChartOption } from './chartOption'
 
+// Only the chart types the semantic contract can produce are registered.
+// Scatter/heatmap/dataset/visual-map are never emitted by `buildChartOption`,
+// so shipping them would only grow the sandbox bundle (injected per generated
+// surface) and its memory footprint.
 use([
-  DatasetComponent,
   GridComponent,
   LegendComponent,
   TooltipComponent,
   DataZoomComponent,
-  VisualMapComponent,
   AriaComponent,
   BarChart,
   LineChart,
   PieChart,
-  ScatterChart,
-  HeatmapChart,
   CanvasRenderer
 ])
 
@@ -46,12 +44,35 @@ interface ChartEntry {
 }
 
 /**
- * Bounded so a long transcript cannot accumulate canvases forever. The expanded
- * panel renders a second copy of the same tree, so the ceiling accounts for it.
+ * Safety ceiling for live canvases. Charts are normally released by the widget
+ * when they scroll out of view; this only matters if that observer is missing.
+ * It never evicts a chart that is still on screen, because the component would
+ * keep a dead instance ref and the visual would stay blank.
  */
 const MAXIMUM_LIVE_CHARTS = 16
 
 const entries = new Map<HTMLElement, ChartEntry>()
+
+function isOffscreen(element: HTMLElement): boolean {
+  if (!element.isConnected) return true
+  const box = element.getBoundingClientRect()
+  if (box.width === 0 || box.height === 0) return true
+  return box.bottom < -400 || box.top > window.innerHeight + 400
+}
+
+function pruneEntries(): void {
+  if (entries.size < MAXIMUM_LIVE_CHARTS) {
+    for (const entry of [...entries.values()]) {
+      if (!entry.element.isConnected) disposeEntry(entry)
+    }
+    return
+  }
+
+  for (const entry of [...entries.values()]) {
+    if (entries.size < MAXIMUM_LIVE_CHARTS) break
+    if (isOffscreen(entry.element)) disposeEntry(entry)
+  }
+}
 
 function disposeEntry(entry: ChartEntry): void {
   entry.observer?.disconnect()
@@ -88,11 +109,7 @@ export const chartEngine = {
     const existing = entries.get(element)
     if (existing) disposeEntry(existing)
 
-    while (entries.size >= MAXIMUM_LIVE_CHARTS) {
-      const oldest = entries.values().next().value as ChartEntry | undefined
-      if (!oldest) break
-      disposeEntry(oldest)
-    }
+    pruneEntries()
 
     // Never pass `width`/`height` here: zrender keeps them as sticky painter
     // opts, and every later `resize()` then reuses them instead of measuring the

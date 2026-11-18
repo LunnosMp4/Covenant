@@ -18,6 +18,7 @@ export function createSurfacePublisher(
   maxSurfaces: number = UI_LIMITS.maxSurfacesPerAnswer
 ): SurfacePublisher {
   let published = 0
+  let bytes = 0
 
   return {
     get published() {
@@ -44,6 +45,19 @@ export function createSurfacePublisher(
         }
       }
 
+      // Bound everything a single answer can persist and replay. The cap is
+      // shared across surfaces (native specs and generated sources), so a long
+      // answer cannot balloon the stored conversation and its reload cost.
+      const size = JSON.stringify(validated.spec).length
+      if (bytes + size > UI_LIMITS.maxAnswerBytes) {
+        return {
+          ok: false,
+          issues: [
+            `This answer's visuals already use ${bytes} of ${UI_LIMITS.maxAnswerBytes} bytes. Send less data (fewer rows/series) or describe the rest in text.`
+          ]
+        }
+      }
+
       const id = `surface_${randomUUID()}`
       const surface: UiSurface = {
         id,
@@ -54,6 +68,7 @@ export function createSurfacePublisher(
       }
 
       published += 1
+      bytes += size
       return { ok: true, part: { id, kind: 'surface', surface } }
     }
   }

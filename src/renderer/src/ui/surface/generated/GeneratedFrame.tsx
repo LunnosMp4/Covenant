@@ -36,15 +36,20 @@ function loadSandboxCharts(): Promise<SandboxSource> {
     const attempt = api
       ? api.getSandboxSource()
       : Promise.resolve({ charts: '', error: 'Sandbox is unavailable.' })
-    sandboxSourcePromise = attempt.catch((error: unknown) => {
-      // Do not cache a miss: in development the bundler may still be writing
-      // the sandbox assets when the first generated surface opens.
-      sandboxSourcePromise = null
-      return {
-        charts: '',
-        error: error instanceof Error ? error.message : 'Sandbox is unavailable.'
-      }
-    })
+    sandboxSourcePromise = attempt
+      .then((result) => {
+        // Do not cache a miss: the bundler may still be writing the sandbox
+        // assets when the first generated surface opens.
+        if (result.error || !result.charts) sandboxSourcePromise = null
+        return result
+      })
+      .catch((error: unknown) => {
+        sandboxSourcePromise = null
+        return {
+          charts: '',
+          error: error instanceof Error ? error.message : 'Sandbox is unavailable.'
+        }
+      })
   }
   return sandboxSourcePromise
 }
@@ -121,8 +126,14 @@ export default function GeneratedFrame({
   onAction
 }: GeneratedFrameProps): JSX.Element {
   const frameRef = useRef<HTMLIFrameElement | null>(null)
+  const frameHostRef = useRef<HTMLDivElement | null>(null)
   const submittedRef = useRef(false)
   const [status, setStatus] = useState<FrameStatus>('starting')
+  const [loaded, setLoaded] = useState(false)
+  // A generated surface owns an iframe, its JS heap and possibly an ECharts
+  // instance per chart. A frame that is far offscreen is torn down and replayed
+  // from its saved state when it scrolls back, so memory follows the viewport.
+  const [nearViewport, setNearViewport] = useState(true)
   const [height, setHeight] = useState(() => clampGeneratedHeight(source.height))
   const [proposal, setProposal] = useState<Record<string, unknown> | null>(null)
   const [failure, setFailure] = useState('')
@@ -142,17 +153,35 @@ export default function GeneratedFrame({
   }, [])
 
   useEffect(() => {
+    const host = frameHostRef.current
+    if (!host || typeof IntersectionObserver === 'undefined') return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[entries.length - 1]
+        const next = entry?.isIntersecting ?? true
+        setNearViewport(next)
+        if (!next) {
+          // The bridge effect stops with the frame; a remount starts clean and
+          // replays the source with the state saved in sessionStorage.
+          setLoaded(false)
+          setStatus((current) => (current === 'failed' ? current : 'starting'))
+        }
+      },
+      // Keep a large margin: leaving the viewport is not a reason to discard a
+      // visual the user is about to scroll back to.
+      { rootMargin: '1600px 0px' }
+    )
+    observer.observe(host)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (!nearViewport) return
     const frame = frameRef.current
     if (!frame) return
 
-    let disposed = false
     let initialized = false
-    const startupTimer = window.setTimeout(() => {
-      if (!disposed) {
-        setFailure('The visual did not start in time.')
-        setStatus('failed')
-      }
-    }, GENERATED_LIMITS.startupTimeoutMs)
 
     const send = (message: Record<string, unknown>): void => {
       frame.contentWindow?.postMessage({ version: GENERATED_BRIDGE_VERSION, ...message }, '*')
@@ -185,7 +214,10 @@ export default function GeneratedFrame({
       }
 
       if (data.type === 'submit' && data.values && typeof data.values === 'object') {
-        if (!interactive || submittedRef.current) return
+        // Keep a proposal that arrives mid-stream instead of dropping the
+        // click: the confirmation is shown now, its send button unlocks when
+        // the answer finishes and the surface becomes actionable.
+        if (submittedRef.current) return
         setProposal(data.values as Record<string, unknown>)
         return
       }
@@ -204,7 +236,6 @@ export default function GeneratedFrame({
       if (data.type === 'ready') {
         if (initialized) return
         initialized = true
-        window.clearTimeout(startupTimer)
         send({
           type: 'initialize',
           source: {
@@ -228,35 +259,64 @@ export default function GeneratedFrame({
     send({ type: 'handshake' })
 
     return () => {
-      disposed = true
-      window.clearTimeout(startupTimer)
       window.removeEventListener('message', onMessage)
     }
-    // The bridge is rebuilt when the surface identity changes.
+    // The bridge is rebuilt when the surface identity or its mount window
+    // changes; the source/theme are read at that moment.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [identity])
+  }, [identity, nearViewport])
 
-  // Theme changes repaint the frame without remounting it.
+  // Frames load lazily (`loading="lazy"`), so an offscreen visual may not have a
+  // document yet. The startup timeout only applies once it has actually loaded.
   useEffect(() => {
-    const observer = new MutationObserver(() => {
+    if (!loaded || status !== 'starting') return
+    const timer = window.setTimeout(() => {
+      setFailure('The visual did not start in time.')
+      setStatus((current) => (current === 'starting' ? 'failed' : current))
+    }, GENERATED_LIMITS.startupTimeoutMs)
+    return () => window.clearTimeout(timer)
+  }, [loaded, status])
+
+  // Theme changes repaint the frame without remounting it. The context reads
+  // ~40 computed custom properties, so the mutation burst of a theme swap is
+  // coalesced into one frame and skipped when nothing charts/kit-related moved.
+  useEffect(() => {
+    let last = JSON.stringify(readThemeContext())
+    let scheduled = 0
+
+    const flush = (): void => {
+      scheduled = 0
+      const context = readThemeContext()
+      const serialized = JSON.stringify(context)
+      if (serialized === last) return
+      last = serialized
       frameRef.current?.contentWindow?.postMessage(
         {
           version: GENERATED_BRIDGE_VERSION,
           type: 'context',
-          context: readThemeContext()
+          context
         },
         '*'
       )
+    }
+
+    const observer = new MutationObserver(() => {
+      if (scheduled) return
+      scheduled = window.requestAnimationFrame(flush)
     })
     observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ['style', 'data-theme']
     })
-    return () => observer.disconnect()
+
+    return () => {
+      observer.disconnect()
+      if (scheduled) window.cancelAnimationFrame(scheduled)
+    }
   }, [])
 
   const sendProposal = (): void => {
-    if (!proposal || submittedRef.current) return
+    if (!interactive || !proposal || submittedRef.current) return
     submittedRef.current = true
     onAction(describeProposal(proposal, source))
     setProposal(null)
@@ -271,16 +331,22 @@ export default function GeneratedFrame({
       ) : null}
 
       {status !== 'failed' ? (
-        <div className="surface-generated-frame" style={{ height }}>
-          <iframe
-            ref={frameRef}
-            src={FRAME_URL}
-            sandbox="allow-scripts"
-            referrerPolicy="no-referrer"
-            title={source.title}
-            style={{ height }}
-          />
-          {status !== 'ready' ? <div className="surface-generated-loading" aria-hidden /> : null}
+        <div ref={frameHostRef} className="surface-generated-frame" style={{ height }}>
+          {nearViewport ? (
+            <iframe
+              ref={frameRef}
+              src={FRAME_URL}
+              sandbox="allow-scripts"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              title={source.title}
+              style={{ height }}
+              onLoad={() => setLoaded(true)}
+            />
+          ) : null}
+          {!nearViewport || status !== 'ready' ? (
+            <div className="surface-generated-loading" aria-hidden />
+          ) : null}
         </div>
       ) : null}
 
@@ -293,6 +359,8 @@ export default function GeneratedFrame({
             <button
               type="button"
               className="surface-action surface-action--primary pressable"
+              disabled={!interactive}
+              title={interactive ? undefined : 'Available once the answer finishes.'}
               onClick={sendProposal}
             >
               Send to Covenant

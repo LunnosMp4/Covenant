@@ -125,7 +125,10 @@ export default function DataTable({
                   </td>
                 ))}
                 {rowAction ? (
-                  <td className="surface-table-action-cell">
+                  <td
+                    className="surface-table-action-cell"
+                    title={rowAction.interactive ? undefined : 'Only the latest answer can act.'}
+                  >
                     <button
                       type="button"
                       className="surface-table-row-action pressable"
@@ -133,7 +136,7 @@ export default function DataTable({
                       title={
                         rowAction.interactive
                           ? rowActionPrompt(rowAction.prompt, row, rowIndex + 1)
-                          : 'Only the latest answer can act.'
+                          : undefined
                       }
                       aria-label={`${rowAction.label}: ${row[0] ?? ''}`}
                       onClick={() =>

@@ -19,7 +19,12 @@ export interface ButtonVisibility {
   code: boolean
 }
 
-export type ReasoningEffort = 'low' | 'medium' | 'high'
+/**
+ * A reasoning-effort token. OpenCode models expose different sets (for example
+ * `low|high|max` or `none|low|medium|high|xhigh`), so this stays a string and
+ * the per-model `reasoningEfforts` list drives the UI.
+ */
+export type ReasoningEffort = string
 
 export interface ChatModelOption {
   id: string
@@ -34,6 +39,17 @@ export const CHAT_MODEL_OPTIONS: ChatModelOption[] = [
 ]
 
 export const REASONING_EFFORT_OPTIONS: ReasoningEffort[] = ['low', 'medium', 'high']
+
+/**
+ * The effort levels a model actually accepts. Falls back to the static list
+ * only when the model is unknown (e.g. catalog not fetched yet); models that
+ * report reasoning without effort levels get an empty list so the UI can
+ * disable the picker instead of offering values the gateway ignores.
+ */
+export function getReasoningEffortOptions(option: AiModelOption | undefined): string[] {
+  if (!option) return [...REASONING_EFFORT_OPTIONS]
+  return option.reasoningEfforts.length > 0 ? [...option.reasoningEfforts] : []
+}
 
 export const DEFAULT_CHAT_MODEL = 'gpt-6-luna'
 
@@ -327,10 +343,16 @@ export {
   DEFAULT_WEB_SEARCH_PROVIDER,
   DEFAULT_WEB_SEARCH_TIMEOUT_MS,
   OPENCODE_MODEL_OPTIONS,
+  REASONING_EFFORT_LABELS,
+  REASONING_EFFORT_ORDER,
   WEB_SEARCH_PROVIDERS,
+  formatReasoningEffort,
   normalizeChatProvider,
   normalizeOpenCodePlan,
-  normalizeWebSearchProvider
+  normalizeReasoningEffort,
+  normalizeWebSearchProvider,
+  reasoningEffortRank,
+  resolveReasoningEffort
 } from './ai/models'
 export {
   resolveWebSearchProviderChoice,

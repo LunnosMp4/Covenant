@@ -268,7 +268,8 @@ describe('spec validation', () => {
 
     expect(issuesOf(spec)).toEqual([])
     const text = describeUiSpec(spec)
-    expect(text).toContain('Metrics: ARR 1.2, trend 1 → 3')
+    // Number formatting is locale-aware; accept either decimal separator.
+    expect(text).toMatch(/Metrics: ARR 1[.,]2, trend 1 → 3/)
     expect(text).toContain('Timeline: 1. Back up (2 min) ✓; 2. Migrate — Runs while you read this →')
   })
 

@@ -11,7 +11,6 @@ import { useChartTheme } from './useChartTheme'
 
 interface ChartWidgetProps {
   data: ChartData
-  onSettled?: () => void
 }
 
 function chartTable(data: ChartData): { columns: string[]; rows: string[][] } {
@@ -33,8 +32,13 @@ function chartTable(data: ChartData): { columns: string[]; rows: string[][] } {
 /**
  * Presentational chart. The engine is injected lazily so ECharts stays out of
  * the startup bundle and only loads when a visual actually appears.
+ *
+ * A chart owns a canvas and an ECharts instance, so it is mounted only while it
+ * is near the viewport: scrolling a long transcript away releases the instance
+ * and scrolling back recreates it from the current data. This keeps memory and
+ * CPU proportional to what is on screen rather than to the transcript length.
  */
-export default function ChartWidget({ data, onSettled }: ChartWidgetProps): JSX.Element {
+export default function ChartWidget({ data }: ChartWidgetProps): JSX.Element {
   const elementRef = useRef<HTMLDivElement | null>(null)
   const instanceRef = useRef<ChartInstance | null>(null)
   const [failed, setFailed] = useState(false)
@@ -51,44 +55,84 @@ export default function ChartWidget({ data, onSettled }: ChartWidgetProps): JSX.
     }
   }, [data, theme])
 
-  // The chart is created once per mount; later data/theme changes repaint in
-  // place. The first option is captured so the mount effect stays dependency-free.
-  const initialOptionRef = useRef(option)
+  // The latest option, so a chart that mounts later (scrolled back into view, or
+  // after a theme change while offscreen) draws the current data.
+  const optionRef = useRef(option)
+  optionRef.current = option
 
   useEffect(() => {
     const element = elementRef.current
     if (!element) return
-    let cancelled = false
 
-    const initial = initialOptionRef.current
-    if (!initial) {
-      console.warn('[Covenant] chart has no option to draw', data.title)
-      setFailed(true)
-      return
+    let cancelled = false
+    let disposed = false
+    let active = false
+
+    const mount = (): void => {
+      if (active || cancelled) return
+      const initial = optionRef.current
+      if (!initial) {
+        console.warn('[Covenant] chart has no option to draw', data.title)
+        setFailed(true)
+        return
+      }
+      active = true
+
+      void import('./chartEngine')
+        .then(async ({ chartEngine }) => {
+          if (cancelled || !active || !elementRef.current) return
+          instanceRef.current = chartEngine.create(elementRef.current, optionRef.current ?? initial)
+          if (typeof document !== 'undefined' && document.fonts?.ready) {
+            await document.fonts.ready.catch(() => undefined)
+          }
+          if (cancelled || !active) return
+          setFailed(false)
+          setReady(true)
+        })
+        .catch((error) => {
+          console.warn('[Covenant] chart failed', error)
+          if (cancelled) return
+          active = false
+          setFailed(true)
+        })
     }
 
-    void import('./chartEngine')
-      .then(async ({ chartEngine }) => {
-        if (cancelled || !elementRef.current) return
-        instanceRef.current = chartEngine.create(elementRef.current, initial)
-        if (typeof document !== 'undefined' && document.fonts?.ready) {
-          await document.fonts.ready.catch(() => undefined)
-        }
-        if (cancelled) return
-        setReady(true)
-        onSettled?.()
-      })
-      .catch((error) => {
-        console.warn('[Covenant] chart failed', error)
-        if (!cancelled) setFailed(true)
-      })
+    const unmount = (): void => {
+      active = false
+      instanceRef.current?.dispose()
+      instanceRef.current = null
+      if (!disposed) setReady(false)
+    }
+
+    // No IntersectionObserver (tests, very old host): keep the old behaviour.
+    if (typeof IntersectionObserver === 'undefined') {
+      mount()
+      return () => {
+        cancelled = true
+        disposed = true
+        unmount()
+      }
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[entries.length - 1]
+        if (entry?.isIntersecting) mount()
+        else unmount()
+      },
+      // A margin so the chart is ready before it is read, not while it moves.
+      { rootMargin: '400px 0px' }
+    )
+    observer.observe(element)
 
     return () => {
       cancelled = true
-      instanceRef.current?.dispose()
-      instanceRef.current = null
+      disposed = true
+      observer.disconnect()
+      unmount()
     }
-    // Creating once is deliberate: option updates go through setOption below.
+    // Mounting once per visibility window is deliberate: option updates go
+    // through setOption below, and only the latest option matters on remount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

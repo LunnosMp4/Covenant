@@ -25,6 +25,7 @@ import {
   normalizeCodeSettings,
   normalizeNotesSettings,
   normalizeOpenCodePlan,
+  normalizeReasoningEffort,
   normalizeShortcuts,
   normalizeTextureIntensity,
   normalizeUsageProjectId,
@@ -180,9 +181,7 @@ export function normalizeConfig(rawConfig: Partial<AppConfig> | null | undefined
     webSearchProviderMigrated:
       rawConfig?.webSearchProviderMigrated === true || shouldMigrateWebSearch,
     reasoningEffort:
-      typeof rawConfig?.reasoningEffort === 'string' && ['low', 'medium', 'high'].includes(rawConfig.reasoningEffort)
-        ? rawConfig.reasoningEffort as AppConfig['reasoningEffort']
-        : DEFAULT_REASONING_EFFORT,
+      normalizeReasoningEffort(rawConfig?.reasoningEffort) || DEFAULT_REASONING_EFFORT,
     enableWebSearch:
       typeof rawConfig?.enableWebSearch === 'boolean'
         ? rawConfig.enableWebSearch

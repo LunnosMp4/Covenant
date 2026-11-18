@@ -9,6 +9,7 @@ import {
   buildChartOption,
   chartThemeFrom,
   clampChartHeight,
+  formatChartValue,
   validateChartData,
   type ChartData
 } from '../../../../../shared/ui/chart'
@@ -122,6 +123,51 @@ function buildUiApi(): Record<string, unknown> {
       ...children
     )
 
+  /**
+   * One KPI renderer for both `kpi` and `metricRow`, so a number shown by a
+   * generated surface is formatted exactly like the native `Metric` node
+   * (locale grouping, percent/compact, delta suffix).
+   */
+  const buildKpi = (item: {
+    label: string
+    value: string | number
+    unit?: string
+    hint?: string
+    format?: 'number' | 'percent' | 'compact'
+    delta?: { value: number; tone?: string; suffix?: string }
+  }): HTMLElement => {
+    const delta = item.delta
+    const rendered =
+      typeof item.value === 'number'
+        ? formatChartValue(item.value, item.format ?? 'number')
+        : String(item.value)
+    return element(
+      'div',
+      { className: 'cv-kpi' },
+      element('span', { className: 'cv-kpi-label' }, item.label),
+      element(
+        'span',
+        { className: 'cv-kpi-value' },
+        rendered,
+        item.unit ? element('span', { className: 'cv-kpi-unit' }, ` ${item.unit}`) : null
+      ),
+      delta
+        ? element(
+            'span',
+            {
+              className: 'cv-kpi-delta',
+              ...(delta.tone ? { 'data-tone': delta.tone } : {})
+            },
+            `${delta.value > 0 ? '↑' : delta.value < 0 ? '↓' : '='} ${formatChartValue(
+              Math.abs(delta.value),
+              'number'
+            )}${delta.suffix ?? '%'}`
+          )
+        : null,
+      item.hint ? element('span', { className: 'cv-kpi-hint' }, item.hint) : null
+    )
+  }
+
   return {
     el: element,
 
@@ -215,31 +261,14 @@ function buildUiApi(): Record<string, unknown> {
     kpi(
       label: string,
       value: string | number,
-      options: { unit?: string; hint?: string; delta?: { value: number; tone?: string } } = {}
+      options: {
+        unit?: string
+        hint?: string
+        format?: 'number' | 'percent' | 'compact'
+        delta?: { value: number; tone?: string; suffix?: string }
+      } = {}
     ): HTMLElement {
-      const delta = options.delta
-      return element(
-        'div',
-        { className: 'cv-kpi' },
-        element('span', { className: 'cv-kpi-label' }, label),
-        element(
-          'span',
-          { className: 'cv-kpi-value' },
-          String(value),
-          options.unit ? element('span', { className: 'cv-kpi-unit' }, ` ${options.unit}`) : null
-        ),
-        delta
-          ? element(
-              'span',
-              {
-                className: 'cv-kpi-delta',
-                ...(delta.tone ? { 'data-tone': delta.tone } : {})
-              },
-              `${delta.value > 0 ? '↑' : delta.value < 0 ? '↓' : '='} ${Math.abs(delta.value)}%`
-            )
-          : null,
-        options.hint ? element('span', { className: 'cv-kpi-hint' }, options.hint) : null
-      )
+      return buildKpi({ label, value, ...options })
     },
     metricRow(
       items: Array<{
@@ -247,37 +276,11 @@ function buildUiApi(): Record<string, unknown> {
         value: string | number
         unit?: string
         hint?: string
-        delta?: { value: number; tone?: string }
+        format?: 'number' | 'percent' | 'compact'
+        delta?: { value: number; tone?: string; suffix?: string }
       }>
     ): HTMLElement {
-      const row = element('div', { className: 'cv-kpi-row' })
-      for (const item of items) {
-        row.append(
-          element(
-            'div',
-            { className: 'cv-kpi' },
-            element('span', { className: 'cv-kpi-label' }, item.label),
-            element(
-              'span',
-              { className: 'cv-kpi-value' },
-              String(item.value),
-              item.unit ? element('span', { className: 'cv-kpi-unit' }, ` ${item.unit}`) : null
-            ),
-            item.delta
-              ? element(
-                  'span',
-                  {
-                    className: 'cv-kpi-delta',
-                    ...(item.delta.tone ? { 'data-tone': item.delta.tone } : {})
-                  },
-                  `${item.delta.value > 0 ? '↑' : item.delta.value < 0 ? '↓' : '='} ${Math.abs(item.delta.value)}%`
-                )
-              : null,
-            item.hint ? element('span', { className: 'cv-kpi-hint' }, item.hint) : null
-          )
-        )
-      }
-      return row
+      return element('div', { className: 'cv-kpi-row' }, ...items.map(buildKpi))
     },
     table(columns: string[], rows: Array<Array<string | number>>, alignRight: number[] = []): HTMLElement {
       const table = element('table', { className: 'cv-table' }) as HTMLTableElement
@@ -479,12 +482,26 @@ function ensureCharts(): Promise<void> {
   if (chartsRequest) return chartsRequest
 
   chartsRequested = true
-  chartsRequest = new Promise<void>((resolve, reject) => {
-    resolveCharts = resolve
-    post({ type: 'charts' })
-    window.setTimeout(() => {
+  const request = new Promise<void>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      resolveCharts = null
       reject(new Error('The chart module did not arrive in time.'))
     }, GENERATED_LIMITS.renderTimeoutMs)
+
+    resolveCharts = () => {
+      window.clearTimeout(timer)
+      resolveCharts = null
+      resolve()
+    }
+
+    post({ type: 'charts' })
+  })
+
+  chartsRequest = request.catch((error: unknown) => {
+    // A failed request must not poison every later chart on this surface: the
+    // engine may still arrive on a retry.
+    chartsRequest = null
+    throw error
   })
   return chartsRequest
 }
@@ -617,6 +634,17 @@ window.addEventListener('message', (event) => {
 function announceReady(): void {
   window.parent.postMessage({ version: GENERATED_BRIDGE_VERSION, type: 'ready' }, '*')
 }
+
+// Authored code runs entirely in this frame; an error thrown inside an event
+// listener would otherwise leave a dead control with no explanation. Reporting
+// it lets the host degrade to the readable fallback.
+window.addEventListener('error', (event) => {
+  if (!(event instanceof ErrorEvent)) return
+  reportError(event.error ?? event.message)
+})
+window.addEventListener('unhandledrejection', (event) => {
+  reportError(event.reason)
+})
 
 announceReady()
 

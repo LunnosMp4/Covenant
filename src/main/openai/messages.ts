@@ -3,6 +3,7 @@ import {
   DEFAULT_REASONING_EFFORT,
   modelDoesReasoningFor,
   modelSupportsTemperatureFor,
+  resolveReasoningEffort,
   type AiModelOption,
   type ChatProviderId,
   type ReasoningEffort
@@ -73,19 +74,9 @@ function mapReasoningEffort(
   requested: ReasoningEffort,
   supported: string[] | undefined
 ): string | undefined {
-  if (!supported || supported.length === 0) return undefined
-  if (supported.includes(requested)) return requested
-
-  const preferences: Record<ReasoningEffort, string[]> = {
-    low: ['low', 'minimal', 'medium', 'high', 'xhigh', 'max'],
-    medium: ['medium', 'low', 'high', 'xhigh', 'max', 'minimal'],
-    high: ['high', 'xhigh', 'max', 'medium', 'low', 'minimal']
-  }
-
-  for (const candidate of preferences[requested]) {
-    if (supported.includes(candidate)) return candidate
-  }
-  return supported[0]
+  // Snap the stored effort onto whatever the active model actually offers
+  // (e.g. `medium` → `high` on a low/high/max model).
+  return resolveReasoningEffort(requested, supported)
 }
 
 export function buildResponseParams(

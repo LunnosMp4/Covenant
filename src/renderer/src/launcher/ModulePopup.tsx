@@ -7,8 +7,10 @@ import {
   CHAT_PROVIDERS,
   DEFAULT_CHAT_MODEL,
   DEFAULT_REASONING_EFFORT,
-  REASONING_EFFORT_OPTIONS,
-  modelSupportsExtendedParams
+  OPENCODE_MODEL_OPTIONS,
+  formatReasoningEffort,
+  getReasoningEffortOptions,
+  resolveReasoningEffort
 } from '../../../shared/config'
 import type { Workflow, WorkflowExecutionState } from '../types/renderer'
 import type { Task } from '../types/renderer'
@@ -148,7 +150,11 @@ function SettingsPopup({
   onSelectReasoningEffort?: (effort: ReasoningEffort) => void
 }): JSX.Element {
   const activeModel = modelOptions.find((model) => model.id === chatModel)
-  const supportsExtended = activeModel?.supportsExtendedParams ?? modelSupportsExtendedParams(chatModel || DEFAULT_CHAT_MODEL)
+  const reasoningEffortOptions = getReasoningEffortOptions(activeModel)
+  const supportsEffort = reasoningEffortOptions.length > 0
+  const selectedEffort =
+    resolveReasoningEffort(reasoningEffort, reasoningEffortOptions) ?? reasoningEffort ?? DEFAULT_REASONING_EFFORT
+  const fallbackModelOptions = chatProvider === 'opencode' ? OPENCODE_MODEL_OPTIONS : CHAT_MODEL_OPTIONS
 
   return (
     <div className="flex flex-col">
@@ -183,7 +189,7 @@ function SettingsPopup({
             Chat Model
           </label>
           <CustomSelect
-            options={(modelOptions.length > 0 ? modelOptions : CHAT_MODEL_OPTIONS).map((option) => ({
+            options={(modelOptions.length > 0 ? modelOptions : fallbackModelOptions).map((option) => ({
               value: option.id,
               label: option.label
             }))}
@@ -193,18 +199,24 @@ function SettingsPopup({
         </div>
 
         <div>
-          <label className={`mb-2 block text-xs font-medium uppercase tracking-[0.08em] ${supportsExtended ? 'text-neutral-400' : 'text-neutral-600'}`}>
+          <label className={`mb-2 block text-xs font-medium uppercase tracking-[0.08em] ${supportsEffort ? 'text-neutral-400' : 'text-neutral-600'}`}>
             Reasoning Effort
           </label>
           <CustomSelect
-            options={REASONING_EFFORT_OPTIONS.map((effort) => ({
+            options={reasoningEffortOptions.map((effort) => ({
               value: effort,
-              label: effort.charAt(0).toUpperCase() + effort.slice(1)
+              label: formatReasoningEffort(effort)
             }))}
-            value={reasoningEffort || DEFAULT_REASONING_EFFORT}
-            onChange={(value) => onSelectReasoningEffort?.(value as ReasoningEffort)}
-            disabled={!supportsExtended}
+            value={selectedEffort}
+            onChange={(value) => onSelectReasoningEffort?.(value)}
+            disabled={!supportsEffort}
+            maxVisibleOptions={4}
           />
+          {!supportsEffort && (
+            <p className="mt-1.5 text-[11px] text-neutral-600">
+              This model uses a fixed reasoning setting.
+            </p>
+          )}
         </div>
       </div>
 

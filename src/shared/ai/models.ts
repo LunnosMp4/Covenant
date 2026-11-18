@@ -41,6 +41,79 @@ export interface AiModelOption {
   pricing?: AiModelPricing
 }
 
+/**
+ * Canonical reasoning-effort levels, weakest to strongest. The live OpenCode
+ * catalog (`capabilities.reasoning.effort`) reports per-model subsets of these
+ * tokens, so UI and request mapping must never assume only low/medium/high.
+ */
+export const REASONING_EFFORT_ORDER = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max'
+] as const
+
+export const REASONING_EFFORT_LABELS: Record<string, string> = {
+  none: 'None',
+  minimal: 'Minimal',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  xhigh: 'Extra high',
+  max: 'Max'
+}
+
+export function formatReasoningEffort(effort: string): string {
+  const normalized = effort.trim().toLowerCase()
+  if (!normalized) return ''
+  return REASONING_EFFORT_LABELS[normalized] ?? normalized.charAt(0).toUpperCase() + normalized.slice(1)
+}
+
+/**
+ * Rank used to pick a sensible effort when the stored value is not offered by
+ * the active model. Unknown tokens sort between `medium` and `high`.
+ */
+export function reasoningEffortRank(effort: string): number {
+  const index = (REASONING_EFFORT_ORDER as readonly string[]).indexOf(effort.trim().toLowerCase())
+  return index >= 0 ? index : 3.5
+}
+
+export function resolveReasoningEffort(
+  requested: string | undefined,
+  supported: string[] | undefined
+): string | undefined {
+  if (!supported || supported.length === 0) return undefined
+
+  const normalized = requested?.trim().toLowerCase()
+  if (normalized) {
+    const exact = supported.find((item) => item.trim().toLowerCase() === normalized)
+    if (exact) return exact
+  }
+
+  const target = reasoningEffortRank(normalized ?? '')
+  let best = supported[0]
+  let bestDistance = Number.POSITIVE_INFINITY
+  for (const item of supported) {
+    const distance = Math.abs(reasoningEffortRank(item) - target)
+    // Ties prefer the stronger effort: `medium` on `low|high` resolves to `high`.
+    if (distance < bestDistance || (distance === bestDistance && reasoningEffortRank(item) > reasoningEffortRank(best))) {
+      best = item
+      bestDistance = distance
+    }
+  }
+  return best
+}
+
+/** Lowercases and trims a reasoning-effort token, or returns '' when unusable. */
+export function normalizeReasoningEffort(value: unknown): string {
+  if (typeof value !== 'string') return ''
+  const trimmed = value.trim().toLowerCase()
+  return /^[a-z][a-z0-9_-]{0,15}$/.test(trimmed) ? trimmed : ''
+}
+
 export const DEFAULT_CHAT_PROVIDER: ChatProviderId = 'openai'
 export const DEFAULT_OPENCODE_CHAT_MODEL = 'gpt-6-luna'
 export const DEFAULT_WEB_SEARCH_PROVIDER: WebSearchProviderId = 'auto'
@@ -74,7 +147,7 @@ export const OPENCODE_MODEL_OPTIONS: AiModelOption[] = [
     supportsExtendedParams: true,
     supportsTools: true,
     supportsReasoning: true,
-    reasoningEfforts: ['low', 'medium', 'high'],
+    reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
     supportsTemperature: false,
     supportsVision: true,
     webSearch: 'native',
@@ -104,7 +177,7 @@ export const OPENCODE_MODEL_OPTIONS: AiModelOption[] = [
     supportsExtendedParams: true,
     supportsTools: true,
     supportsReasoning: true,
-    reasoningEfforts: ['low', 'high'],
+    reasoningEfforts: ['low', 'high', 'max'],
     supportsTemperature: true,
     supportsVision: true,
     webSearch: 'tool',
@@ -119,7 +192,7 @@ export const OPENCODE_MODEL_OPTIONS: AiModelOption[] = [
     supportsExtendedParams: true,
     supportsTools: true,
     supportsReasoning: true,
-    reasoningEfforts: ['high'],
+    reasoningEfforts: ['high', 'max'],
     supportsTemperature: true,
     supportsVision: false,
     webSearch: 'tool',
@@ -134,7 +207,7 @@ export const OPENCODE_MODEL_OPTIONS: AiModelOption[] = [
     supportsExtendedParams: true,
     supportsTools: true,
     supportsReasoning: true,
-    reasoningEfforts: ['low', 'high'],
+    reasoningEfforts: ['low', 'high', 'max'],
     supportsTemperature: true,
     supportsVision: false,
     webSearch: 'tool',
@@ -149,7 +222,7 @@ export const OPENCODE_MODEL_OPTIONS: AiModelOption[] = [
     supportsExtendedParams: true,
     supportsTools: true,
     supportsReasoning: true,
-    reasoningEfforts: ['low', 'high'],
+    reasoningEfforts: ['low', 'high', 'max'],
     supportsTemperature: true,
     supportsVision: true,
     webSearch: 'tool',
@@ -164,7 +237,7 @@ export const OPENCODE_MODEL_OPTIONS: AiModelOption[] = [
     supportsExtendedParams: true,
     supportsTools: true,
     supportsReasoning: true,
-    reasoningEfforts: ['high'],
+    reasoningEfforts: ['max'],
     supportsTemperature: false,
     supportsVision: true,
     webSearch: 'tool',
@@ -194,7 +267,7 @@ export const OPENCODE_MODEL_OPTIONS: AiModelOption[] = [
     supportsExtendedParams: true,
     supportsTools: true,
     supportsReasoning: true,
-    reasoningEfforts: ['low', 'medium', 'high'],
+    reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
     supportsTemperature: false,
     supportsVision: true,
     webSearch: 'tool',
@@ -224,7 +297,7 @@ export const OPENCODE_MODEL_OPTIONS: AiModelOption[] = [
     supportsExtendedParams: true,
     supportsTools: true,
     supportsReasoning: true,
-    reasoningEfforts: ['medium'],
+    reasoningEfforts: [],
     supportsTemperature: true,
     supportsVision: true,
     webSearch: 'tool',
@@ -239,7 +312,7 @@ export const OPENCODE_MODEL_OPTIONS: AiModelOption[] = [
     supportsExtendedParams: true,
     supportsTools: true,
     supportsReasoning: true,
-    reasoningEfforts: ['low', 'medium'],
+    reasoningEfforts: ['low', 'medium', 'xhigh'],
     supportsTemperature: true,
     supportsVision: true,
     webSearch: 'tool',
@@ -254,7 +327,7 @@ export const OPENCODE_MODEL_OPTIONS: AiModelOption[] = [
     supportsExtendedParams: true,
     supportsTools: true,
     supportsReasoning: true,
-    reasoningEfforts: ['low', 'medium'],
+    reasoningEfforts: ['low', 'medium', 'xhigh'],
     supportsTemperature: true,
     supportsVision: true,
     webSearch: 'tool',
@@ -269,7 +342,7 @@ export const OPENCODE_MODEL_OPTIONS: AiModelOption[] = [
     supportsExtendedParams: true,
     supportsTools: true,
     supportsReasoning: true,
-    reasoningEfforts: ['low', 'medium', 'high'],
+    reasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
     supportsTemperature: true,
     supportsVision: true,
     webSearch: 'native',
@@ -284,7 +357,7 @@ export const OPENCODE_MODEL_OPTIONS: AiModelOption[] = [
     supportsExtendedParams: true,
     supportsTools: true,
     supportsReasoning: true,
-    reasoningEfforts: ['high'],
+    reasoningEfforts: ['none', 'high'],
     supportsTemperature: true,
     supportsVision: true,
     webSearch: 'tool',
@@ -329,7 +402,7 @@ export const OPENCODE_MODEL_OPTIONS: AiModelOption[] = [
     supportsExtendedParams: true,
     supportsTools: true,
     supportsReasoning: true,
-    reasoningEfforts: ['low', 'medium', 'high'],
+    reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
     supportsTemperature: true,
     supportsVision: true,
     webSearch: 'tool',

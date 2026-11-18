@@ -13,7 +13,7 @@ import {
 } from './constants/theme'
 import { applyThemeToDocument } from './utils/themeDom'
 import type { ButtonVisibility, NotesSettings, ReasoningEffort, ShortcutConfig } from '../../shared/config'
-import { DEFAULT_CHAT_MODEL, DEFAULT_NOTES_SETTINGS, DEFAULT_OPENCODE_CHAT_MODEL, DEFAULT_REASONING_EFFORT, DEFAULT_SHORTCUTS, DEFAULT_TEXTURE_INTENSITY, DEFAULT_WEB_SEARCH_PROVIDER, DEFAULT_WEB_SEARCH_TIMEOUT_MS, MAX_TEXTURE_INTENSITY, OPENCODE_MODEL_OPTIONS, TEXTURE_MAX_OPACITY, getModelOptionFor, getModelOptionsForProvider, normalizeNotesSettings, type AiModelOption, type ChatProviderId, type OpenCodePlan, type WebSearchProviderId } from '../../shared/config'
+import { DEFAULT_CHAT_MODEL, DEFAULT_NOTES_SETTINGS, DEFAULT_OPENCODE_CHAT_MODEL, DEFAULT_REASONING_EFFORT, DEFAULT_SHORTCUTS, DEFAULT_TEXTURE_INTENSITY, DEFAULT_WEB_SEARCH_PROVIDER, DEFAULT_WEB_SEARCH_TIMEOUT_MS, MAX_TEXTURE_INTENSITY, OPENCODE_MODEL_OPTIONS, TEXTURE_MAX_OPACITY, getModelOptionFor, getModelOptionsForProvider, normalizeNotesSettings, normalizeReasoningEffort, type AiModelOption, type ChatProviderId, type OpenCodePlan, type WebSearchProviderId } from '../../shared/config'
 import type { UpdateStatus } from '../../shared/system/update'
 import {
   DEFAULT_PASTE_SETTINGS,
@@ -248,11 +248,7 @@ export default function Settings(): JSX.Element {
             setOpencodeModels(result.models as unknown as AiModelOption[])
           }
         })
-        setReasoningEffort(
-          typeof config.reasoningEffort === 'string' && ['low', 'medium', 'high'].includes(config.reasoningEffort)
-            ? (config.reasoningEffort as ReasoningEffort)
-            : DEFAULT_REASONING_EFFORT
-        )
+        setReasoningEffort(normalizeReasoningEffort(config.reasoningEffort) || DEFAULT_REASONING_EFFORT)
         setEnableWebSearch(typeof config.enableWebSearch === 'boolean' ? config.enableWebSearch : true)
         setAutoCollapseReasoning(typeof config.autoCollapseReasoning === 'boolean' ? config.autoCollapseReasoning : true)
         setEnableGenerativeUi(typeof config.enableGenerativeUi === 'boolean' ? config.enableGenerativeUi : true)

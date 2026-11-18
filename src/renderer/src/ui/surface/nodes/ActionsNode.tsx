@@ -11,7 +11,10 @@ export default function ActionsNode({ nodeId }: NodeViewProps): JSX.Element | nu
   return (
     <div className="surface-actions">
       {props.title ? <p className="surface-caption">{props.title}</p> : null}
-      <div className="surface-actions-row">
+      <div
+        className="surface-actions-row"
+        title={interactive ? undefined : 'Only the latest answer can act.'}
+      >
         {props.prompts.map((prompt, index) => (
           <button
             key={`${prompt.label}-${index}`}
@@ -20,7 +23,7 @@ export default function ActionsNode({ nodeId }: NodeViewProps): JSX.Element | nu
               prompt.variant === 'primary' ? 'surface-action--primary' : ''
             }`}
             disabled={!interactive}
-            title={interactive ? prompt.prompt : 'Only the latest answer can act.'}
+            title={interactive ? prompt.prompt : undefined}
             onClick={() => onAction(prompt.prompt)}
           >
             {prompt.label}
