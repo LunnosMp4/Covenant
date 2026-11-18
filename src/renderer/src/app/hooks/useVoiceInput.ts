@@ -7,15 +7,23 @@ export function useVoiceInput(
   setQuery: (value: string) => void
 ): {
   voiceState: VoiceState
-  micStreamRef: RefObject<MediaStream | null>
+  micStream: MediaStream | null
   toggleRecording: () => Promise<void>
 } {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle')
+  // The stream is state (not just a ref) so the visualiser can mount with
+  // `null` and switch to the real analyser the moment the device opens.
+  const [micStream, setMicStream] = useState<MediaStream | null>(null)
+  const voiceStateRef = useRef<VoiceState>('idle')
+  voiceStateRef.current = voiceState
   const micStreamRef = useRef<MediaStream | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const recordingActiveRef = useRef(false)
   const unmountedRef = useRef(false)
+  // Bumped whenever a recording starts or stops, so a slow `getUserMedia`
+  // from a cancelled session can never take over a newer one.
+  const sessionRef = useRef(0)
 
   // Mirror the dictation state into the tray mic badge (same badge as meetings).
   const setTrayRecording = useCallback((active: boolean) => {
@@ -24,25 +32,52 @@ export function useVoiceInput(
     window.api?.voice.setRecordingActive(active)
   }, [])
 
-  const stopRecording = useCallback(() => {
-    const recorder = mediaRecorderRef.current
-    if (recorder && recorder.state !== 'inactive') recorder.stop()
-    micStreamRef.current?.getTracks().forEach((t) => t.stop())
+  const releaseStream = useCallback(() => {
+    micStreamRef.current?.getTracks().forEach((track) => track.stop())
     micStreamRef.current = null
+    setMicStream(null)
   }, [])
 
-  const toggleRecording = useCallback(async () => {
-    if (voiceState === 'transcribing') return
+  const stopRecording = useCallback(() => {
+    // Invalidate any microphone request that is still opening.
+    sessionRef.current += 1
+    const recorder = mediaRecorderRef.current
+    if (recorder && recorder.state !== 'inactive') {
+      // `onstop` finishes the recording and starts transcription.
+      recorder.stop()
+    } else if (!recorder && voiceStateRef.current === 'recording') {
+      // The microphone was still opening: nothing to transcribe.
+      setTrayRecording(false)
+      setVoiceState('idle')
+    }
+    releaseStream()
+  }, [releaseStream, setTrayRecording])
 
-    if (voiceState === 'recording') {
+  const toggleRecording = useCallback(async () => {
+    if (voiceStateRef.current === 'transcribing') return
+
+    if (voiceStateRef.current === 'recording') {
       stopRecording()
       return
     }
 
+    // Swap the bar to the visualiser *before* awaiting the device so there is
+    // no dead frame while the microphone opens.
+    const session = ++sessionRef.current
+    audioChunksRef.current = []
+    setVoiceState('recording')
+    setTrayRecording(true)
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+
+      if (session !== sessionRef.current) {
+        stream.getTracks().forEach((track) => track.stop())
+        return
+      }
+
       micStreamRef.current = stream
-      audioChunksRef.current = []
+      setMicStream(stream)
 
       const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
       mediaRecorderRef.current = recorder
@@ -53,11 +88,14 @@ export function useVoiceInput(
 
       recorder.onstop = () => {
         setTrayRecording(false)
-        setVoiceState('transcribing')
-        micStreamRef.current?.getTracks().forEach((t) => t.stop())
+        micStreamRef.current?.getTracks().forEach((track) => track.stop())
         micStreamRef.current = null
+        mediaRecorderRef.current = null
 
         if (unmountedRef.current) return
+
+        setMicStream(null)
+        setVoiceState('transcribing')
 
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
         blob.arrayBuffer().then(async (buffer) => {
@@ -81,19 +119,20 @@ export function useVoiceInput(
       }
 
       recorder.start(250)
-      setVoiceState('recording')
-      setTrayRecording(true)
     } catch {
+      if (session !== sessionRef.current) return
+      releaseStream()
+      mediaRecorderRef.current = null
       setTrayRecording(false)
       setVoiceState('error')
       setTimeout(() => setVoiceState('idle'), 400)
     }
-  }, [voiceState, inputRef, setQuery, stopRecording, setTrayRecording])
+  }, [inputRef, releaseStream, setQuery, setTrayRecording, stopRecording])
 
   // Stop the dictation from the tray menu without focusing the window.
   useEffect(() => {
     return window.api?.voice.onStopRequest(() => {
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      if (voiceStateRef.current === 'recording') {
         stopRecording()
       }
     })
@@ -108,5 +147,5 @@ export function useVoiceInput(
     }
   }, [stopRecording, setTrayRecording])
 
-  return { voiceState, micStreamRef, toggleRecording }
+  return { voiceState, micStream, toggleRecording }
 }

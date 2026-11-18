@@ -4,7 +4,7 @@ import ModulePopup, { type ActivePopup, type PopupItem } from './launcher/Module
 import LauncherResults from './launcher/LauncherResults'
 import InstructionPicker from './launcher/InstructionPicker'
 import TerminalApprovalModal from './terminal/TerminalApprovalModal'
-import VoiceWaveform from './chat/VoiceWaveform'
+import VoiceDotMatrix from './chat/VoiceDotMatrix'
 import ConfirmDeleteModal from './ui/ConfirmDeleteModal'
 import ConversationHistoryMenu from './chat/ConversationHistoryMenu'
 import ChatHistorySidebar from './chat/ChatHistorySidebar'
@@ -371,7 +371,7 @@ export default function App(): JSX.Element {
     imagePanelRef,
     imageButtonRef
   } = useAttachments()
-  const { voiceState, micStreamRef, toggleRecording } = useVoiceInput(inputRef, setQuery)
+  const { voiceState, micStream, toggleRecording } = useVoiceInput(inputRef, setQuery)
   const {
     searchOpen,
     searchQuery,
@@ -2860,6 +2860,8 @@ export default function App(): JSX.Element {
     [themeGradient]
   )
 
+  const isLightTheme = useMemo(() => getThemeMode(themeGradient) === 'light', [themeGradient])
+
   // Apply to the document root so portaled modals (which render into
   // document.body) inherit the same accent, chat and neutral tokens.
   useLayoutEffect(() => {
@@ -3330,7 +3332,7 @@ export default function App(): JSX.Element {
             {!isFullSurface && (
             <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center">
             <motion.div
-              className={`surface-shadow relative flex items-end w-[750px] max-w-full rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10 transition-opacity duration-100 texture-surface opacity-100 pointer-events-auto`}
+              className={`surface-shadow isolate relative flex items-end w-[750px] max-w-full rounded-2xl p-2 bg-gradient-to-br ${themeGradient} border border-white/10 transition-opacity duration-100 texture-surface opacity-100 pointer-events-auto`}
               data-interactive-surface
             >
             <AnimatePresence>
@@ -3474,9 +3476,14 @@ export default function App(): JSX.Element {
               <SettingsIcon />
             </button>
 
-            {voiceState === 'recording' && micStreamRef.current ? (
-                <VoiceWaveform stream={micStreamRef.current} />
-              ) : (
+            {voiceState === 'recording' ? (
+              <>
+                <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-2xl">
+                  <VoiceDotMatrix stream={micStream} isLight={isLightTheme} />
+                </div>
+                <div className="flex-1" style={{ minHeight: 52 }} />
+              </>
+            ) : (
                 <div
                   ref={inputRef}
                   contentEditable
@@ -3752,7 +3759,7 @@ export default function App(): JSX.Element {
                     isWide={isWide}
                     isAltHeld={isAltHeld}
                     isPinned={isPinned}
-                    isLight={getThemeMode(themeGradient) === 'light'}
+                    isLight={isLightTheme}
                     onTogglePin={handleTogglePin}
                     onToggleExpand={handleToggleExpand}
                     onActiveSessionChange={setTerminalSessionId}
