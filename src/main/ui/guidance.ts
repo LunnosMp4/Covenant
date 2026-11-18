@@ -1,0 +1,24 @@
+/**
+ * Behavioural guidance injected with the UI tools.
+ *
+ * The point is proactive use: the model should reach for a visual whenever the
+ * shape of the data is the answer, and it must never ask permission first.
+ */
+
+export const UI_GUIDANCE = `Visual answers:
+- You can publish a visual answer with render_ui (declarative) or render_generated (a bespoke sandboxed layout). Call the tool yourself; never ask whether the user wants a chart, and never ask which type. Choose from the question.
+- Use a visual when the shape of the data is the answer: change over time (line or area), magnitude comparison (bar), parts of one whole (pie or donut), a few headline numbers (Metric), a matrix of attributes (Compare), or a bespoke composition. Keep two numbers, plain prose, and tiny static tables in Markdown.
+- Call the visual tool BEFORE writing the closing explanation. Do not repeat the visual's values in your text; add at most a sentence or two of interpretation, or none at all.
+- Preserve the facts exactly: same values, same order, same units. Use null for missing data (never 0). Percent form values are 0-100. Do not invent categories or smooth over gaps.
+- Native specs are a bounded tree of known nodes: Stack { children, gap }, Text { text, tone }, Metric { items }, Chart, Table { columns, rows }, Compare { options, criteria }, Actions { prompts }, Timeline { items }, Generated. Max 24 nodes, depth 6, 48 categories, 4 series. Every node is { type, props }; Stack children are node ids.
+- Chart props: title, kind (line|area|bar|pie|donut), categories[], series[{ label, values, as?, axis? }], unit, description, stacked, highlight, valueFormat (number|percent|compact), zoom, height. A series may set as line|bar|area to mix forms in one plot, and axis right to use a second scale. A pie/donut has exactly one non-negative series.
+- Metric item props: label, value, unit, format, hint, delta { value, sentiment, suffix }, sparkline[] (recent history, 2-32 points, null for gaps). Add a sparkline whenever the number has a trend behind it.
+- Table props include rowAction { label, prompt } to offer one follow-up per row; {row} and {row.N} interpolate cells and {index} is the row number.
+- Timeline props: title, caption, variant (timeline|steps), items[{ label, meta, detail, state: done|current|todo }]. Use it for plans, runbooks and sequences instead of a numbered list.
+- Actions prompts are follow-up questions the user can send with one click. Use them only when a genuinely useful next step exists.
+- Prefer render_generated only when the visual needs a coordinated composition, a chart type the native nodes do not cover, custom SVG, or local interaction. Compose a compact visual answer, not a miniature website: at most two charts, one KPI row, one control row. It must include a readable fallback and every value it shows.
+- Generated surfaces compose the kit, they do not invent a design: build the DOM with Covenant.ui (surface, stack, section, card, grid, split, row, heading, text, caption, label, metricRow, kpi, badge, callout, list, table, actions, button, input, select, toggle, field, chartSlot, divider). Use .cv-* classes when writing HTML directly. Never hand-roll a look that duplicates a kit component.
+- Generated CSS is layout-only: display, flex/grid, gap, width/height, margin, padding, order, align/justify, overflow. Colours, type, borders, radii, shadows, transforms, transitions and animations are rejected — they come from the theme. Do not set position: absolute/fixed/sticky; lay out in normal flow.
+- Generated charts use Covenant.chart(el, data) with the same semantic contract as the Chart node (title, kind, categories, series, unit, valueFormat, highlight, zoom, height); never pass ECharts options. Give it a cv-chart slot and let the host theme it.
+- Generated surfaces run isolated with no network, storage, filesystem or tool access. CSS must use var(--token) for anything the kit exposes. Never let a visual execute tools or send messages by itself: Covenant.submit only proposes values and needs the user's click.
+- A visual must still make sense if it fails: its data is always available as readable text.`

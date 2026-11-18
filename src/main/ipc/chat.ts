@@ -29,6 +29,8 @@ import {
 import { webSearchProviderLabel as getWebSearchProviderLabel } from '../../shared/ai/webSearch'
 import { recordAiUsage } from '../ai/usageLedger'
 import type { BuiltinToolHandler } from '../services/builtinTools'
+import { UI_GUIDANCE } from '../ui/guidance'
+import { buildUiToolDefinitions, createUiToolHandlers } from '../ui/tools'
 import { log } from '../logger'
 
 const activeChatStreams = new Map<string, AbortController>()
@@ -195,6 +197,24 @@ export function registerChatIpc(): void {
       provider: provider.provider,
       modelOption
     })
+
+    const generativeUiEnabled =
+      storedConfig.enableGenerativeUi !== false && modelOption.supportsTools !== false
+    const generatedUiEnabled = storedConfig.enableGeneratedUi !== false
+
+    if (generativeUiEnabled) {
+      const toolDefinitions = buildUiToolDefinitions().filter(
+        (definition) => generatedUiEnabled || definition.name !== 'render_generated'
+      )
+      tools.push(...toolDefinitions)
+      builtinTools.push(
+        ...createUiToolHandlers().filter(
+          (handler) => generatedUiEnabled || handler.name !== 'render_generated'
+        )
+      )
+      const baseInstructions = typeof params.instructions === 'string' ? params.instructions : ''
+      params.instructions = `${baseInstructions}\n\n${UI_GUIDANCE}`.trim()
+    }
 
     if (terminalSession) {
       const base = typeof params.instructions === 'string' ? params.instructions : ''

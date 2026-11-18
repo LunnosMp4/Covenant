@@ -1,11 +1,14 @@
-import { memo } from 'react'
+import { lazy, memo, Suspense } from 'react'
 import type { ChatMessage } from '../../../shared/chat/chat'
 import { collectExcalidrawCheckpoints } from '../../../shared/chat/excalidraw'
+import { describeUiSpec } from '../../../shared/ui/describe'
 import { formatSourceUrl, formatUsageSummary } from '../utils/chat/chatUsage'
 import { AssistantMarkdown, CopyButton, ToolStepRow, WebSearchStepRow } from './AssistantMarkdown'
 import ExcalidrawEmbed from './ExcalidrawEmbed'
 import { Favicon } from './Favicon'
 import MeasuredCollapse from '../ui/MeasuredCollapse'
+
+const SurfaceRenderer = lazy(() => import('../ui/surface/SurfaceRenderer'))
 
 interface ChatTranscriptProps {
   messages: ChatMessage[]
@@ -15,9 +18,17 @@ interface ChatTranscriptProps {
   onToggleThinking: (messageId: string) => void
   sourcesPanelMessageId: string | null
   onToggleSources: (messageId: string) => void
+  /** Sends a prompt proposed by a visual surface. */
+  onSurfaceAction?: (prompt: string) => void
   emptyLabel?: string
   /** Terminal rail uses full-width bubbles (Code-style), not chat-style. */
   fullWidthBubbles?: boolean
+  /**
+   * Wide chat layout: assistant rows span the readable column while user rows
+   * stay right-aligned at a narrower measure. Keeps the roomy layout from
+   * simply stretching every bubble.
+   */
+  wide?: boolean
 }
 
 interface ChatMessageRowProps {
@@ -27,7 +38,9 @@ interface ChatMessageRowProps {
   showSources: boolean
   onToggleThinking: (messageId: string) => void
   onToggleSources: (messageId: string) => void
+  onSurfaceAction: (prompt: string) => void
   fullWidthBubbles: boolean
+  wide: boolean
   isLatest: boolean
 }
 
@@ -45,7 +58,9 @@ function ChatMessageRow({
   showSources,
   onToggleThinking,
   onToggleSources,
+  onSurfaceAction,
   fullWidthBubbles,
+  wide,
   isLatest
 }: ChatMessageRowProps): JSX.Element {
   const isAssistant = message.role === 'assistant'
@@ -66,8 +81,26 @@ function ChatMessageRow({
     .filter(Boolean)
     .join(` \u00b7 `)
   const rowJustify = isUser && !fullWidthBubbles ? 'justify-end' : 'justify-start'
-  const bubbleWidth = fullWidthBubbles ? 'w-full' : 'max-w-[78%]'
-  const canCopy = isAssistant && !isStreaming && message.content.trim().length > 0
+  // A bubble carrying a visual takes the full column (capped like any bubble), so
+  // the chart has a stable width that follows the transcript. A shrink-to-fit
+  // bubble would otherwise be sized by the chart's own canvas and freeze.
+  const hasParts = (message.parts?.length ?? 0) > 0
+  const bubbleWidth = fullWidthBubbles
+    ? 'w-full'
+    : wide
+      ? isAssistant
+        ? 'w-full'
+        : 'max-w-[78%]'
+      : hasParts
+        ? 'w-full max-w-[78%]'
+        : 'max-w-[78%]'
+  const copyText = [
+    message.content,
+    ...(message.parts ?? []).map((part) => describeUiSpec(part.surface.spec))
+  ]
+    .filter((entry) => entry.trim().length > 0)
+    .join('\n\n')
+  const canCopy = isAssistant && !isStreaming && copyText.trim().length > 0
 
   return (
     <div
@@ -151,6 +184,22 @@ function ChatMessageRow({
 
         {isAssistant ? (
           <>
+            {message.parts && message.parts.length > 0 ? (
+              <div className="chat-message-surfaces">
+                <Suspense
+                  fallback={<div className="surface-skeleton" aria-hidden />}
+                >
+                  {message.parts.map((part) => (
+                    <SurfaceRenderer
+                      key={part.id}
+                      surface={part.surface}
+                      interactive={isLatest && !isStreaming}
+                      onAction={onSurfaceAction}
+                    />
+                  ))}
+                </Suspense>
+              </div>
+            ) : null}
             {message.sources && message.sources.length > 0 ? (
               <div className="chat-sources-wrapper">
                 <button
@@ -245,7 +294,7 @@ function ChatMessageRow({
             {/* Only offer copy once the stream has finished and there is text. */}
             {canCopy ? (
               <CopyButton
-                text={message.content}
+                text={copyText}
                 className="pressable flex items-center justify-center h-6 w-6 rounded-md text-neutral-500 hover:text-neutral-200 hover:bg-white/10"
               />
             ) : null}
@@ -271,12 +320,16 @@ export default function ChatTranscript({
   onToggleThinking,
   sourcesPanelMessageId,
   onToggleSources,
+  onSurfaceAction,
   emptyLabel = 'No messages yet.',
-  fullWidthBubbles = false
+  fullWidthBubbles = false,
+  wide = false
 }: ChatTranscriptProps): JSX.Element {
   if (messages.length === 0) {
     return <p className="text-xs text-neutral-500">{emptyLabel}</p>
   }
+
+  const handleSurfaceAction = onSurfaceAction ?? (() => undefined)
 
   return (
     <>
@@ -293,7 +346,9 @@ export default function ChatTranscript({
             showSources={sourcesPanelMessageId === message.id}
             onToggleThinking={onToggleThinking}
             onToggleSources={onToggleSources}
+            onSurfaceAction={handleSurfaceAction}
             fullWidthBubbles={fullWidthBubbles}
+            wide={wide}
             isLatest={index === messages.length - 1}
           />
         )

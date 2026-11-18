@@ -3,6 +3,8 @@ import type { AppConfig } from '../../shared/config'
 import {
   DEFAULT_AUTO_COLLAPSE_REASONING,
   DEFAULT_CHAT_MODEL,
+  DEFAULT_ENABLE_GENERATED_UI,
+  DEFAULT_ENABLE_GENERATIVE_UI,
   DEFAULT_ENABLE_WEB_SEARCH,
   DEFAULT_LAUNCHER_SHOW_SYSTEM_APPS,
   DEFAULT_OPENCODE_CHAT_MODEL,
@@ -10,6 +12,7 @@ import {
   DEFAULT_WEB_SEARCH_TIMEOUT_MS,
   normalizeChatProvider,
   normalizeOpenCodePlan,
+  normalizeReasoningEffort,
   normalizeShortcuts,
   normalizeNotesSettings,
   normalizeTextureIntensity,
@@ -26,7 +29,6 @@ import { registerShortcuts } from '../windows'
 import { broadcast } from '../windows/broadcast'
 
 const isWindows = process.platform === 'win32'
-const VALID_REASONING_EFFORTS = ['low', 'medium', 'high']
 
 export function registerConfigIpc(): void {
   ipcMain.handle('get-config', () => {
@@ -242,9 +244,10 @@ export function registerConfigIpc(): void {
   })
 
   ipcMain.on('update-reasoning-effort', (_event, reasoningEffort: string) => {
-    const nextReasoningEffort = typeof reasoningEffort === 'string' && VALID_REASONING_EFFORTS.includes(reasoningEffort)
-      ? reasoningEffort as AppConfig['reasoningEffort']
-      : DEFAULT_REASONING_EFFORT
+    // OpenCode models expose different effort sets (none/minimal/…/xhigh/max),
+    // so accept any well-formed token and let the request mapper snap it to the
+    // active model's supported list.
+    const nextReasoningEffort = normalizeReasoningEffort(reasoningEffort) || DEFAULT_REASONING_EFFORT
     updateConfig({ reasoningEffort: nextReasoningEffort })
     broadcast('reasoning-effort-updated', nextReasoningEffort)
   })
@@ -258,6 +261,16 @@ export function registerConfigIpc(): void {
     const nextAutoCollapse = typeof autoCollapseReasoning === 'boolean' ? autoCollapseReasoning : DEFAULT_AUTO_COLLAPSE_REASONING
     updateConfig({ autoCollapseReasoning: nextAutoCollapse })
     broadcast('auto-collapse-reasoning-updated', nextAutoCollapse)
+  })
+
+  ipcMain.on('update-generative-ui', (_event, enableGenerativeUi: boolean) => {
+    const next = typeof enableGenerativeUi === 'boolean' ? enableGenerativeUi : DEFAULT_ENABLE_GENERATIVE_UI
+    updateConfig({ enableGenerativeUi: next })
+  })
+
+  ipcMain.on('update-generated-ui', (_event, enableGeneratedUi: boolean) => {
+    const next = typeof enableGeneratedUi === 'boolean' ? enableGeneratedUi : DEFAULT_ENABLE_GENERATED_UI
+    updateConfig({ enableGeneratedUi: next })
   })
 
   ipcMain.on('update-texture-intensity', (_event, textureIntensity: number) => {

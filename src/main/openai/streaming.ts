@@ -434,6 +434,13 @@ export async function runStreamingChat(
             signal: ctx.signal
           }))
         outputs[index] = { type: 'function_call_output', call_id: call.call_id, output: result.content }
+
+        // Visual surfaces are published before the tool row so the chart can
+        // materialise while the model is still writing its explanation.
+        if (builtinResult?.part) {
+          ctx.sendStreamEvent({ id: ctx.streamId, type: 'ui-surface', part: builtinResult.part })
+        }
+
         ctx.sendStreamEvent({
           id: ctx.streamId,
           type: 'tool-result',

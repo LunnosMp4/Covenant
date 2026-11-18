@@ -5,7 +5,9 @@ import {
   countOccurrences,
   buildSearchSnippet,
   formatConversationRowTimestamp,
+  groupConversationsByDay,
   groupConversationsByRecency,
+  resolveSubmitSystemPrompt,
   sortConversations
 } from './chat'
 
@@ -146,5 +148,115 @@ describe('conversation history grouping', () => {
 
     expect(sortConversations(input).map((item) => item.id)).toEqual(['b', 'a'])
     expect(input.map((item) => item.id)).toEqual(['a', 'b'])
+  })
+})
+
+describe('conversation day grouping', () => {
+  const NOW = new Date(2026, 9, 31, 15, 0, 0).getTime()
+  const at = (daysAgo: number, hour = 10): number => {
+    const date = new Date(2026, 9, 31, hour, 0, 0)
+    date.setDate(date.getDate() - daysAgo)
+    return date.getTime()
+  }
+
+  function datedConversation(id: string, updatedAt: number): ChatConversation {
+    return { id, title: id, createdAt: updatedAt, updatedAt, messages: [] }
+  }
+
+  it('groups by calendar day, newest first, with no empty groups', () => {
+    const groups = groupConversationsByDay(
+      [
+        datedConversation('old', at(3, 9)),
+        datedConversation('today-early', at(0, 8)),
+        datedConversation('today-late', at(0, 14)),
+        datedConversation('yesterday', at(1, 12))
+      ],
+      NOW
+    )
+
+    expect(groups).toHaveLength(3)
+    expect(groups[0].label).toBe('Today')
+    expect(groups[1].label).toBe('Yesterday')
+    expect(groups[2].label).toMatch(/^[A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2}$/)
+    expect(groups.map((group) => group.conversations.map((item) => item.id))).toEqual([
+      ['today-late', 'today-early'],
+      ['yesterday'],
+      ['old']
+    ])
+    // The day key is stable and local (not a UTC ISO timestamp).
+    expect(groups[0].key).toBe('2026-10-31')
+    expect(groups[1].key).toBe('2026-10-30')
+  })
+
+  it('adds the year to labels from another year', () => {
+    const now = new Date(2026, 0, 5, 12, 0, 0).getTime()
+    const groups = groupConversationsByDay(
+      [datedConversation('december', new Date(2025, 11, 30, 10, 0, 0).getTime())],
+      now
+    )
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0].label).toMatch(/2025$/)
+  })
+
+  it('returns no groups for an empty history', () => {
+    expect(groupConversationsByDay([], NOW)).toEqual([])
+  })
+
+  it('does not mutate the input order', () => {
+    const input = [datedConversation('older', at(0, 8)), datedConversation('newer', at(0, 14))]
+    groupConversationsByDay(input, NOW)
+
+    expect(input.map((item) => item.id)).toEqual(['older', 'newer'])
+  })
+})
+
+describe('submit system prompt resolution', () => {
+  it('never inherits the previous instruction into a new conversation', () => {
+    expect(
+      resolveSubmitSystemPrompt({
+        isNewConversation: true,
+        mentionsInstruction: false,
+        composerPrompt: 'Previous instruction',
+        conversationPrompt: 'Previous instruction'
+      })
+    ).toBe('')
+  })
+
+  it('keeps an instruction explicitly mentioned in the composer', () => {
+    expect(
+      resolveSubmitSystemPrompt({
+        isNewConversation: true,
+        mentionsInstruction: true,
+        composerPrompt: '  New instruction  '
+      })
+    ).toBe('New instruction')
+  })
+
+  it('prefers the composer instruction inside an existing conversation', () => {
+    expect(
+      resolveSubmitSystemPrompt({
+        isNewConversation: false,
+        mentionsInstruction: false,
+        composerPrompt: 'New instruction',
+        conversationPrompt: 'Old instruction'
+      })
+    ).toBe('New instruction')
+  })
+
+  it('falls back to the conversation instruction for follow-ups', () => {
+    expect(
+      resolveSubmitSystemPrompt({
+        isNewConversation: false,
+        mentionsInstruction: false,
+        conversationPrompt: ' Stored instruction '
+      })
+    ).toBe('Stored instruction')
+  })
+
+  it('returns an empty string when nothing is selected', () => {
+    expect(
+      resolveSubmitSystemPrompt({ isNewConversation: false, mentionsInstruction: false })
+    ).toBe('')
   })
 })

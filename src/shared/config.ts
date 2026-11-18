@@ -19,7 +19,12 @@ export interface ButtonVisibility {
   code: boolean
 }
 
-export type ReasoningEffort = 'low' | 'medium' | 'high'
+/**
+ * A reasoning-effort token. OpenCode models expose different sets (for example
+ * `low|high|max` or `none|low|medium|high|xhigh`), so this stays a string and
+ * the per-model `reasoningEfforts` list drives the UI.
+ */
+export type ReasoningEffort = string
 
 export interface ChatModelOption {
   id: string
@@ -34,6 +39,17 @@ export const CHAT_MODEL_OPTIONS: ChatModelOption[] = [
 ]
 
 export const REASONING_EFFORT_OPTIONS: ReasoningEffort[] = ['low', 'medium', 'high']
+
+/**
+ * The effort levels a model actually accepts. Falls back to the static list
+ * only when the model is unknown (e.g. catalog not fetched yet); models that
+ * report reasoning without effort levels get an empty list so the UI can
+ * disable the picker instead of offering values the gateway ignores.
+ */
+export function getReasoningEffortOptions(option: AiModelOption | undefined): string[] {
+  if (!option) return [...REASONING_EFFORT_OPTIONS]
+  return option.reasoningEfforts.length > 0 ? [...option.reasoningEfforts] : []
+}
 
 export const DEFAULT_CHAT_MODEL = 'gpt-6-luna'
 
@@ -52,6 +68,8 @@ export function normalizeChatModelId(modelId: string | undefined): string {
 export const DEFAULT_REASONING_EFFORT: ReasoningEffort = 'low'
 export const DEFAULT_ENABLE_WEB_SEARCH = true
 export const DEFAULT_AUTO_COLLAPSE_REASONING = true
+export const DEFAULT_ENABLE_GENERATIVE_UI = true
+export const DEFAULT_ENABLE_GENERATED_UI = true
 export const DEFAULT_LAUNCHER_SHOW_SYSTEM_APPS = false
 export const DEFAULT_TEXTURE_INTENSITY = 0
 export const MAX_TEXTURE_INTENSITY = 100
@@ -300,6 +318,10 @@ export interface AppConfig {
   reasoningEffort: ReasoningEffort
   enableWebSearch: boolean
   autoCollapseReasoning: boolean
+  /** Publish validated visuals (charts, metrics, tables) inside chat answers. */
+  enableGenerativeUi?: boolean
+  /** Allow the sandboxed HTML/CSS/JS surface path. */
+  enableGeneratedUi?: boolean
   launcherShowSystemApps: boolean
   shortcuts: ShortcutConfig
   textureIntensity: number
@@ -321,10 +343,16 @@ export {
   DEFAULT_WEB_SEARCH_PROVIDER,
   DEFAULT_WEB_SEARCH_TIMEOUT_MS,
   OPENCODE_MODEL_OPTIONS,
+  REASONING_EFFORT_LABELS,
+  REASONING_EFFORT_ORDER,
   WEB_SEARCH_PROVIDERS,
+  formatReasoningEffort,
   normalizeChatProvider,
   normalizeOpenCodePlan,
-  normalizeWebSearchProvider
+  normalizeReasoningEffort,
+  normalizeWebSearchProvider,
+  reasoningEffortRank,
+  resolveReasoningEffort
 } from './ai/models'
 export {
   resolveWebSearchProviderChoice,

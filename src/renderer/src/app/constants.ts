@@ -11,6 +11,13 @@ export const DEFAULT_GAMIFICATION_STATE: GamificationState = {
 export const MAX_WORKFLOW_LOG_LINES = 200
 export const CHAT_SCROLL_HEIGHT = 300
 
+// Wide chat layout (Alt+expand): history rail on the left, and a wider readable
+// column where assistant rows use the full width while user rows stay narrower
+// and right-aligned. The command bar itself never moves.
+export const CHAT_WIDE_SIDEBAR_WIDTH = 240
+export const CHAT_WIDE_SIDEBAR_GAP = 12
+export const CHAT_WIDE_COLUMN_MAX_WIDTH = 800
+
 // Command bar geometry. The input grows up to `MAX_COMMAND_BAR_LINES` lines and
 // then scrolls; the bar keeps a fixed footprint in the layout so growing upward
 // overlaps the surface above instead of pushing it higher. These values mirror

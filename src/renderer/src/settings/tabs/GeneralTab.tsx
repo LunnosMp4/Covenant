@@ -12,6 +12,10 @@ interface GeneralTabProps {
   updateStatus: UpdateStatus
   onCheckForUpdates: () => void
   onInstallUpdate: () => void
+  enableGenerativeUi: boolean
+  onEnableGenerativeUiChange: (value: boolean) => void
+  enableGeneratedUi: boolean
+  onEnableGeneratedUiChange: (value: boolean) => void
 }
 
 export default function GeneralTab({
@@ -23,10 +27,33 @@ export default function GeneralTab({
   onAutoUpdateChange,
   updateStatus,
   onCheckForUpdates,
-  onInstallUpdate
+  onInstallUpdate,
+  enableGenerativeUi,
+  onEnableGenerativeUiChange,
+  enableGeneratedUi,
+  onEnableGeneratedUiChange
 }: GeneralTabProps): JSX.Element {
   return (
     <div className="space-y-6">
+      <SectionCard
+        title="Visual answers"
+        description="Covenant draws charts, metrics and tables directly in the conversation when the shape of the data is the answer. It never asks whether you want a visual."
+      >
+        <div className="space-y-4">
+          <MinimalistToggle
+            checked={enableGenerativeUi}
+            onChange={onEnableGenerativeUiChange}
+            label="Generative UI"
+            description="Let answers publish validated charts, metrics, tables and comparisons."
+          />
+          <MinimalistToggle
+            checked={enableGeneratedUi}
+            onChange={onEnableGeneratedUiChange}
+            label="Custom visual layouts"
+            description="Allow bespoke HTML/CSS/JS visuals. They run isolated with no network, storage or tool access, and every result includes a text summary."
+          />
+        </div>
+      </SectionCard>
       <SectionCard
         title="Startup"
         description="Automatically launch Covenant when you start your computer."

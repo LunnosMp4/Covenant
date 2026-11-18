@@ -118,6 +118,8 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     updateReasoningEffort: (reasoningEffort: ReasoningEffort) => void
     updateWebSearch: (enableWebSearch: boolean) => void
     updateAutoCollapseReasoning: (autoCollapseReasoning: boolean) => void
+    updateGenerativeUi: (enableGenerativeUi: boolean) => void
+    updateGeneratedUi: (enableGeneratedUi: boolean) => void
     updateTextureIntensity: (textureIntensity: number) => void
     updateNotesSettings: (settings: Partial<NotesSettings>) => void
     updateAutoUpdate: (enabled: boolean) => void
@@ -247,6 +249,9 @@ deleteMcpServer: (serverId: string) => Promise<McpServer[]>
     writeText: (text: string) => void
   }
   openExternal: (url: string) => Promise<{ success: boolean }>
+  ui: {
+    getSandboxSource: () => Promise<{ charts: string; error?: string }>
+  }
   excalidraw: {
     readCheckpoint: (
       serverId: string | undefined,

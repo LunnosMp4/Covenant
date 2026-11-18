@@ -4,10 +4,13 @@ import { MotionConfig } from 'framer-motion'
 import './assets/index.css'
 import './assets/code-theme.css'
 
-function getWindowKind(): 'settings' | 'main' {
+function getWindowKind(): 'settings' | 'main' | 'lab' {
   const normalizedHash = window.location.hash.toLowerCase()
   if (normalizedHash.startsWith('#settings') || normalizedHash.startsWith('#/settings')) {
     return 'settings'
+  }
+  if (normalizedHash.startsWith('#ui-lab')) {
+    return 'lab'
   }
   return 'main'
 }
@@ -27,6 +30,11 @@ async function loadRootComponent(): Promise<() => JSX.Element> {
   if (windowKind === 'settings') {
     const { default: Settings } = await import('./Settings')
     return Settings
+  }
+
+  if (windowKind === 'lab') {
+    const { default: UiLab } = await import('./ui/surface/UiLab')
+    return UiLab
   }
 
   const { default: App } = await import('./App')

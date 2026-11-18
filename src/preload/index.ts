@@ -184,6 +184,10 @@ const api = {
       ipcRenderer.send('update-web-search', enableWebSearch),
     updateAutoCollapseReasoning: (autoCollapseReasoning: boolean) =>
       ipcRenderer.send('update-auto-collapse-reasoning', autoCollapseReasoning),
+    updateGenerativeUi: (enableGenerativeUi: boolean) =>
+      ipcRenderer.send('update-generative-ui', enableGenerativeUi),
+    updateGeneratedUi: (enableGeneratedUi: boolean) =>
+      ipcRenderer.send('update-generated-ui', enableGeneratedUi),
     updateTextureIntensity: (textureIntensity: number) =>
       ipcRenderer.send('update-texture-intensity', textureIntensity),
     updateNotesSettings: (settings: Partial<NotesSettings>) =>
@@ -773,6 +777,13 @@ const api = {
   },
   openExternal: (url: string) =>
     ipcRenderer.invoke('open-external', url) as Promise<{ success: boolean }>,
+  ui: {
+    getSandboxSource: () =>
+      ipcRenderer.invoke('covenant:ui-sandbox-source') as Promise<{
+        charts: string
+        error?: string
+      }>
+  },
   excalidraw: {
     readCheckpoint: (serverId: string | undefined, checkpointId: string) =>
       ipcRenderer.invoke('excalidraw:read-checkpoint', { serverId, checkpointId }) as Promise<{

@@ -367,6 +367,83 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
   return { r: (value >> 16) & 255, g: (value >> 8) & 255, b: value & 255 }
 }
 
+function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
+  const rn = r / 255
+  const gn = g / 255
+  const bn = b / 255
+  const max = Math.max(rn, gn, bn)
+  const min = Math.min(rn, gn, bn)
+  const l = (max + min) / 2
+  const delta = max - min
+
+  if (delta === 0) return { h: 0, s: 0, l }
+
+  const s = l > 0.5 ? delta / (2 - max - min) : delta / (max + min)
+  let h: number
+  if (max === rn) h = ((gn - bn) / delta) % 6
+  else if (max === gn) h = (bn - rn) / delta + 2
+  else h = (rn - gn) / delta + 4
+
+  return { h: (h * 60 + 360) % 360, s, l }
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  const hue = ((h % 360) + 360) % 360
+  const saturation = Math.max(0, Math.min(1, s))
+  const lightness = Math.max(0, Math.min(1, l))
+  const c = (1 - Math.abs(2 * lightness - 1)) * saturation
+  const x = c * (1 - Math.abs(((hue / 60) % 2) - 1))
+  const m = lightness - c / 2
+
+  const [r1, g1, b1] =
+    hue < 60
+      ? [c, x, 0]
+      : hue < 120
+        ? [x, c, 0]
+        : hue < 180
+          ? [0, c, x]
+          : hue < 240
+            ? [0, x, c]
+            : hue < 300
+              ? [x, 0, c]
+              : [c, 0, x]
+
+  return rgbToHex((r1 + m) * 255, (g1 + m) * 255, (b1 + m) * 255)
+}
+
+/**
+ * Categorical chart palette derived from the theme accent.
+ *
+ * Neutral themes (Graphite, Porcelain) carry almost no saturation, so a pure
+ * hue rotation would produce six greys. In that case a muted, theme-tinted hue
+ * spread takes over: it stays inside the palette instead of importing an
+ * unrelated rainbow.
+ */
+export function buildSeriesPalette(accent: string, mode: ThemeMode): string[] {
+  const { r, g, b } = hexToRgb(accent)
+  const { h, s, l } = rgbToHsl(r, g, b)
+  const dark = mode === 'dark'
+  const lightness = dark ? Math.max(0.6, Math.min(0.82, l)) : Math.max(0.34, Math.min(0.58, l))
+  const delta = dark ? 1 : -1
+
+  if (s < 0.14) {
+    const neutralHues = [212, 24, 148, 268, 42, 190]
+    const neutralSaturation = dark ? 0.2 : 0.3
+    return neutralHues.map((hue, index) =>
+      hslToHex(hue, neutralSaturation, lightness + delta * (index % 3) * 0.07)
+    )
+  }
+
+  return [
+    hslToHex(h, Math.min(1, s), lightness),
+    hslToHex(h + 28, Math.min(1, s * 0.92), lightness + delta * 0.09),
+    hslToHex(h - 26, Math.min(1, s * 0.94), lightness - delta * 0.08),
+    hslToHex(h + 52, Math.min(1, s * 0.68), lightness + delta * 0.15),
+    hslToHex(h - 48, Math.min(1, s * 0.72), lightness + delta * 0.16),
+    hslToHex(h + 12, Math.min(1, s * 0.52), lightness - delta * 0.14)
+  ]
+}
+
 function rgbToHex(r: number, g: number, b: number): string {
   const clamp = (n: number): number => Math.max(0, Math.min(255, Math.round(n)))
   return `#${[r, g, b].map((n) => clamp(n).toString(16).padStart(2, '0')).join('')}`
@@ -574,6 +651,44 @@ export function getThemeCssVars(themeGradient: string | undefined): Record<strin
   for (const [shade, value] of Object.entries(neutral)) {
     vars[`--n-${shade}`] = value
   }
+
+  // Visual surfaces (charts, KPI cells, generated frames) share one token set
+  // with the chat surface so a theme change repaints them with no JS constants.
+  const series = buildSeriesPalette(palette.accent, mode)
+  series.forEach((color, index) => {
+    vars[`--ui-series-${index + 1}`] = color
+  })
+
+  vars['--ui-grid'] =
+    mode === 'dark' ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)'
+  vars['--ui-axis'] = palette.metaText
+  vars['--ui-surface'] = mode === 'dark' ? '#1B1C1F' : '#FFFFFF'
+  vars['--ui-surface-strong'] = mode === 'dark' ? '#232428' : '#F4F4F2'
+  vars['--ui-positive'] = mode === 'dark' ? '#7FB08C' : '#2F7D4F'
+  vars['--ui-negative'] = mode === 'dark' ? '#D08A7D' : '#A63D52'
+
+  // Geometry and type scale for native visuals and the generated sandbox.
+  vars['--ui-space-2xs'] = '2px'
+  vars['--ui-space-xs'] = '4px'
+  vars['--ui-space-sm'] = '8px'
+  vars['--ui-space-md'] = '12px'
+  vars['--ui-space-lg'] = '16px'
+  vars['--ui-space-xl'] = '24px'
+  vars['--ui-radius-sm'] = '6px'
+  vars['--ui-radius-md'] = '10px'
+  vars['--ui-radius-lg'] = '14px'
+  vars['--ui-radius-pill'] = '999px'
+  vars['--ui-font'] =
+    'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+  vars['--ui-font-size-xs'] = '10.5px'
+  vars['--ui-font-size-sm'] = '11.5px'
+  vars['--ui-font-size-md'] = '13px'
+  vars['--ui-font-size-lg'] = '15px'
+  vars['--ui-weight-regular'] = '400'
+  vars['--ui-weight-medium'] = '500'
+  vars['--ui-weight-semibold'] = '600'
+  vars['--ui-leading-tight'] = '1.25'
+  vars['--ui-leading-normal'] = '1.5'
 
   return vars
 }

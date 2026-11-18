@@ -7,6 +7,7 @@ import TerminalApprovalModal from './terminal/TerminalApprovalModal'
 import VoiceWaveform from './chat/VoiceWaveform'
 import ConfirmDeleteModal from './ui/ConfirmDeleteModal'
 import ConversationHistoryMenu from './chat/ConversationHistoryMenu'
+import ChatHistorySidebar from './chat/ChatHistorySidebar'
 import { buildTerminalContext } from './terminal/terminalContext'
 import {
   ChevronDownIcon,
@@ -73,6 +74,9 @@ import type {
   ReasoningStep
 } from '../../shared/chat/chat'
 import type { InstalledApp, LauncherItem } from '../../shared/launcher/launcher'
+import { describeUiSpec } from '../../shared/ui/describe'
+import { markSurfacesReady } from '../../shared/ui/validate'
+import { UI_LIMITS } from '../../shared/ui/spec'
 import type { Preprompt } from './types/renderer'
 import type { Task } from './types/renderer'
 import type { GamificationState, XpToastState } from './types/renderer'
@@ -89,11 +93,15 @@ import {
   createCustomSystemPromptSelection,
   createSelectedSystemPrompt,
   normalizeMessageOrder,
+  resolveSubmitSystemPrompt,
   sortConversations
 } from './app/utils/chat'
 import { splitWorkflowLogLines } from './app/utils/workflow'
 import {
   CHAT_SCROLL_HEIGHT,
+  CHAT_WIDE_COLUMN_MAX_WIDTH,
+  CHAT_WIDE_SIDEBAR_GAP,
+  CHAT_WIDE_SIDEBAR_WIDTH,
   COMMAND_BAR_MAX_INPUT_HEIGHT,
   COMMAND_BAR_RESERVED_HEIGHT,
   COMMAND_BAR_TOP_OFFSET,
@@ -210,6 +218,9 @@ export default function App(): JSX.Element {
   const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight)
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
   const [mode, setMode] = useState<AppMode>('ai')
+  // Horizontal expansion (Alt+expand / Alt+1) turns the chat into the wide
+  // layout: history rail on the left, readable conversation column on the right.
+  const isWideChat = activeSurface === 'chat' && isWide && mode === 'ai'
   const [hasInitializedTerminal, setHasInitializedTerminal] = useState(false)
   const [terminalSessionId, setTerminalSessionId] = useState<string | null>(null)
   const [terminalApproval, setTerminalApproval] = useState<TerminalApprovalRequest | null>(null)
@@ -434,7 +445,9 @@ export default function App(): JSX.Element {
     }
   }
 
-  function clearInput(): void {
+  // Stable so callbacks handed to memoized children (history rail) keep their
+  // identity across keystrokes. Everything it touches is a ref or a setter.
+  const clearInput = useCallback((): void => {
     const div = inputRef.current
     if (div) {
       div.textContent = ''
@@ -445,7 +458,7 @@ export default function App(): JSX.Element {
     setInstructionMention(null)
     setInstructionMentionDismissed(false)
     setQuery('')
-  }
+  }, [setAttachedImages, setShowImagePanel])
 
   function setInputText(text: string): void {
     const div = inputRef.current
@@ -1300,6 +1313,12 @@ export default function App(): JSX.Element {
     }
   }, [isHistoryOpen])
 
+  // The wide layout replaces the popover with the history rail, so a popover
+  // left open while expanding would float over the conversation.
+  useEffect(() => {
+    if (isWideChat) setIsHistoryOpen(false)
+  }, [isWideChat])
+
   useEffect(() => {
     if (activePopup === 'settings') {
       void loadPreprompts()
@@ -1351,7 +1370,12 @@ export default function App(): JSX.Element {
   }, [loadInstalledApps])
 
   useEffect(() => {
-    if (!activeConversation) {
+    // The instruction chip mirrors the conversation the composer is attached
+    // to. When there is no conversation (new chat / deleted thread) or the chat
+    // surface is closed, it must be cleared: the previous thread's instruction
+    // must never survive into the next one.
+    if (!isChatOpen || !activeConversation) {
+      setSelectedSystemPrompt(null)
       return
     }
 
@@ -1367,7 +1391,7 @@ export default function App(): JSX.Element {
         ? createSelectedSystemPrompt(matchingPreprompt)
         : createCustomSystemPromptSelection(activeConversation.id, systemPrompt)
     )
-  }, [activeConversation, preprompts])
+  }, [isChatOpen, activeConversation, preprompts])
 
   const togglePopup = useCallback(
     (popup: ActivePopup) => {
@@ -1662,6 +1686,12 @@ export default function App(): JSX.Element {
       }
 
       if (event.type === 'tool-start') {
+        // Visual surfaces publish their own `ui-surface` event; they are not
+        // reasoning steps, so the model's tool call stays invisible.
+        if (event.toolType === 'ui') {
+          return
+        }
+
         if (event.toolType === 'web_search') {
           updateConversationMessage(conversationId, messageId, (message) => ({
             ...message,
@@ -1750,6 +1780,27 @@ export default function App(): JSX.Element {
         return
       }
 
+      if (event.type === 'ui-surface' && event.part) {
+        const part = event.part
+        // Warm the renderer chunk while the surface is still arriving so the
+        // visual paints on the same frame as the rest of the message.
+        void import('./ui/surface/SurfaceRenderer')
+        updateConversationMessage(conversationId, messageId, (message) => {
+          const parts = message.parts ?? []
+          const existing = parts.findIndex((entry) => entry.surface.id === part.surface.id)
+          if (existing >= 0) {
+            const next = parts.slice()
+            next[existing] = part
+            return { ...message, parts: next }
+          }
+          return {
+            ...message,
+            parts: [...parts, part].slice(-UI_LIMITS.maxSurfacesPerAnswer)
+          }
+        })
+        return
+      }
+
       if (event.type === 'error') {
         updateConversationMessage(conversationId, messageId, (message) => ({
           ...message,
@@ -1788,6 +1839,7 @@ export default function App(): JSX.Element {
                   reasoning: streamBufferRef.current?.reasoning ?? message.reasoning,
                   model: event.model ?? message.model,
                   stopped: event.stopped ?? message.stopped,
+                  parts: markSurfacesReady(message.parts),
                   steps: (message.steps ?? []).map((step) =>
                     step.type === 'web_search' && step.status === 'searching'
                       ? { ...step, status: 'done' as const }
@@ -1858,12 +1910,11 @@ export default function App(): JSX.Element {
     setSourcesPanelMessageId((previous) => (previous === messageId ? null : messageId))
   }, [])
 
-  const handleSubmit = useCallback(async () => {
-    const rawPrompt = getFullPrompt().trim()
+  const handleSubmit = useCallback(async (promptOverride?: string) => {
+    const rawPrompt = (typeof promptOverride === 'string' ? promptOverride : getFullPrompt()).trim()
     if (!rawPrompt || isLoading) return
 
     const now = Date.now()
-    const activeSystemPrompt = selectedSystemPrompt?.content.trim() || activeConversation?.systemPrompt?.trim() || ''
 
     const terminalLinkedSessionId = mode === 'terminal' ? terminalSessionId : null
     const isTerminalLinked = Boolean(terminalLinkedSessionId)
@@ -1873,6 +1924,18 @@ export default function App(): JSX.Element {
     const shouldStartNewConversation =
       forceNewConversationRef.current || (isTerminalLinked ? !activeMatchesLink : !isChatOpen)
     forceNewConversationRef.current = false
+
+    // A brand-new thread only inherits an instruction the user just mentioned in
+    // the composer (the chip is removed by clearInput/serialization otherwise),
+    // never the previous conversation's stored prompt.
+    const isNewConversation = shouldStartNewConversation || !activeConversation
+    const activeSystemPrompt = resolveSubmitSystemPrompt({
+      isNewConversation,
+      mentionsInstruction: Boolean(inputRef.current?.querySelector('[data-instruction-id]')),
+      composerPrompt: selectedSystemPrompt?.content,
+      conversationPrompt: activeConversation?.systemPrompt
+    })
+
     let nextConversation = shouldStartNewConversation ? null : activeConversation
     if (!nextConversation) {
       const createdAt = now
@@ -1946,15 +2009,31 @@ export default function App(): JSX.Element {
         ...(terminalContextPreamble
           ? [{ role: 'system' as const, content: terminalContextPreamble }]
           : []),
-        ...userConversation.messages.map((message) => ({
-          role: message.role,
-          content: message.images && message.images.length > 0
-            ? [
-                ...(message.content ? [{ type: 'input_text' as const, text: message.content }] : []),
-                ...message.images.map(img => ({ type: 'input_image' as const, image_url: img.base64 }))
-              ]
+        ...userConversation.messages.map((message) => {
+          // Echo a visual as compact text so follow-up questions ("what caused
+          // the March dip?") stay grounded after the chart has scrolled away.
+          const visualText =
+            message.role === 'assistant' && message.parts && message.parts.length > 0
+              ? message.parts.map((part) => describeUiSpec(part.surface.spec)).join('\n')
+              : ''
+          const text = visualText
+            ? [message.content, `[visual]\n${visualText}`].filter(Boolean).join('\n\n')
             : message.content
-        }))
+
+          return {
+            role: message.role,
+            content:
+              message.images && message.images.length > 0
+                ? [
+                    ...(text ? [{ type: 'input_text' as const, text }] : []),
+                    ...message.images.map((img) => ({
+                      type: 'input_image' as const,
+                      image_url: img.base64
+                    }))
+                  ]
+                : text
+          }
+        })
       ]
 
       const assistantMessageId = createId('msg_')
@@ -2035,7 +2114,6 @@ export default function App(): JSX.Element {
       }
     }
   }, [
-    query,
     isLoading,
     mode,
     activeConversation,
@@ -2045,8 +2123,16 @@ export default function App(): JSX.Element {
     upsertConversation,
     persistConversation,
     generateConversationTitleAsync,
-    attachedImages
+    attachedImages,
+    clearInput
   ])
+
+  const handleSurfaceAction = useCallback(
+    (prompt: string) => {
+      void handleSubmit(prompt)
+    },
+    [handleSubmit]
+  )
 
   const handleCodeSubmit = useCallback(() => {
     const text = getFullPrompt().trim()
@@ -2089,6 +2175,13 @@ export default function App(): JSX.Element {
     (selection: SelectedSystemPrompt | null) => {
       setSelectedSystemPrompt(selection)
 
+      // Picking an instruction from the bare command bar prepares the *next*
+      // conversation; it must not rewrite the thread that is merely remembered
+      // from the last time the chat was open.
+      if (!isChatOpen) {
+        return
+      }
+
       const currentConversation = activeConversationRef.current
       if (!currentConversation) {
         return
@@ -2104,7 +2197,7 @@ export default function App(): JSX.Element {
       upsertConversation(updatedConversation)
       persistConversation(updatedConversation)
     },
-    [persistConversation, upsertConversation]
+    [isChatOpen, persistConversation, upsertConversation]
   )
 
   const clearCurrentSystemPrompt = useCallback(() => {
@@ -2601,6 +2694,33 @@ export default function App(): JSX.Element {
   )
 
 
+  const handleSelectConversation = useCallback(
+    (conversation: ChatConversation) => {
+      setActiveConversation(conversation)
+      setIsChatOpen(true)
+      setIsHistoryOpen(false)
+      closeSearch()
+    },
+    [closeSearch]
+  )
+
+  const handleRequestDeleteConversation = useCallback((conversation: ChatConversation) => {
+    setDeletingConversation(conversation)
+    setIsHistoryOpen(false)
+  }, [])
+
+  const handleNewChat = useCallback(() => {
+    // A stream only writes into the conversation that is active when it ends, so
+    // switching mid-answer would silently drop it.
+    if (isLoading) return
+    setActiveConversation(null)
+    setSourcesPanelMessageId(null)
+    setIsHistoryOpen(false)
+    closeSearch()
+    clearInput()
+    window.setTimeout(() => inputRef.current?.focus(), 40)
+  }, [isLoading, closeSearch, clearInput])
+
   const handleDeleteConversation = useCallback(async () => {
     const target = deletingConversation
     if (!target) return
@@ -3071,15 +3191,17 @@ export default function App(): JSX.Element {
                         )}
                       </div>
                         <ContextStatsDonut stats={contextStats} chatModel={chatModel} provider={chatProvider} />
-                      <button
-                        ref={historyButtonRef}
-                        type="button"
-                        onClick={() => setIsHistoryOpen((open) => !open)}
-                        className="pressable flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-neutral-300 hover:border-white/20 hover:bg-white/10"
-                        aria-label="Open conversation history"
-                      >
-                        <MenuIcon />
-                      </button>
+                      {isWideChat ? null : (
+                        <button
+                          ref={historyButtonRef}
+                          type="button"
+                          onClick={() => setIsHistoryOpen((open) => !open)}
+                          className="pressable flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-neutral-300 hover:border-white/20 hover:bg-white/10"
+                          aria-label="Open conversation history"
+                        >
+                          <MenuIcon />
+                        </button>
+                      )}
                       <ExpandButton
                         expanded={isExpanded}
                         wide={isWide}
@@ -3088,35 +3210,21 @@ export default function App(): JSX.Element {
                       />
                     </div>
 
-                    <ConversationHistoryMenu
-                      open={isHistoryOpen}
-                      conversations={conversations}
-                      activeConversationId={activeConversation?.id ?? null}
-                      panelRef={historyMenuRef}
-                      onSelect={(conversation) => {
-                        setActiveConversation(conversation)
-                        setIsChatOpen(true)
-                        setIsHistoryOpen(false)
-                      }}
-                      onDelete={(conversation) => {
-                        setDeletingConversation(conversation)
-                        setIsHistoryOpen(false)
-                      }}
-                    />
+                    {isWideChat ? null : (
+                      <ConversationHistoryMenu
+                        open={isHistoryOpen}
+                        conversations={conversations}
+                        activeConversationId={activeConversation?.id ?? null}
+                        panelRef={historyMenuRef}
+                        onSelect={handleSelectConversation}
+                        onDelete={handleRequestDeleteConversation}
+                      />
+                    )}
                   </div>
 
                   <motion.div
-                    ref={chatScrollRef}
-                    onScroll={handleChatScroll}
-                    onCopy={(e) => {
-                      const selection = window.getSelection()
-                      if (!selection || selection.isCollapsed) return
-                      const text = selection.toString()
-                      if (!text) return
-                      e.preventDefault()
-                      e.clipboardData.setData('text/plain', text)
-                    }}
-                    className="mt-3 overflow-y-auto chat-scrollbar space-y-3 pr-2"
+                    className="mt-3 flex min-h-0 overflow-hidden"
+                    style={{ columnGap: CHAT_WIDE_SIDEBAR_GAP }}
                     initial={false}
                     animate={{
                       height: isExpanded
@@ -3125,18 +3233,52 @@ export default function App(): JSX.Element {
                     }}
                     transition={PANEL_TRANSITION}
                   >
-                    <Suspense fallback={null}>
-                      <ChatTranscript
-                        messages={chatMessages}
-                        isLoading={isLoading}
-                        activeStreamMessageId={activeStreamMessageId}
-                        thinkingOpenById={thinkingOpenById}
-                        onToggleThinking={handleToggleThinking}
-                        sourcesPanelMessageId={sourcesPanelMessageId}
-                        onToggleSources={handleToggleSources}
-                        emptyLabel="No messages yet."
-                      />
-                    </Suspense>
+                    {isWideChat ? (
+                      <div className="h-full shrink-0" style={{ width: CHAT_WIDE_SIDEBAR_WIDTH }}>
+                        <ChatHistorySidebar
+                          conversations={conversations}
+                          activeConversationId={activeConversation?.id ?? null}
+                          onSelect={handleSelectConversation}
+                          onDelete={handleRequestDeleteConversation}
+                          onNewChat={handleNewChat}
+                          newChatDisabled={isLoading}
+                        />
+                      </div>
+                    ) : null}
+
+                    <div
+                      ref={chatScrollRef}
+                      onScroll={handleChatScroll}
+                      onCopy={(e) => {
+                        const selection = window.getSelection()
+                        if (!selection || selection.isCollapsed) return
+                        const text = selection.toString()
+                        if (!text) return
+                        e.preventDefault()
+                        e.clipboardData.setData('text/plain', text)
+                      }}
+                      className="chat-scrollbar h-full min-w-0 flex-1 overflow-y-auto pr-2"
+                    >
+                      <div
+                        className="mx-auto w-full space-y-3"
+                        style={{ maxWidth: isWideChat ? CHAT_WIDE_COLUMN_MAX_WIDTH : undefined }}
+                      >
+                        <Suspense fallback={null}>
+                          <ChatTranscript
+                            messages={chatMessages}
+                            isLoading={isLoading}
+                            activeStreamMessageId={activeStreamMessageId}
+                            thinkingOpenById={thinkingOpenById}
+                            onToggleThinking={handleToggleThinking}
+                            sourcesPanelMessageId={sourcesPanelMessageId}
+                            onToggleSources={handleToggleSources}
+                            onSurfaceAction={handleSurfaceAction}
+                            emptyLabel="No messages yet."
+                            wide={isWideChat}
+                          />
+                        </Suspense>
+                      </div>
+                    </div>
                   </motion.div>
                   </>
                   ) : isCodeOpen ? (
@@ -3639,6 +3781,7 @@ export default function App(): JSX.Element {
                         onToggleThinking={handleToggleThinking}
                         sourcesPanelMessageId={sourcesPanelMessageId}
                         onToggleSources={handleToggleSources}
+                        onSurfaceAction={handleSurfaceAction}
                         emptyLabel="Ask about this terminal — errors, commands, or what to do next."
                         fullWidthBubbles
                       />

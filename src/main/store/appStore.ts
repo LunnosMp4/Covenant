@@ -246,6 +246,43 @@ export const appStore = new StoreClass<AppStoreSchema>({
                     completionTokens: { type: 'number' },
                     totalTokens: { type: 'number' }
                   }
+                },
+                parts: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                      id: { type: 'string' },
+                      kind: { type: 'string', enum: ['surface'] },
+                      surface: {
+                        type: 'object',
+                        additionalProperties: false,
+                        properties: {
+                          id: { type: 'string' },
+                          revision: { type: 'number' },
+                          status: { type: 'string', enum: ['draft', 'ready'] },
+                          createdAt: { type: 'number' },
+                          // The spec body is validated by `validateUiSpec` when a
+                          // surface is published and replayed, so only its envelope
+                          // is pinned here (node props stay free-form).
+                          spec: {
+                            type: 'object',
+                            additionalProperties: false,
+                            properties: {
+                              version: { type: 'string' },
+                              title: { type: 'string' },
+                              root: { type: 'string' },
+                              elements: { type: 'object' }
+                            },
+                            required: ['version', 'root', 'elements']
+                          }
+                        },
+                        required: ['id', 'revision', 'status', 'createdAt', 'spec']
+                      }
+                    },
+                    required: ['id', 'kind', 'surface']
+                  }
                 }
               },
               required: ['id', 'role', 'content', 'createdAt']

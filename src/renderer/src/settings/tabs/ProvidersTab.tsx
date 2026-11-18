@@ -7,8 +7,10 @@ import type {
 import {
   CHAT_PROVIDERS,
   OPENCODE_MODEL_OPTIONS,
-  REASONING_EFFORT_OPTIONS,
-  getModelOptionsForProvider
+  formatReasoningEffort,
+  getModelOptionsForProvider,
+  getReasoningEffortOptions,
+  resolveReasoningEffort
 } from '../../../../shared/config'
 import CustomSelect from '../../ui/CustomSelect'
 import SecretField from '../SecretField'
@@ -75,6 +77,15 @@ export default function ProvidersTab({
   const activeModelId = chatProvider === 'opencode' ? opencodeChatModel : chatModel
   const activeModel = models.find((model) => model.id === activeModelId)
   const supportsReasoning = activeModel?.supportsExtendedParams ?? false
+  const reasoningEffortOptions = getReasoningEffortOptions(activeModel)
+  const supportsEffort = supportsReasoning && reasoningEffortOptions.length > 0
+  const selectedReasoningEffort =
+    resolveReasoningEffort(reasoningEffort, reasoningEffortOptions) ?? reasoningEffort
+  const reasoningHint = !supportsReasoning
+    ? 'Not supported by this model.'
+    : reasoningEffortOptions.length === 0
+      ? 'This model uses a fixed reasoning setting.'
+      : 'Applies to the next request.'
 
   return (
     <div className="space-y-6">
@@ -230,20 +241,21 @@ export default function ProvidersTab({
       >
         <div className="space-y-5">
           <div>
-            <label className={`mb-2 block text-sm font-medium ${supportsReasoning ? 'text-neutral-300' : 'text-neutral-600'}`}>
+            <label className={`mb-2 block text-sm font-medium ${supportsEffort ? 'text-neutral-300' : 'text-neutral-600'}`}>
               Reasoning effort
             </label>
             <CustomSelect
-              options={REASONING_EFFORT_OPTIONS.map((effort) => ({
+              options={reasoningEffortOptions.map((effort) => ({
                 value: effort,
-                label: effort.charAt(0).toUpperCase() + effort.slice(1)
+                label: formatReasoningEffort(effort)
               }))}
-              value={reasoningEffort}
+              value={selectedReasoningEffort}
               onChange={(value) => onReasoningEffortChange(value as ReasoningEffort)}
-              disabled={!supportsReasoning}
+              disabled={!supportsEffort}
+              maxVisibleOptions={4}
             />
-            <p className={`mt-2 text-xs ${supportsReasoning ? 'text-neutral-500' : 'text-neutral-600'}`}>
-              {supportsReasoning ? 'Applies to the next request.' : 'Not supported by this model.'}
+            <p className={`mt-2 text-xs ${supportsEffort ? 'text-neutral-500' : 'text-neutral-600'}`}>
+              {reasoningHint}
             </p>
           </div>
 

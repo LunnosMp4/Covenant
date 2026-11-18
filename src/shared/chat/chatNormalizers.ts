@@ -8,6 +8,7 @@ import {
   type ReasoningStep,
   type Source
 } from './chat'
+import { normalizeUiParts } from '../ui/validate'
 
 export function normalizeChatUsage(payload: unknown): ChatUsage | undefined {
   if (!payload || typeof payload !== 'object') return undefined
@@ -96,7 +97,12 @@ export function normalizeChatMessage(payload: Partial<ChatMessage>): ChatMessage
   if (!CHAT_ROLE_SET.has(role as ChatRole)) return null
 
   const content = typeof payload.content === 'string' ? payload.content.trim() : ''
-  if (!content) return null
+  const parts = normalizeUiParts(payload.parts)
+  const hasParts = Boolean(parts && parts.length > 0)
+
+  // A visual-only answer is still an answer: keep the message when it carries
+  // a valid surface, even if the model wrote no closing text.
+  if (!content && !hasParts) return null
 
   const createdAt =
     typeof payload.createdAt === 'number' && Number.isFinite(payload.createdAt)
@@ -128,7 +134,8 @@ export function normalizeChatMessage(payload: Partial<ChatMessage>): ChatMessage
     usage,
     model,
     sources,
-    stopped
+    stopped,
+    parts
   }
 }
 
