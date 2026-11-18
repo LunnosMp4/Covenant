@@ -102,6 +102,7 @@ import {
   CHAT_WIDE_COLUMN_MAX_WIDTH,
   CHAT_WIDE_SIDEBAR_GAP,
   CHAT_WIDE_SIDEBAR_WIDTH,
+  COMMAND_BAR_CONTENT_HEIGHT,
   COMMAND_BAR_MAX_INPUT_HEIGHT,
   COMMAND_BAR_RESERVED_HEIGHT,
   COMMAND_BAR_TOP_OFFSET,
@@ -2860,7 +2861,7 @@ export default function App(): JSX.Element {
     [themeGradient]
   )
 
-  const isLightTheme = useMemo(() => getThemeMode(themeGradient) === 'light', [themeGradient])
+  const isLightTheme = getThemeMode(themeGradient) === 'light'
 
   // Apply to the document root so portaled modals (which render into
   // document.body) inherit the same accent, chat and neutral tokens.
@@ -3481,7 +3482,7 @@ export default function App(): JSX.Element {
                 <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-2xl">
                   <VoiceDotMatrix stream={micStream} isLight={isLightTheme} />
                 </div>
-                <div className="flex-1" style={{ minHeight: 52 }} />
+                <div className="flex-1" style={{ minHeight: COMMAND_BAR_CONTENT_HEIGHT }} />
               </>
             ) : (
                 <div

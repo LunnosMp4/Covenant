@@ -38,21 +38,28 @@ export const INTRO_DOT_MS = 320
 export const INTRO_TOTAL_MS = INTRO_SWEEP_MS + INTRO_DOT_MS
 
 const MIN_COLUMNS = 2
-const MIN_ROWS = 2
 
-export interface PanelLayout {
+// The two Gaussians are evaluated per dot, so fold the divisors into multipliers.
+const INV_SHARPNESS_SQ = 1 / (LINE_SHARPNESS * LINE_SHARPNESS)
+const INV_HALO_SQ = 1 / (HALO_SPREAD * HALO_SPREAD)
+
+/** Everything the render loop needs, with the layout-only maths precomputed. */
+export interface PanelFrame {
   width: number
   height: number
   cols: number
   rows: number
-  /** Horizontal distance between dot centres. */
-  pitch: number
-  /** Vertical distance between dot centres. */
-  cell: number
   radius: number
-  offsetX: number
-  offsetY: number
-  gridHeight: number
+  /** Normalised x (0..1) per column. */
+  xs: Float32Array
+  /** Pixel x of each dot centre, per column. */
+  centres: Float32Array
+  /** Edge fade per column. */
+  edges: Float32Array
+  /** Normalised y (-1..1) per row. */
+  rowYs: Float32Array
+  /** Pixel y of each dot centre, per row. */
+  rowPixels: Float32Array
 }
 
 export function clamp01(value: number): number {
@@ -95,18 +102,15 @@ export function waveCurve(x: number, t: number): number {
   )
 }
 
-/** Loudness → curve amplitude. Silence leaves a nearly flat thread. */
-export function waveAmplitude(level: number): number {
-  return SILENCE_AMPLITUDE + clamp01(level) * LEVEL_AMPLITUDE
-}
-
 /**
- * Vertical position of the curve at `x`, in normalised panel units (-1..1).
- * `sin(πx)` pins both ends to the centre, which produces the lens shape.
+ * Vertical position of the curve at `x` (0..1), in normalised panel units
+ * (-1..1). `sin(πx)` pins both ends to the centre, which produces the lens
+ * shape, and loudness stretches the whole curve.
  */
 export function waveY(x: number, t: number, level: number): number {
-  const clamped = clamp01(x)
-  return waveCurve(clamped, t) * waveAmplitude(level) * Math.sin(Math.PI * clamped) * WAVE_SCALE
+  const amplitude =
+    (SILENCE_AMPLITUDE + clamp01(level) * LEVEL_AMPLITUDE) * Math.sin(Math.PI * x) * WAVE_SCALE
+  return waveCurve(x, t) * amplitude
 }
 
 /** Fades the grid out before it reaches the bar's controls. */
@@ -119,47 +123,56 @@ export function panelEdge(x: number, width: number): number {
 }
 
 /** Final 0..1 luminance of one dot, given its row and the curve position. */
-export function dotLevel(
-  rowY: number,
-  curveY: number,
-  sharpness = LINE_SHARPNESS,
-  glow = LINE_GLOW
-): number {
-  const distance = Math.abs(rowY - curveY)
-  const core = Math.exp(-((distance / sharpness) ** 2))
-  const halo = Math.exp(-((distance / HALO_SPREAD) ** 2)) * glow
-  return Math.max(BASE_LEVEL, Math.min(1, core + halo))
+export function dotLevel(rowY: number, curveY: number): number {
+  const distance = rowY - curveY
+  const squared = distance * distance
+  const value =
+    Math.exp(-squared * INV_SHARPNESS_SQ) + Math.exp(-squared * INV_HALO_SQ) * LINE_GLOW
+  return value > 1 ? 1 : value < BASE_LEVEL ? BASE_LEVEL : value
 }
 
 /**
- * Fits the LED grid inside the available box. Cells stay square so the matrix
- * reads the same at any bar width; on a bar too short for the requested pitch
- * the cells shrink instead of stretching.
+ * Builds the layout plus the per-row / per-column values the loop reads each
+ * frame. Cells stay square so the matrix reads the same at any bar width; on a
+ * bar too short for the requested pitch the cells shrink instead of stretching.
  */
-export function panelLayout(
-  width: number,
-  height: number,
-  rows = PANEL_ROWS,
-  pitch = PANEL_PITCH
-): PanelLayout {
+export function panelFrame(width: number, height: number): PanelFrame {
   const safeWidth = Number.isFinite(width) ? Math.max(0, width) : 0
   const safeHeight = Number.isFinite(height) ? Math.max(0, height) : 0
-  const safeRows = Math.max(MIN_ROWS, Math.round(rows))
-  const safePitch = pitch > 0 ? pitch : PANEL_PITCH
-  const cols = Math.max(MIN_COLUMNS, Math.floor(safeWidth / safePitch))
-  const cell = Math.min(safePitch, safeHeight / safeRows)
-  const gridHeight = cell * safeRows
+  const cols = Math.max(MIN_COLUMNS, Math.floor(safeWidth / PANEL_PITCH))
+  const rows = Math.max(2, PANEL_ROWS)
+  const cell = Math.min(PANEL_PITCH, safeHeight / rows)
+  const offsetX = (safeWidth - cols * PANEL_PITCH) / 2
+  const offsetY = (safeHeight - cell * rows) / 2
+
+  const xs = new Float32Array(cols)
+  const centres = new Float32Array(cols)
+  const edges = new Float32Array(cols)
+  for (let column = 0; column < cols; column++) {
+    const x = cols > 1 ? column / (cols - 1) : 0
+    xs[column] = x
+    centres[column] = offsetX + column * PANEL_PITCH + PANEL_PITCH / 2
+    edges[column] = panelEdge(x, safeWidth)
+  }
+
+  const rowYs = new Float32Array(rows)
+  const rowPixels = new Float32Array(rows)
+  for (let row = 0; row < rows; row++) {
+    rowYs[row] = (row / (rows - 1)) * 2 - 1
+    rowPixels[row] = offsetY + row * cell + cell / 2
+  }
+
   return {
     width: safeWidth,
     height: safeHeight,
     cols,
-    rows: safeRows,
-    pitch: safePitch,
-    cell,
-    radius: Math.min(safePitch, cell) * 0.3,
-    offsetX: (safeWidth - cols * safePitch) / 2,
-    offsetY: (safeHeight - gridHeight) / 2,
-    gridHeight
+    rows,
+    radius: Math.min(PANEL_PITCH, cell) * 0.3,
+    xs,
+    centres,
+    edges,
+    rowYs,
+    rowPixels
   }
 }
 

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   BASE_LEVEL,
+  EDGE_FADE_PX,
+  EDGE_LEFT_PX,
+  EDGE_RIGHT_PX,
   INTRO_SWEEP_MS,
   INTRO_TOTAL_MS,
   approach,
@@ -8,9 +11,8 @@ import {
   dotLevel,
   introProgress,
   panelEdge,
-  panelLayout,
+  panelFrame,
   smoothstep,
-  waveAmplitude,
   waveCurve,
   waveY
 } from './dotMatrix'
@@ -38,23 +40,24 @@ describe('smoothstep', () => {
 })
 
 describe('panelEdge', () => {
+  const width = 748
+
   it('keeps the left control cluster dark', () => {
-    expect(panelEdge(0, 748)).toBe(0)
-    expect(panelEdge(20 / 748, 748)).toBe(0)
-    expect(panelEdge(40 / 748, 748)).toBe(0)
+    expect(panelEdge(0, width)).toBe(0)
+    expect(panelEdge((EDGE_LEFT_PX - 1) / width, width)).toBe(0)
   })
 
   it('keeps the right control cluster dark', () => {
-    expect(panelEdge(680 / 748, 748)).toBe(0)
-    expect(panelEdge(1, 748)).toBe(0)
+    expect(panelEdge(1, width)).toBe(0)
+    expect(panelEdge((width - EDGE_RIGHT_PX + 1) / width, width)).toBe(0)
   })
 
   it('is solid across the middle of the bar', () => {
-    expect(panelEdge(374 / 748, 748)).toBe(1)
+    expect(panelEdge(0.5, width)).toBe(1)
   })
 
   it('ramps up after the left margin', () => {
-    const ramp = panelEdge(78 / 748, 748)
+    const ramp = panelEdge((EDGE_LEFT_PX + EDGE_FADE_PX / 2) / width, width)
     expect(ramp).toBeGreaterThan(0)
     expect(ramp).toBeLessThan(1)
   })
@@ -71,13 +74,6 @@ describe('waveCurve', () => {
 
   it('moves over time', () => {
     expect(waveCurve(0.4, 1)).not.toBeCloseTo(waveCurve(0.4, 2), 3)
-  })
-})
-
-describe('waveAmplitude', () => {
-  it('is a flat thread at silence and full height when loud', () => {
-    expect(waveAmplitude(0)).toBeCloseTo(0.07)
-    expect(waveAmplitude(1)).toBeCloseTo(1.02)
   })
 })
 
@@ -119,30 +115,44 @@ describe('dotLevel', () => {
   })
 })
 
-describe('panelLayout', () => {
+describe('panelFrame', () => {
   it('keeps square cells and centres the grid vertically', () => {
-    const layout = panelLayout(748, 68)
-    expect(layout.cols).toBe(187)
-    expect(layout.rows).toBe(10)
-    expect(layout.cell).toBe(4)
-    expect(layout.gridHeight).toBe(40)
-    expect(layout.offsetY).toBe(14)
-    expect(layout.radius).toBeCloseTo(1.2)
+    const frame = panelFrame(748, 68)
+    expect(frame.cols).toBe(187)
+    expect(frame.rows).toBe(10)
+    expect(frame.radius).toBeCloseTo(1.2)
+    expect(frame.rowPixels[0]).toBeCloseTo(16)
+    expect(frame.rowPixels[1] - frame.rowPixels[0]).toBeCloseTo(4)
+  })
+
+  it('precomputes the per-row and per-column values', () => {
+    const frame = panelFrame(748, 68)
+    expect(frame.xs).toHaveLength(187)
+    expect(frame.edges).toHaveLength(187)
+    expect(frame.rowYs).toHaveLength(10)
+    expect(frame.rowPixels).toHaveLength(10)
+    expect(frame.xs[0]).toBe(0)
+    expect(frame.xs[186]).toBe(1)
+    expect(frame.edges[0]).toBe(0)
+    expect(frame.edges[93]).toBe(1)
+    expect(frame.rowYs[0]).toBe(-1)
+    expect(frame.rowYs[9]).toBe(1)
+    expect(frame.rowPixels[0]).toBeCloseTo(16)
+    expect(frame.rowPixels[9]).toBeCloseTo(52)
   })
 
   it('shrinks the cells when the bar is too short for the pitch', () => {
-    const layout = panelLayout(400, 30)
-    expect(layout.cell).toBe(3)
-    expect(layout.gridHeight).toBe(30)
-    expect(layout.offsetY).toBe(0)
+    const frame = panelFrame(400, 30)
+    expect(frame.rowPixels[0]).toBeCloseTo(1.5)
+    expect(frame.rowPixels[1] - frame.rowPixels[0]).toBeCloseTo(3)
   })
 
   it('never collapses on an unmeasured surface', () => {
-    const layout = panelLayout(0, 0)
-    expect(layout.cols).toBeGreaterThan(0)
-    expect(layout.rows).toBeGreaterThan(0)
-    expect(Number.isFinite(layout.radius)).toBe(true)
-    expect(Number.isFinite(layout.offsetX)).toBe(true)
+    const frame = panelFrame(0, 0)
+    expect(frame.cols).toBeGreaterThan(0)
+    expect(frame.rows).toBeGreaterThan(0)
+    expect(Number.isFinite(frame.radius)).toBe(true)
+    expect(Number.isFinite(frame.centres[0])).toBe(true)
   })
 })
 

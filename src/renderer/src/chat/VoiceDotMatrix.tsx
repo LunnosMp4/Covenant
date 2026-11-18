@@ -5,10 +5,9 @@ import {
   clamp01,
   dotLevel,
   introProgress,
-  panelEdge,
-  panelLayout,
+  panelFrame,
   waveY,
-  type PanelLayout
+  type PanelFrame
 } from './dotMatrix'
 
 interface VoiceDotMatrixProps {
@@ -19,14 +18,13 @@ interface VoiceDotMatrixProps {
   stream: MediaStream | null
   /** Light themes get a near-black inset so the LEDs stay legible. */
   isLight?: boolean
-  className?: string
 }
 
-interface RenderLayout extends PanelLayout {
+interface RenderFrame extends PanelFrame {
   dpr: number
 }
 
-/** Dots grouped by quantised alpha, so the frame costs ~32 fills instead of ~1900. */
+/** Dots grouped by quantised alpha, so a frame costs ~32 fills instead of ~1900. */
 interface DotBatch {
   x: Float32Array
   y: Float32Array
@@ -45,6 +43,8 @@ const INTRO_RISE = 10
 /** Starting size of a dot during the intro. */
 const INTRO_SCALE = 0.55
 
+const EMPTY_FRAME: RenderFrame = { ...panelFrame(0, 0), dpr: 1 }
+
 /** Fake speech envelope used until the microphone is ready. */
 function demoLevel(t: number): number {
   const phrase = Math.max(0, Math.sin(t * 0.7))
@@ -53,51 +53,40 @@ function demoLevel(t: number): number {
   return clamp01(phrase * (0.35 + 0.65 * syllable) * (0.6 + 0.4 * jitter))
 }
 
-/**
- * One frame: the curve is evaluated per column, every dot is assigned an alpha
- * by its distance to it, and the dots are drawn bucket by bucket.
- */
+/** One frame: evaluate the curve per column, then draw the dots bucket by bucket. */
 function drawFrame(
   ctx: CanvasRenderingContext2D,
-  layout: RenderLayout,
+  frame: RenderFrame,
   batch: DotBatch,
   level: number,
   time: number,
   elapsedMs: number
 ): void {
-  const { width, height, dpr, cols, rows, pitch, cell, radius, offsetX, offsetY } = layout
-  if (cols <= 0 || rows <= 0) return
+  const { width, height, dpr, cols, rows, radius, xs, centres, edges, rowYs, rowPixels } = frame
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.clearRect(0, 0, width, height)
-  ctx.fillStyle = '#ffffff'
-  ctx.globalCompositeOperation = 'source-over'
 
   const assembling = elapsedMs < INTRO_TOTAL_MS
   batch.count = 0
 
   for (let column = 0; column < cols; column++) {
-    const x = cols > 1 ? column / (cols - 1) : 0
-    const edge = panelEdge(x, width)
-    if (edge <= 0) continue
-
     const progress = assembling ? introProgress(elapsedMs, column, cols) : 1
-    if (progress <= 0) continue
+    const gain = edges[column] * progress
+    if (gain <= MIN_ALPHA) continue
 
-    const curve = waveY(x, time, level)
-    const centreX = offsetX + column * pitch + pitch / 2
+    const curve = waveY(xs[column], time, level)
+    const centreX = centres[column]
     // Dots rise from below and grow as they settle into the grid.
     const rise = (1 - progress) * INTRO_RISE
     const dotRadius = radius * (INTRO_SCALE + (1 - INTRO_SCALE) * progress)
-    const gain = edge * progress
 
     for (let row = 0; row < rows; row++) {
-      const rowY = rows > 1 ? (row / (rows - 1)) * 2 - 1 : 0
-      const alpha = dotLevel(rowY, curve) * gain
+      const alpha = dotLevel(rowYs[row], curve) * gain
       if (alpha < MIN_ALPHA) continue
       const index = batch.count++
       batch.x[index] = centreX
-      batch.y[index] = offsetY + row * cell + cell / 2 + rise
+      batch.y[index] = rowPixels[row] + rise
       batch.radius[index] = dotRadius
       batch.bucket[index] = Math.min(ALPHA_LEVELS - 1, (alpha * ALPHA_LEVELS) | 0)
     }
@@ -116,22 +105,17 @@ function drawFrame(
     }
     if (drawn) ctx.fill()
   }
-
-  ctx.globalAlpha = 1
 }
 
 export default function VoiceDotMatrix({
   stream,
-  isLight = false,
-  className = ''
+  isLight = false
 }: VoiceDotMatrixProps): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const layoutRef = useRef<RenderLayout>({ ...panelLayout(0, 0), dpr: 1 })
+  const frameRef = useRef<RenderFrame>(EMPTY_FRAME)
   const batchRef = useRef<DotBatch | null>(null)
-  const analyserRef = useRef<AnalyserNode | null>(null)
-  const timeDataRef = useRef<Float32Array<ArrayBuffer> | null>(null)
-  const repaintRef = useRef<() => void>(() => {})
-  const startRef = useRef(0)
+  const audioRef = useRef<{ analyser: AnalyserNode; data: Float32Array<ArrayBuffer> } | null>(null)
+  const staticRepaintRef = useRef<() => void>(() => {})
 
   useLayoutEffect(() => {
     const canvas = canvasRef.current
@@ -142,17 +126,19 @@ export default function VoiceDotMatrix({
       const dpr = Math.min(2, window.devicePixelRatio || 1)
       const width = Math.max(1, host.clientWidth)
       const height = Math.max(1, host.clientHeight)
-      const layout = panelLayout(width, height)
-      const previous = layoutRef.current
-      layoutRef.current = { ...layout, dpr }
+      const previous = frameRef.current
+      if (width === previous.width && height === previous.height && dpr === previous.dpr) return
+
+      const frame = panelFrame(width, height)
+      frameRef.current = { ...frame, dpr }
 
       const deviceWidth = Math.max(1, Math.round(width * dpr))
       const deviceHeight = Math.max(1, Math.round(height * dpr))
       if (canvas.width !== deviceWidth) canvas.width = deviceWidth
       if (canvas.height !== deviceHeight) canvas.height = deviceHeight
 
-      if (layout.cols !== previous.cols || layout.rows !== previous.rows) {
-        const total = layout.cols * layout.rows
+      if (frame.cols !== previous.cols || frame.rows !== previous.rows) {
+        const total = frame.cols * frame.rows
         batchRef.current = {
           x: new Float32Array(total),
           y: new Float32Array(total),
@@ -162,7 +148,7 @@ export default function VoiceDotMatrix({
         }
       }
 
-      repaintRef.current()
+      staticRepaintRef.current()
     }
 
     const observer = new ResizeObserver(measure)
@@ -178,8 +164,7 @@ export default function VoiceDotMatrix({
 
   // Audio graph only. Swapping the stream must not restart the animation loop.
   useEffect(() => {
-    analyserRef.current = null
-    timeDataRef.current = null
+    audioRef.current = null
     if (!stream) return
 
     let audioCtx: AudioContext | null = null
@@ -193,21 +178,18 @@ export default function VoiceDotMatrix({
       analyser.fftSize = 1024
       analyser.smoothingTimeConstant = 0
       source.connect(analyser)
-      analyserRef.current = analyser
-      timeDataRef.current = new Float32Array(analyser.fftSize)
+      audioRef.current = { analyser, data: new Float32Array(analyser.fftSize) }
       void audioCtx.resume()
     } catch {
       source?.disconnect()
       analyser?.disconnect()
       if (audioCtx) void audioCtx.close().catch(() => {})
-      analyserRef.current = null
-      timeDataRef.current = null
+      audioRef.current = null
       return
     }
 
     return () => {
-      analyserRef.current = null
-      timeDataRef.current = null
+      audioRef.current = null
       source?.disconnect()
       analyser?.disconnect()
       if (audioCtx) void audioCtx.close().catch(() => {})
@@ -219,12 +201,13 @@ export default function VoiceDotMatrix({
     const ctx = canvas?.getContext('2d')
     if (!canvas || !ctx) return
 
-    startRef.current = performance.now()
+    ctx.fillStyle = '#ffffff'
+    const start = performance.now()
 
     const paint = (now: number, level: number): void => {
       const batch = batchRef.current
       if (!batch) return
-      drawFrame(ctx, layoutRef.current, batch, level, now / 1000, now - startRef.current)
+      drawFrame(ctx, frameRef.current, batch, level, now / 1000, now - start)
     }
 
     const reducedMotion =
@@ -232,32 +215,28 @@ export default function VoiceDotMatrix({
       window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
     if (reducedMotion) {
-      const drawStatic = (): void => {
-        paint(startRef.current + INTRO_TOTAL_MS, 0.25)
-      }
-      repaintRef.current = drawStatic
+      const drawStatic = (): void => paint(start + INTRO_TOTAL_MS, 0.25)
+      staticRepaintRef.current = drawStatic
       drawStatic()
       return () => {
-        repaintRef.current = () => {}
+        staticRepaintRef.current = () => {}
       }
     }
 
     let level = 0
-    let last = performance.now()
+    let last = start
     let raf = 0
 
     const readTarget = (now: number): number => {
-      const analyser = analyserRef.current
-      const timeData = timeDataRef.current
-      if (analyser && timeData) {
-        analyser.getFloatTimeDomainData(timeData)
-        let sum = 0
-        for (let index = 0; index < timeData.length; index++) {
-          sum += timeData[index] * timeData[index]
-        }
-        return clamp01(Math.sqrt(sum / timeData.length) * LEVEL_GAIN)
+      const audio = audioRef.current
+      if (!audio) return demoLevel(now / 1000)
+      const { analyser, data } = audio
+      analyser.getFloatTimeDomainData(data)
+      let sum = 0
+      for (let index = 0; index < data.length; index++) {
+        sum += data[index] * data[index]
       }
-      return demoLevel(now / 1000)
+      return clamp01(Math.sqrt(sum / data.length) * LEVEL_GAIN)
     }
 
     const frame = (now: number): void => {
@@ -268,7 +247,6 @@ export default function VoiceDotMatrix({
       raf = requestAnimationFrame(frame)
     }
 
-    repaintRef.current = () => paint(performance.now(), level)
     raf = requestAnimationFrame(frame)
 
     const onVisibilityChange = (): void => {
@@ -283,12 +261,11 @@ export default function VoiceDotMatrix({
     return () => {
       cancelAnimationFrame(raf)
       document.removeEventListener('visibilitychange', onVisibilityChange)
-      repaintRef.current = () => {}
     }
   }, [])
 
   return (
-    <div className={`relative h-full w-full ${className}`}>
+    <div className="relative h-full w-full">
       <div
         aria-hidden
         className="absolute inset-0"

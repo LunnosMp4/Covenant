@@ -25,6 +25,8 @@ export const CHAT_WIDE_COLUMN_MAX_WIDTH = 800
 export const MAX_COMMAND_BAR_LINES = 4
 export const COMMAND_BAR_LINE_HEIGHT = 28
 export const COMMAND_BAR_INPUT_PADDING = 24
+/** One input line plus its vertical padding: the height the voice panel must hold. */
+export const COMMAND_BAR_CONTENT_HEIGHT = COMMAND_BAR_LINE_HEIGHT + COMMAND_BAR_INPUT_PADDING
 export const COMMAND_BAR_COLLAPSED_HEIGHT = 70
 export const COMMAND_BAR_GAP = 8
 export const COMMAND_BAR_MAX_INPUT_HEIGHT =
