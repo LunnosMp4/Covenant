@@ -109,7 +109,7 @@ export class OpenCodeRuntime extends EventEmitter implements CodeRuntime {
       if (this.logs.length > MAX_LOG_LINES) {
         this.logs.splice(0, this.logs.length - MAX_LOG_LINES)
       }
-      log.info(`[opencode] ${text}`)
+      log.debug(`[opencode] ${text}`)
     }
     child.stdout.on('data', record)
     child.stderr.on('data', record)
@@ -172,7 +172,14 @@ export class OpenCodeRuntime extends EventEmitter implements CodeRuntime {
     if (!child || child.exitCode !== null) return
 
     await new Promise<void>((resolve) => {
-      const done = (): void => resolve()
+      let killTimer: NodeJS.Timeout | null = null
+      const done = (): void => {
+        if (killTimer) {
+          clearTimeout(killTimer)
+          killTimer = null
+        }
+        resolve()
+      }
       child.once('exit', done)
       try {
         if (process.platform === 'win32' && child.pid) {
@@ -183,7 +190,7 @@ export class OpenCodeRuntime extends EventEmitter implements CodeRuntime {
       } catch {
         resolve()
       }
-      setTimeout(() => {
+      killTimer = setTimeout(() => {
         try {
           child.kill('SIGKILL')
         } catch {
@@ -191,6 +198,7 @@ export class OpenCodeRuntime extends EventEmitter implements CodeRuntime {
         }
         resolve()
       }, 5000)
+      killTimer.unref?.()
     })
   }
 }

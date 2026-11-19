@@ -9,10 +9,13 @@ import { getNote } from '../features/notes'
 import { resolveChatProvider } from '../ai/provider'
 import { buildResponseParams, buildResponsesInput } from '../openai/messages'
 import { runStreamingChat } from '../openai/streaming'
+import { createDeltaSender } from '../streaming/deltaSender'
 import { recordAiUsage } from '../ai/usageLedger'
 import { log } from '../logger'
 
 const activeStreams = new Map<string, AbortController>()
+/** Matches the chat stream cadence; see `createDeltaSender`. */
+const NOTE_AI_DELTA_FLUSH_MS = 50
 
 function normalizeRequest(raw: unknown): NoteAiRequest | null {
   if (!raw || typeof raw !== 'object') return null
@@ -95,10 +98,15 @@ export async function runNoteAi(
     { role: 'user', content: buildNoteAiInput(request, note) }
   ])
 
-  const sendStreamEvent = (payload: { id: string } & Record<string, unknown>): void => {
-    if (sender.isDestroyed()) return
-    sender.send('notes:ai-event', payload)
-  }
+  const deltaSender = createDeltaSender({
+    id: streamId,
+    flushMs: NOTE_AI_DELTA_FLUSH_MS,
+    forward: (payload) => {
+      if (sender.isDestroyed()) return
+      sender.send('notes:ai-event', payload)
+    }
+  })
+  const sendStreamEvent = deltaSender.send
 
   void runStreamingChat(
     {
@@ -122,6 +130,7 @@ export async function runNoteAi(
     log.error('Note AI stream failed', error)
     sendStreamEvent({ id: streamId, type: 'error', error: message })
   }).finally(() => {
+    deltaSender.flush()
     activeStreams.delete(streamId)
   })
 

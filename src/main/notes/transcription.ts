@@ -2,12 +2,10 @@ import type { NotesSettings } from '../../shared/config'
 import { readConfig } from '../config/configStore'
 import { getOpenAIKey } from '../ai/provider'
 import { createOpenAIClient } from '../openai/client'
+import { delay } from '../utils/async'
 
 const MAX_TRANSCRIPTION_BYTES = 24 * 1024 * 1024
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
 
 /**
  * Transcribes a short audio segment with OpenAI. Segments are capped at a few

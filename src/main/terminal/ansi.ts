@@ -41,7 +41,6 @@ function decodeCwd(raw: string): string {
 
 // Sentinel emitted by agent-issued commands (see shellIntegration.ts). Carries
 // the command token, its exit code, and the resulting cwd.
-export const TERMINAL_SENTINEL_OSC = '\u001B]1337;Covenant;'
 const SENTINEL_PATTERN =
   /\u001B\]1337;Covenant;([^;\u0007\u001B]+);(-?\d+);([^\u0007\u001B]*)(?:\u0007|\u001B\\)/
 

@@ -142,7 +142,9 @@ export default function ChartWidget({ data }: ChartWidgetProps): JSX.Element {
     instanceRef.current?.setOption(option)
   }, [option])
 
-  const table = chartTable(data)
+  // The disclosure builds a full column/row/cell model for the table. It used
+  // to run on every chart render (theme changes, layout), even while closed.
+  const table = useMemo(() => chartTable(data), [data])
 
   return (
     <div className={`surface-chart-block${ready ? ' surface-chart-block--ready' : ''}`}>

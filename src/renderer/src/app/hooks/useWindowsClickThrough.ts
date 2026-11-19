@@ -15,6 +15,24 @@ const MAX_REGIONS = 128
  * what keeps the 10 Hz refresh cheap, since every tick still has to read layout
  * to follow entry/exit animations.
  */
+function isNodeVisible(node: HTMLElement): boolean {
+  // `checkVisibility` resolves display/visibility/content-visibility without
+  // allocating a CSSStyleDeclaration per node; the fallback keeps older
+  // Chromium builds working. Only the node's own opacity matters here (as
+  // before): `opacityProperty` deliberately does not walk ancestors.
+  if (typeof node.checkVisibility === 'function') {
+    return node.checkVisibility({
+      opacityProperty: true,
+      visibilityProperty: true,
+      contentVisibilityAuto: true
+    })
+  }
+
+  const style = window.getComputedStyle(node)
+  if (style.display === 'none' || style.visibility === 'hidden') return false
+  return Number.parseFloat(style.opacity || '1') > 0
+}
+
 function collectInteractiveRegions(nodes: HTMLElement[]): InteractiveRect[] {
   if (typeof document === 'undefined') return []
 
@@ -26,10 +44,7 @@ function collectInteractiveRegions(nodes: HTMLElement[]): InteractiveRect[] {
   for (const node of nodes) {
     const rect = node.getBoundingClientRect()
     if (rect.width <= 0 || rect.height <= 0) continue
-
-    const style = window.getComputedStyle(node)
-    if (style.display === 'none' || style.visibility === 'hidden') continue
-    if (Number.parseFloat(style.opacity || '1') <= 0) continue
+    if (!isNodeVisible(node)) continue
 
     const left = Math.max(0, Math.min(rect.left, viewportWidth))
     const top = Math.max(0, Math.min(rect.top, viewportHeight))

@@ -15,11 +15,6 @@ export function parentRemote(path: string): string {
   return trimmed.slice(0, index)
 }
 
-export function baseNameRemote(path: string): string {
-  const trimmed = path.replace(/\/+$/, '')
-  const index = trimmed.lastIndexOf('/')
-  return index >= 0 ? trimmed.slice(index + 1) : trimmed
-}
 
 export function listRemoteDir(sftp: SFTPWrapper, dir: string): Promise<RemoteDirEntry[]> {
   return new Promise((resolve, reject) => {
@@ -64,17 +59,6 @@ export function statRemotePath(sftp: SFTPWrapper, path: string): Promise<RemoteE
   })
 }
 
-export function readRemoteText(sftp: SFTPWrapper, path: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    sftp.readFile(path, (error, data) => {
-      if (error) {
-        reject(error)
-        return
-      }
-      resolve(Buffer.isBuffer(data) ? data.toString('utf-8') : String(data))
-    })
-  })
-}
 
 export function writeRemoteText(sftp: SFTPWrapper, path: string, text: string): Promise<void> {
   return new Promise((resolve, reject) => {

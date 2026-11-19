@@ -82,23 +82,6 @@ export function PlusIcon({ className }: IconProps): JSX.Element {
   )
 }
 
-export function MinimizeIcon({ className }: IconProps): JSX.Element {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      className={className}
-      aria-hidden
-    >
-      <path d="M5 12h14" />
-    </svg>
-  )
-}
-
 export function ServerIcon({ className }: IconProps): JSX.Element {
   return (
     <svg

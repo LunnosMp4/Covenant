@@ -97,8 +97,9 @@ function emitChanged(metas: NoteMeta[]): void {
 }
 
 async function writeNoteFile(note: Note): Promise<void> {
+  // `ensureBaseDirs` already creates the note directory (it makes the audio
+  // subdirectory recursively), so autosave needs a single mkdir per write.
   await ensureBaseDirs(note.id)
-  await fs.mkdir(dirname(getNoteFilePath(note.id)), { recursive: true })
   // Compact JSON: autosave rewrites this file every ~650ms, and notes can be
   // multi-megabyte, so avoid doubling the write size with pretty-printing.
   await fs.writeFile(getNoteFilePath(note.id), JSON.stringify(note), 'utf-8')

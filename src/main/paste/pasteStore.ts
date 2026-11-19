@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 import { promises as fs } from 'fs'
 import { existsSync } from 'fs'
 import { join } from 'path'
+import { mapWithConcurrency } from '../utils/async'
 import {
   PASTE_INLINE_TEXT_LIMIT,
   normalizePasteItemType,
@@ -300,7 +301,10 @@ export class PasteStore {
     }
     this.entries = keep
     this.reindex()
-    await Promise.all(removed.map((entry) => this.removeFiles(entry)))
+    // Deleting a large history used to start one fs operation per item at once,
+    // which exhausted file descriptors. 16 in flight drains it just as fast
+    // without flooding libuv.
+    await mapWithConcurrency(removed, 16, (entry) => this.removeFiles(entry))
     this.scheduleFlush()
     return removed.length
   }
@@ -332,7 +336,10 @@ export class PasteStore {
     const removed = this.entries.filter((entry) => removeIds.has(entry.id))
     this.entries = this.entries.filter((entry) => !removeIds.has(entry.id))
     this.reindex()
-    await Promise.all(removed.map((entry) => this.removeFiles(entry)))
+    // Deleting a large history used to start one fs operation per item at once,
+    // which exhausted file descriptors. 16 in flight drains it just as fast
+    // without flooding libuv.
+    await mapWithConcurrency(removed, 16, (entry) => this.removeFiles(entry))
     this.scheduleFlush()
     return removed.length
   }

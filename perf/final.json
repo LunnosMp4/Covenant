@@ -1,0 +1,99 @@
+{
+  "capturedAt": "2026-11-19T10:28:38.707Z",
+  "renderer": {
+    "bytes": 4905295,
+    "files": 79,
+    "js": {
+      "bytes": 3899919,
+      "gzip": 1223940
+    },
+    "assets": 54
+  },
+  "main": {
+    "bytes": 608392,
+    "files": 3
+  },
+  "preload": {
+    "bytes": 16815,
+    "files": 1
+  },
+  "totalOut": {
+    "bytes": 5530502,
+    "files": 83
+  },
+  "critical": {
+    "files": 9,
+    "bytes": 554657,
+    "gzip": 161310,
+    "entry": "index-DHsvvCey.js",
+    "entryBytes": 146548,
+    "appChunk": "App-BmI5XUp1.js",
+    "appBytes": 140335
+  },
+  "css": {
+    "bytes": 84777,
+    "gzip": 15704
+  },
+  "fonts": {
+    "count": 19,
+    "ttf": 0,
+    "woff": 0,
+    "woff2": 256168,
+    "otf": 0,
+    "total": 256168
+  },
+  "mermaid": {
+    "chunks": 2,
+    "bytes": 78393
+  },
+  "largestChunks": [
+    {
+      "name": "index-B5AMCqDi.js",
+      "bytes": 1129469
+    },
+    {
+      "name": "chartEngine-CLB5DDfm.js",
+      "bytes": 595922
+    },
+    {
+      "name": "NotesSurface-67aAkZ9J.js",
+      "bytes": 553845
+    },
+    {
+      "name": "AssistantMarkdown-_IaBKpUO.js",
+      "bytes": 440130
+    },
+    {
+      "name": "TerminalView-CsYwwrml.js",
+      "bytes": 293573
+    },
+    {
+      "name": "index-DHsvvCey.js",
+      "bytes": 146548
+    },
+    {
+      "name": "App-BmI5XUp1.js",
+      "bytes": 140335
+    },
+    {
+      "name": "config-BeIB51K3.js",
+      "bytes": 130300
+    },
+    {
+      "name": "CodePanel-4nS7jm55.js",
+      "bytes": 66149
+    },
+    {
+      "name": "image-blob-reduce.esm-BLtmMM_J.js",
+      "bytes": 45802
+    },
+    {
+      "name": "Settings-CtIRTfGM.js",
+      "bytes": 36068
+    },
+    {
+      "name": "prism-python-2VCFUQDw.js",
+      "bytes": 35907
+    }
+  ]
+}

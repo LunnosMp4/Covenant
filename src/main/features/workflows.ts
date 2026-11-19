@@ -147,8 +147,46 @@ export function emitWorkflowStatus(
   sender: WebContents,
   payload: { id: string; status: 'running' | 'success' | 'error' }
 ): void {
+  // Logs buffered in the coalescing window must reach the renderer before the
+  // status that closes the run, otherwise the UI could drop trailing output.
+  flushWorkflowLogs(sender)
   if (sender.isDestroyed()) return
   sender.send('workflow-status-update', payload)
+}
+
+/**
+ * Workflow stdout/stderr arrives in many small chunks. Each chunk used to be
+ * its own IPC message; adjacent chunks of the same stream are now merged and
+ * flushed every 50 ms, which keeps the live log identical (the renderer still
+ * splits lines) while removing dozens of structured clones per second.
+ */
+const WORKFLOW_LOG_FLUSH_MS = 50
+
+interface WorkflowLogEntry {
+  id: string
+  type: 'info' | 'error'
+  text: string
+}
+
+interface WorkflowLogBuffer {
+  queue: WorkflowLogEntry[]
+  timer: NodeJS.Timeout | null
+}
+
+const workflowLogBuffers = new WeakMap<WebContents, WorkflowLogBuffer>()
+
+function flushWorkflowLogs(sender: WebContents): void {
+  const buffer = workflowLogBuffers.get(sender)
+  if (!buffer) return
+  if (buffer.timer) {
+    clearTimeout(buffer.timer)
+    buffer.timer = null
+  }
+  if (buffer.queue.length === 0) return
+  const queue = buffer.queue
+  buffer.queue = []
+  if (sender.isDestroyed()) return
+  for (const entry of queue) sender.send('workflow-log', entry)
 }
 
 export function emitWorkflowLog(
@@ -156,7 +194,26 @@ export function emitWorkflowLog(
   payload: { id: string; type: 'info' | 'error'; text: string }
 ): void {
   if (sender.isDestroyed()) return
-  sender.send('workflow-log', payload)
+  let buffer = workflowLogBuffers.get(sender)
+  if (!buffer) {
+    buffer = { queue: [], timer: null }
+    workflowLogBuffers.set(sender, buffer)
+  }
+
+  const last = buffer.queue[buffer.queue.length - 1]
+  if (last && last.id === payload.id && last.type === payload.type) {
+    last.text += payload.text
+  } else {
+    buffer.queue.push({ ...payload })
+  }
+
+  if (!buffer.timer) {
+    buffer.timer = setTimeout(() => {
+      if (buffer!.timer) buffer!.timer = null
+      flushWorkflowLogs(sender)
+    }, WORKFLOW_LOG_FLUSH_MS)
+    buffer.timer.unref?.()
+  }
 }
 
 export async function executeWorkflowScript(

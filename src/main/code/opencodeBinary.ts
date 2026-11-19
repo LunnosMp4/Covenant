@@ -75,27 +75,43 @@ export function candidateBinaries(): Array<{ path: string; source: string }> {
   return candidates
 }
 
+let cachedResolved: { value: ResolvedBinary | undefined } | null = null
+
 export function resolveOpenCodeBinary(): ResolvedBinary | undefined {
+  if (cachedResolved) return cachedResolved.value
   for (const candidate of candidateBinaries()) {
     try {
       if (existsSync(candidate.path)) {
+        cachedResolved = { value: candidate }
         return candidate
       }
     } catch {
       // ignore
     }
   }
+  cachedResolved = { value: undefined }
   return undefined
 }
 
+/** Test/dev seam: forget the memoised binary lookup. */
+export function resetOpenCodeBinaryCache(): void {
+  cachedResolved = null
+  versionCache.clear()
+}
+
+const versionCache = new Map<string, string | undefined>()
+
 export function readBinaryVersion(binaryPath: string): string | undefined {
+  if (versionCache.has(binaryPath)) return versionCache.get(binaryPath)
   try {
     const output = execFileSync(binaryPath, ['--version'], {
       timeout: 8000,
       windowsHide: true,
       encoding: 'utf-8'
     })
-    return output.trim() || undefined
+    const version = output.trim() || undefined
+    versionCache.set(binaryPath, version)
+    return version
   } catch (error) {
     log.warn('Failed to read OpenCode binary version', error)
     return undefined

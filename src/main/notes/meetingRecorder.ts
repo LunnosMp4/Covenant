@@ -313,7 +313,3 @@ export async function retranscribeMeeting(noteId: string): Promise<Note | null> 
 
   return finishMeeting(id, note.meeting.durationMs)
 }
-
-export function isMeetingSessionActive(noteId: string): boolean {
-  return sessions.has(noteId)
-}

@@ -49,9 +49,6 @@ export function setTrayIconPaths(paths: Partial<Record<TrayIconVariant, string>>
   cache.clear()
 }
 
-export function getTrayIconPaths(): Partial<Record<TrayIconVariant, string>> {
-  return { ...baseIconPaths }
-}
 
 /** macOS follows the menu bar appearance; other platforms keep the light art. */
 export function currentTrayIconVariant(): TrayIconVariant {

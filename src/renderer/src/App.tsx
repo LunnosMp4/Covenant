@@ -135,29 +135,49 @@ const NotesSurface = lazy(() => import('./notes/NotesSurface'))
 
 let surfacePrefetchState: 'idle' | 'queued' | 'done' = 'idle'
 
-function prefetchSurfaces(): void {
-  void import('./terminal/TerminalView')
-  void import('./chat/ChatTranscript')
-  void import('./code/CodePanel')
-  void import('./paste/PasteSurface')
-  void import('./notes/NotesSurface')
+/**
+ * Heaviest surfaces are warmed in separate idle slices rather than all at once.
+ * Fetching them together meant ~1.4 MB of JavaScript was downloaded, parsed and
+ * evaluated in a single task right after the entry animation, which showed up
+ * as a visible hitch on slower machines. Splitting per surface keeps every
+ * subsequent open instant while never blocking more than one chunk at a time.
+ * Chat goes first because it is by far the most likely first destination.
+ */
+const SURFACE_PREFETCHERS: Array<() => Promise<unknown>> = [
+  () => import('./chat/ChatTranscript'),
+  () => import('./terminal/TerminalView'),
+  () => import('./paste/PasteSurface'),
+  () => import('./code/CodePanel'),
+  () => import('./notes/NotesSurface')
+]
+
+/** Each prefetch runs at idle priority so it never competes with user input. */
+function scheduleIdle(task: () => void): void {
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(() => task(), { timeout: 2000 })
+    return
+  }
+  window.setTimeout(task, 200)
 }
 
 function scheduleSurfacePrefetch(): void {
   if (surfacePrefetchState !== 'idle') return
   surfacePrefetchState = 'queued'
 
-  const run = (): void => {
-    surfacePrefetchState = 'done'
-    prefetchSurfaces()
+  let index = 0
+  const step = (): void => {
+    const load = SURFACE_PREFETCHERS[index]
+    index += 1
+    if (!load) {
+      surfacePrefetchState = 'done'
+      return
+    }
+    void load()
+      .catch(() => undefined)
+      .then(() => scheduleIdle(step))
   }
 
-  // Idle callback so the split chunks never compete with the entry animation.
-  if (typeof window.requestIdleCallback === 'function') {
-    window.requestIdleCallback(run, { timeout: 2000 })
-    return
-  }
-  window.setTimeout(run, 200)
+  scheduleIdle(step)
 }
 
 /**
@@ -1370,29 +1390,35 @@ export default function App(): JSX.Element {
     return () => unsubscribe?.()
   }, [loadInstalledApps])
 
+  // Depend on the prompt string and conversation id rather than the whole
+  // conversation object: streaming replaces that object for every delta, and
+  // re-deriving (and re-setting) an identical selection forced an extra React
+  // render per token.
+  const activeConversationId = activeConversation?.id
+  const activeSystemPrompt = activeConversation?.systemPrompt?.trim() ?? ''
+
   useEffect(() => {
     // The instruction chip mirrors the conversation the composer is attached
     // to. When there is no conversation (new chat / deleted thread) or the chat
     // surface is closed, it must be cleared: the previous thread's instruction
     // must never survive into the next one.
-    if (!isChatOpen || !activeConversation) {
+    if (!isChatOpen || !activeConversationId) {
       setSelectedSystemPrompt(null)
       return
     }
 
-    const systemPrompt = activeConversation.systemPrompt?.trim() ?? ''
-    if (!systemPrompt) {
+    if (!activeSystemPrompt) {
       setSelectedSystemPrompt(null)
       return
     }
 
-    const matchingPreprompt = preprompts.find((item) => item.content.trim() === systemPrompt)
+    const matchingPreprompt = preprompts.find((item) => item.content.trim() === activeSystemPrompt)
     setSelectedSystemPrompt(
       matchingPreprompt
         ? createSelectedSystemPrompt(matchingPreprompt)
-        : createCustomSystemPromptSelection(activeConversation.id, systemPrompt)
+        : createCustomSystemPromptSelection(activeConversationId, activeSystemPrompt)
     )
-  }, [isChatOpen, activeConversation, preprompts])
+  }, [isChatOpen, activeConversationId, activeSystemPrompt, preprompts])
 
   const togglePopup = useCallback(
     (popup: ActivePopup) => {
@@ -2128,12 +2154,18 @@ export default function App(): JSX.Element {
     clearInput
   ])
 
-  const handleSurfaceAction = useCallback(
-    (prompt: string) => {
-      void handleSubmit(prompt)
-    },
-    [handleSubmit]
-  )
+  // Surfaces live inside memoised transcript rows. Routing the action through a
+  // ref keeps `onSurfaceAction` reference-stable across streaming deltas, so
+  // history rows (and their markdown) are not re-rendered for every token just
+  // because `handleSubmit` closes over the live conversation.
+  const handleSubmitRef = useRef(handleSubmit)
+  useEffect(() => {
+    handleSubmitRef.current = handleSubmit
+  }, [handleSubmit])
+
+  const handleSurfaceAction = useCallback((prompt: string) => {
+    void handleSubmitRef.current(prompt)
+  }, [])
 
   const handleCodeSubmit = useCallback(() => {
     const text = getFullPrompt().trim()

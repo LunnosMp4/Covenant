@@ -75,10 +75,6 @@ export function getSshCredential(connectionId: string | undefined): SshCredentia
   return readAll()[connectionId]
 }
 
-export function hasSshCredential(connectionId: string | undefined): boolean {
-  const credential = getSshCredential(connectionId)
-  return Boolean(credential && (credential.password || credential.passphrase))
-}
 
 export function clearSshCredential(connectionId: string): void {
   const map = readAll()

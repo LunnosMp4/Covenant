@@ -2,6 +2,15 @@ import { ipcMain, shell } from 'electron'
 import { launchSavedApp } from '../features/appLauncher'
 
 const faviconCache = new Map<string, string>()
+const MAX_FAVICON_CACHE_ENTRIES = 200
+
+function rememberFavicon(url: string, dataUrl: string): void {
+  faviconCache.set(url, dataUrl)
+  if (faviconCache.size > MAX_FAVICON_CACHE_ENTRIES) {
+    const oldestKey = faviconCache.keys().next().value
+    if (oldestKey !== undefined) faviconCache.delete(oldestKey)
+  }
+}
 
 export function registerDialogIpc(): void {
   ipcMain.handle('get-favicon', async (_event, rawUrl: unknown) => {
@@ -30,7 +39,7 @@ export function registerDialogIpc(): void {
 
       const contentType = response.headers.get('content-type') || 'image/png'
       const dataUrl = `data:${contentType};base64,${buffer.toString('base64')}`
-      faviconCache.set(url, dataUrl)
+      rememberFavicon(url, dataUrl)
       return dataUrl
     } catch {
       return ''

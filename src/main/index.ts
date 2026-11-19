@@ -11,6 +11,7 @@ import { registerNotesProtocol } from './notes/audioProtocol'
 import { PasteManager } from './paste/pasteManager'
 import { getPasteManager, setPasteManager } from './paste/runtime'
 import { applySessionProxy, resolveOpenAIProxyUrl } from './proxy'
+import { flushAiUsage } from './ai/usageLedger'
 import { configureMcpClient, configureMcpProxy } from './services/mcpClient'
 import { terminalManager } from './terminalManager'
 import { setupAutoUpdater } from './updater'
@@ -168,6 +169,9 @@ app.on('before-quit', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+
+  // Persist any usage entries still waiting in the debounce window.
+  flushAiUsage()
 
   void getPasteManager()?.dispose()
   setPasteManager(null)

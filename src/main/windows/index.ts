@@ -92,10 +92,6 @@ export function getMainWindow(): BrowserWindow | null {
   return mainWindow
 }
 
-export function getSettingsWindow(): BrowserWindow | null {
-  return settingsWindow
-}
-
 export function getMainWebContents(): WebContents | null {
   return mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null
 }
@@ -511,15 +507,21 @@ export function markRendererReady(): void {
 function waitForRendererReady(): Promise<void> {
   return new Promise((resolve) => {
     let settled = false
+    let timer: NodeJS.Timeout | null = null
     const finish = (): void => {
       if (settled) return
       settled = true
+      if (timer) {
+        clearTimeout(timer)
+        timer = null
+      }
       if (rendererReadyResolver === finish) rendererReadyResolver = null
       resolve()
     }
 
     rendererReadyResolver = finish
-    setTimeout(finish, RENDERER_READY_TIMEOUT_MS)
+    timer = setTimeout(finish, RENDERER_READY_TIMEOUT_MS)
+    timer.unref?.()
   })
 }
 

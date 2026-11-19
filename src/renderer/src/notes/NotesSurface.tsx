@@ -519,8 +519,11 @@ export default function NotesSurface({
   const aiAvailable = Boolean(note) && (!isMeetingNote || meetingTab === 'recap')
   const meetingStatus = activeMeeting?.status ?? note?.meeting?.status
   const totalSegments = note?.meeting?.segments.length ?? 0
-  const transcribedSegments =
-    note?.meeting?.segments.filter((segment) => segment.transcript.trim().length > 0).length ?? 0
+  // Runs on every 250ms meeting tick and every editor keystroke otherwise.
+  const transcribedSegments = useMemo(
+    () => note?.meeting?.segments.filter((segment) => segment.transcript.trim().length > 0).length ?? 0,
+    [note?.meeting?.segments]
+  )
 
   useEffect(() => {
     if (!aiAvailable && aiOpen) setAiOpen(false)

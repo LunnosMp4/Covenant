@@ -1,0 +1,99 @@
+{
+  "capturedAt": "2026-11-19T09:37:08.070Z",
+  "renderer": {
+    "bytes": 10277800,
+    "files": 79,
+    "js": {
+      "bytes": 9244669,
+      "gzip": 2409759
+    },
+    "assets": 54
+  },
+  "main": {
+    "bytes": 1125588,
+    "files": 3
+  },
+  "preload": {
+    "bytes": 27047,
+    "files": 1
+  },
+  "totalOut": {
+    "bytes": 11430435,
+    "files": 83
+  },
+  "critical": {
+    "files": 9,
+    "bytes": 1029364,
+    "gzip": 219578,
+    "entry": "index-COYTU83T.js",
+    "entryBytes": 235460,
+    "appChunk": "App-BZItTLNf.js",
+    "appBytes": 312605
+  },
+  "css": {
+    "bytes": 109458,
+    "gzip": 20228
+  },
+  "fonts": {
+    "count": 19,
+    "ttf": 0,
+    "woff": 0,
+    "woff2": 256168,
+    "otf": 0,
+    "total": 256168
+  },
+  "mermaid": {
+    "chunks": 4,
+    "bytes": 2009460
+  },
+  "largestChunks": [
+    {
+      "name": "subset-shared.chunk-DNdjjfYV.js",
+      "bytes": 1837753
+    },
+    {
+      "name": "image-GAAHSSAO-D3yHlpK5.js",
+      "bytes": 1707122
+    },
+    {
+      "name": "chartEngine-0-PCyNNe.js",
+      "bytes": 1456233
+    },
+    {
+      "name": "NotesSurface-Bl5l8QU_.js",
+      "bytes": 1031801
+    },
+    {
+      "name": "AssistantMarkdown-Bsbl3H3f.js",
+      "bytes": 906730
+    },
+    {
+      "name": "TerminalView-Ddcs8OIP.js",
+      "bytes": 427948
+    },
+    {
+      "name": "App-BZItTLNf.js",
+      "bytes": 312605
+    },
+    {
+      "name": "config-BgcNZMAU.js",
+      "bytes": 280900
+    },
+    {
+      "name": "index-COYTU83T.js",
+      "bytes": 235460
+    },
+    {
+      "name": "index-DyQ7rV2w.js",
+      "bytes": 127474
+    },
+    {
+      "name": "CodePanel-BTPkCvzV.js",
+      "bytes": 124395
+    },
+    {
+      "name": "image-blob-reduce.esm-BJZXdeib.js",
+      "bytes": 96349
+    }
+  ]
+}

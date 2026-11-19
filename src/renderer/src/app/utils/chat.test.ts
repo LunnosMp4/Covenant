@@ -6,6 +6,7 @@ import {
   buildSearchSnippet,
   formatConversationRowTimestamp,
   groupConversationsByDay,
+  normalizeMessageOrder,
   groupConversationsByRecency,
   resolveSubmitSystemPrompt,
   sortConversations
@@ -258,5 +259,34 @@ describe('submit system prompt resolution', () => {
     expect(
       resolveSubmitSystemPrompt({ isNewConversation: false, mentionsInstruction: false })
     ).toBe('')
+  })
+})
+
+describe('normalizeMessageOrder', () => {
+  it('returns the original array untouched when already ordered', () => {
+    const messages = [message('a', 'user', 'hi', 1), message('b', 'assistant', 'hello', 2)]
+    expect(normalizeMessageOrder(messages)).toBe(messages)
+  })
+
+  it('sorts by timestamp, then by role rank', () => {
+    const messages = [
+      message('assistant', 'assistant', 'a', 2),
+      message('system', 'system', 's', 2),
+      message('first', 'user', 'u', 1),
+      message('user-later', 'user', 'u2', 2)
+    ]
+    expect(normalizeMessageOrder(messages).map((entry) => entry.id)).toEqual([
+      'first',
+      'system',
+      'user-later',
+      'assistant'
+    ])
+  })
+
+  it('does not mutate the input', () => {
+    const messages = [message('b', 'assistant', 'b', 2), message('a', 'user', 'a', 1)]
+    const snapshot = messages.map((entry) => entry.id)
+    normalizeMessageOrder(messages)
+    expect(messages.map((entry) => entry.id)).toEqual(snapshot)
   })
 })

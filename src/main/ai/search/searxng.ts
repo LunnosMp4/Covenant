@@ -3,6 +3,12 @@ import { resolveOpenAIProxyUrl } from '../../proxy'
 import type { AppConfig } from '../../../shared/config'
 import { createAgentDispatcher, createProxyDispatcher } from '../../services/proxyDispatcher'
 import { getSearchSecret } from './credentials'
+import {
+  SEARCH_USER_AGENT,
+  fetchSearchJson,
+  normalizeSearchResults,
+  readString
+} from './http'
 import type { SearchOptions, SearchResult } from './types'
 
 function isPrivateHost(hostname: string): boolean {
@@ -84,75 +90,38 @@ export async function searchSearxng(
   url.searchParams.set('categories', 'general')
   url.searchParams.set('safesearch', '0')
 
-  const timeoutMs = options.timeoutMs ?? config.webSearchTimeoutMs ?? 15_000
-  const controller = new AbortController()
-  let timedOut = false
-  const timeout = setTimeout(() => {
-    timedOut = true
-    controller.abort()
-  }, timeoutMs)
-  const onCallerAbort = (): void => controller.abort(options.signal?.reason)
-  options.signal?.addEventListener('abort', onCallerAbort, { once: true })
-
   const headers: Record<string, string> = {
     Accept: 'application/json',
-    'User-Agent': 'Covenant/1.0'
+    'User-Agent': SEARCH_USER_AGENT
   }
   const auth = buildAuthHeader(config)
   if (auth) headers.Authorization = auth
 
   const dispatcher = await createDispatcher(config, normalized)
-
-  try {
-    const response = await fetch(url, {
+  const payload = await fetchSearchJson({
+    provider: 'SearXNG',
+    url,
+    config,
+    options,
+    describeStatus: (status) => {
+      if (status === 403) {
+        return 'SearXNG returned 403. Enable JSON in its settings.yml (search.formats: [html, json]) and make sure the limiter is not blocking Covenant.'
+      }
+      if (status === 401) {
+        return 'SearXNG requires authentication. Add the username/password or bearer token in settings.'
+      }
+      return null
+    },
+    init: {
       method: 'GET',
       headers,
-      signal: controller.signal,
       ...(dispatcher ? { dispatcher } : {})
-    } as RequestInit)
+    } as RequestInit
+  })
 
-    if (!response.ok) {
-      if (response.status === 403) {
-        throw new Error(
-          'SearXNG returned 403. Enable JSON in its settings.yml (search.formats: [html, json]) and make sure the limiter is not blocking Covenant.'
-        )
-      }
-      if (response.status === 401) {
-        throw new Error('SearXNG requires authentication. Add the username/password or bearer token in settings.')
-      }
-      throw new Error(`SearXNG returned ${response.status}.`)
-    }
-
-    const payload = (await response.json()) as { results?: unknown }
-    const rawResults = Array.isArray(payload.results) ? payload.results : []
-    return rawResults
-      .map((item): SearchResult | null => {
-        if (!item || typeof item !== 'object') return null
-        const entry = item as Record<string, unknown>
-        const urlValue = typeof entry.url === 'string' ? entry.url.trim() : ''
-        if (!urlValue) return null
-        return {
-          title: typeof entry.title === 'string' ? entry.title.trim() : urlValue,
-          url: urlValue,
-          snippet:
-            typeof entry.content === 'string'
-              ? entry.content.trim()
-              : typeof entry.snippet === 'string'
-                ? entry.snippet.trim()
-                : '',
-          publishedAt:
-            typeof entry.publishedDate === 'string' ? entry.publishedDate : undefined
-        }
-      })
-      .filter((item): item is SearchResult => item !== null)
-      .slice(0, 8)
-  } catch (error) {
-    if (timedOut) {
-      throw new Error(`SearXNG search timed out after ${Math.round(timeoutMs / 1000)}s.`)
-    }
-    throw error
-  } finally {
-    clearTimeout(timeout)
-    options.signal?.removeEventListener('abort', onCallerAbort)
-  }
+  return normalizeSearchResults(payload, {
+    snippet: (entry) => readString(entry, 'content') || readString(entry, 'snippet'),
+    publishedAt: (entry) =>
+      typeof entry.publishedDate === 'string' ? entry.publishedDate : undefined
+  })
 }

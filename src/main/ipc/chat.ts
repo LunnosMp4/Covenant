@@ -16,6 +16,7 @@ import {
   sanitizeMessages
 } from '../openai/messages'
 import { runStreamingChat } from '../openai/streaming'
+import { createDeltaSender, type DeltaSender } from '../streaming/deltaSender'
 import { buildOpenAIToolDefinitions } from '../services/mcpClient'
 import { terminalManager } from '../terminalManager'
 import { createTerminalToolHandlers } from '../terminal/tools'
@@ -44,74 +45,15 @@ const activeChatStreams = new Map<string, AbortController>()
  */
 const STREAM_DELTA_FLUSH_MS = 50
 
-interface StreamSender {
-  send: (payload: { id: string } & Record<string, unknown>) => void
-  flush: () => void
-}
-
-function createStreamSender(sender: WebContents, streamId: string): StreamSender {
-  let pendingContent = ''
-  const pendingReasoning = new Map<string, string>()
-  let flushTimer: NodeJS.Timeout | null = null
-
-  const send = (payload: { id: string } & Record<string, unknown>): void => {
-    if (sender.isDestroyed()) return
-    sender.send('covenant:chat-stream-event', payload)
-  }
-
-  const flush = (): void => {
-    if (flushTimer) {
-      clearTimeout(flushTimer)
-      flushTimer = null
+function createStreamSender(sender: WebContents, streamId: string): DeltaSender {
+  return createDeltaSender({
+    id: streamId,
+    flushMs: STREAM_DELTA_FLUSH_MS,
+    forward: (payload) => {
+      if (sender.isDestroyed()) return
+      sender.send('covenant:chat-stream-event', payload)
     }
-
-    if (pendingContent) {
-      const delta = pendingContent
-      pendingContent = ''
-      send({ id: streamId, type: 'content', delta })
-    }
-
-    if (pendingReasoning.size > 0) {
-      const pending = [...pendingReasoning.entries()]
-      pendingReasoning.clear()
-      for (const [itemId, delta] of pending) {
-        send({ id: streamId, type: 'reasoning-delta', itemId, delta })
-      }
-    }
-  }
-
-  const scheduleFlush = (): void => {
-    if (flushTimer) return
-    flushTimer = setTimeout(() => {
-      flushTimer = null
-      flush()
-    }, STREAM_DELTA_FLUSH_MS)
-    flushTimer.unref?.()
-  }
-
-  const sendEvent = (payload: { id: string } & Record<string, unknown>): void => {
-    if (payload.type === 'content' && typeof payload.delta === 'string') {
-      pendingContent += payload.delta
-      scheduleFlush()
-      return
-    }
-
-    if (
-      payload.type === 'reasoning-delta' &&
-      typeof payload.delta === 'string' &&
-      typeof payload.itemId === 'string'
-    ) {
-      const itemId = payload.itemId
-      pendingReasoning.set(itemId, (pendingReasoning.get(itemId) ?? '') + payload.delta)
-      scheduleFlush()
-      return
-    }
-
-    flush()
-    send(payload)
-  }
-
-  return { send: sendEvent, flush }
+  })
 }
 
 export function registerChatIpc(): void {

@@ -10,38 +10,9 @@ import type { BuiltinToolHandler } from '../services/builtinTools'
 import { readConfig } from '../config/configStore'
 import { buildResponseParams, buildResponsesInput, MAX_MCP_TOOL_ROUNDS, type SanitizedMessage } from './messages'
 import type { AiModelOption, ChatProviderId } from '../../shared/config'
+import { mapWithConcurrencyResults } from '../utils/async'
 
 const MAX_PARALLEL_MCP_CALLS = 4
-
-/**
- * Runs `worker` over `items` with bounded concurrency while preserving the
- * original result order. Errors are captured per item so one failing call does
- * not cancel the others; the caller decides how to surface them.
- */
-async function runWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  worker: (item: T, index: number) => Promise<R>
-): Promise<Array<{ ok: true; value: R } | { ok: false; error: unknown }>> {
-  const results = new Array<{ ok: true; value: R } | { ok: false; error: unknown }>(items.length)
-  let cursor = 0
-
-  const run = async (): Promise<void> => {
-    while (cursor < items.length) {
-      const index = cursor
-      cursor += 1
-      try {
-        results[index] = { ok: true, value: await worker(items[index], index) }
-      } catch (error) {
-        results[index] = { ok: false, error }
-      }
-    }
-  }
-
-  const workers = Math.min(Math.max(limit, 1), items.length)
-  await Promise.all(Array.from({ length: workers }, () => run()))
-  return results
-}
 
 export async function completeChatWithMcp(
   client: OpenAI,
@@ -94,7 +65,7 @@ export async function completeChatWithMcp(
 
     // Independent MCP tools are dispatched concurrently; the loop above used to
     // pay the sum of every roundtrip even when the calls had no dependency.
-    const outcomes = await runWithConcurrency(functionCalls, MAX_PARALLEL_MCP_CALLS, async (call) => {
+    const outcomes = await mapWithConcurrencyResults(functionCalls, MAX_PARALLEL_MCP_CALLS, async (call) => {
       const builtin = builtinTools.find((handler) => handler.name === call.name)
       if (builtin) {
         const result = await builtin.execute(call.arguments, {

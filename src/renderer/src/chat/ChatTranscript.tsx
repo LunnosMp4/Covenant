@@ -1,4 +1,4 @@
-import { lazy, memo, Suspense } from 'react'
+import { lazy, memo, Suspense, useMemo } from 'react'
 import type { ChatMessage } from '../../../shared/chat/chat'
 import { collectExcalidrawCheckpoints } from '../../../shared/chat/excalidraw'
 import { describeUiSpec } from '../../../shared/ui/describe'
@@ -94,12 +94,19 @@ function ChatMessageRow({
       : hasParts
         ? 'w-full max-w-[78%]'
         : 'max-w-[78%]'
-  const copyText = [
-    message.content,
-    ...(message.parts ?? []).map((part) => describeUiSpec(part.surface.spec))
-  ]
-    .filter((entry) => entry.trim().length > 0)
-    .join('\n\n')
+  // The copy payload walks every generated surface spec, which is wasted work
+  // while the answer is still streaming (the button is hidden then) and on
+  // every unrelated re-render (thinking/sources toggles). Memoised and skipped
+  // for the streaming row; the resulting text is unchanged.
+  const copyText = useMemo(() => {
+    if (!isAssistant || isStreaming) return ''
+    return [
+      message.content,
+      ...(message.parts ?? []).map((part) => describeUiSpec(part.surface.spec))
+    ]
+      .filter((entry) => entry.trim().length > 0)
+      .join('\n\n')
+  }, [isAssistant, isStreaming, message.content, message.parts])
   const canCopy = isAssistant && !isStreaming && copyText.trim().length > 0
 
   return (
@@ -311,8 +318,12 @@ const MemoChatMessageRow = memo(ChatMessageRow)
  * The single message renderer used by both the main conversation surface and
  * the terminal's linked conversation rail. Keeping it shared is what makes the
  * two views visually identical (bubbles, reasoning, tools, model/usage footer).
+ *
+ * Memoised so unrelated App state (typing in the input, popups, toasts) does
+ * not walk and re-render the whole transcript. Every prop is reference-stable
+ * across those renders.
  */
-export default function ChatTranscript({
+function ChatTranscriptInner({
   messages,
   isLoading,
   activeStreamMessageId,
@@ -356,3 +367,7 @@ export default function ChatTranscript({
     </>
   )
 }
+
+const ChatTranscript = memo(ChatTranscriptInner)
+
+export default ChatTranscript
