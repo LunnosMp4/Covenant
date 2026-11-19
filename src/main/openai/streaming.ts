@@ -12,6 +12,9 @@ import {
   MAX_MCP_TOOL_ROUNDS,
   truncateMcpResult
 } from './messages'
+import { mapWithConcurrencyResults } from '../utils/async'
+
+const MAX_PARALLEL_MCP_CALLS = 4
 
 export interface StreamingChatContext {
   client: OpenAI
@@ -145,24 +148,30 @@ export async function runStreamingChat(
             const itemId = streamEvent.item_id
             if (!deltaStr || !itemId) break
 
+            // Once the title is parsed, deltas are forwarded as-is and the
+            // accumulated buffer is never read again — so stop growing it.
+            // Previously every token re-concatenated the whole reasoning text
+            // (quadratic allocation for long answers).
+            if (reasoningTitleParsed.has(itemId)) {
+              ctx.sendStreamEvent({ id: ctx.streamId, type: 'reasoning-delta', itemId, delta: deltaStr })
+              break
+            }
+
             const buffer = (reasoningBufferMap.get(itemId) || '') + deltaStr
             reasoningBufferMap.set(itemId, buffer)
 
-            if (!reasoningTitleParsed.has(itemId)) {
-              const match = /^\*\*([^*\n]+)\*\*\n\n([\s\S]*)$/.exec(buffer)
-              if (match) {
-                reasoningTitleParsed.add(itemId)
-                reasoningTitleById.set(itemId, match[1])
-                ctx.sendStreamEvent({ id: ctx.streamId, type: 'reasoning-title', itemId, title: match[1] })
-                if (match[2]) {
-                  ctx.sendStreamEvent({ id: ctx.streamId, type: 'reasoning-delta', itemId, delta: match[2] })
-                }
-                break
-              }
-            }
+            // The title regex is anchored at the start, so a buffer that no
+            // longer begins with `**` can never match; skip the scan entirely.
+            if (buffer.length >= 2 && !buffer.startsWith('**')) break
 
-            if (reasoningTitleParsed.has(itemId)) {
-              ctx.sendStreamEvent({ id: ctx.streamId, type: 'reasoning-delta', itemId, delta: deltaStr })
+            const match = /^\*\*([^*\n]+)\*\*\n\n([\s\S]*)$/.exec(buffer)
+            if (match) {
+              reasoningTitleParsed.add(itemId)
+              reasoningTitleById.set(itemId, match[1])
+              ctx.sendStreamEvent({ id: ctx.streamId, type: 'reasoning-title', itemId, title: match[1] })
+              if (match[2]) {
+                ctx.sendStreamEvent({ id: ctx.streamId, type: 'reasoning-delta', itemId, delta: match[2] })
+              }
             }
             break
           }
@@ -181,7 +190,8 @@ export async function runStreamingChat(
                 title: 'Thinking...'
               })
             }
-            reasoningBufferMap.set(itemId, (reasoningBufferMap.get(itemId) || '') + deltaStr)
+            // No buffer copy: this handler titles the item immediately, so the
+            // accumulated text is never read back.
             ctx.sendStreamEvent({
               id: ctx.streamId,
               type: 'reasoning-delta',
@@ -499,7 +509,12 @@ export async function runStreamingChat(
         await runToolCall(entry)
       }
     } else if (parallelCalls.length > 0) {
-      await Promise.all(parallelCalls.map((entry) => runToolCall(entry)))
+      // Same cap as the non-streaming path: a model can request an arbitrary
+      // number of tool calls in one round, and unbounded `Promise.all` bursts
+      // the network and the main thread.
+      await mapWithConcurrencyResults(parallelCalls, MAX_PARALLEL_MCP_CALLS, (entry) =>
+        runToolCall(entry)
+      )
     }
 
     for (const output of outputs) {

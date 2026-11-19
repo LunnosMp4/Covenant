@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { motion } from 'framer-motion'
 import { isLocalConnectionId } from '../../../shared/code/connection'
 import type { CodeTranscriptItem } from '../../../shared/code/code'
@@ -84,7 +84,12 @@ export default function CodePanel({
   const activeModel =
     session.models.find((model) => `${model.providerID}/${model.id}` === sessionModelId) ?? null
   const modelLabel = activeModel?.label ?? (sessionModelId || null)
-  const transcriptCost = session.transcript.reduce((sum, item) => sum + (item.cost ?? 0), 0)
+  // Recomputed on every code token before; the transcript only changes when a
+  // turn completes.
+  const transcriptCost = useMemo(
+    () => session.transcript.reduce((sum, item) => sum + (item.cost ?? 0), 0),
+    [session.transcript]
+  )
   const cost =
     session.liveCost ?? session.activeSession?.cost ?? (transcriptCost > 0 ? transcriptCost : null)
   const contextLimit = activeModel?.maxContextTokens ?? 0

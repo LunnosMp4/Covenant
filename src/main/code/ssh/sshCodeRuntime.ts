@@ -12,6 +12,7 @@ import {
   type ResolvedBinary
 } from '../opencodeBinary'
 import { parseBinaryVersion } from '../version'
+import { delay } from '../../utils/async'
 import type { CodeRuntime, RuntimeInfo } from '../codeRuntime'
 import type { CodeRuntimePhase, CodeRuntimeProgress, CodeSettings } from '../../../shared/code/code'
 import type { CodeConnection } from '../../../shared/code/connection'
@@ -23,9 +24,6 @@ const START_TIMEOUT_MS = 45000
 const HEALTH_POLL_MS = 400
 const MAX_LOG_LINES = 500
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
 
 /** Safely single-quote a value for a POSIX shell. */
 function shellQuote(value: string): string {

@@ -1,4 +1,5 @@
 import { log } from '../logger'
+import { delay } from '../utils/async'
 import type {
   CodeActivityEvent,
   CodeAgent,
@@ -47,9 +48,6 @@ export interface LocalCodeEngineOptions {
 const EVENT_RETRY_MS = 1500
 const RECONNECT_MS = 1000
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
 
 function asArray<T = unknown>(value: unknown): T[] {
   if (Array.isArray(value)) return value as T[]
@@ -245,6 +243,20 @@ export class LocalCodeEngine implements CodeEngine {
   private eventLoop?: Promise<void>
   private connecting?: Promise<void>
   private sessionStatus = new Map<string, CodeSessionStatus>()
+
+  /**
+   * Status entries are created for every session the runtime reports, including
+   * sessions started outside Covenant. `deleteSession` only removes ones the app
+   * owns, so the map is capped FIFO to keep long-lived processes bounded.
+   */
+  private static readonly MAX_SESSION_STATUS_ENTRIES = 500
+
+  private rememberSessionStatus(sessionId: string, status: CodeSessionStatus): void {
+    this.sessionStatus.set(sessionId, status)
+    if (this.sessionStatus.size <= LocalCodeEngine.MAX_SESSION_STATUS_ENTRIES) return
+    const oldestId = this.sessionStatus.keys().next().value
+    if (oldestId !== undefined && oldestId !== sessionId) this.sessionStatus.delete(oldestId)
+  }
 
   constructor(options: LocalCodeEngineOptions) {
     this.runtime = options.runtime
@@ -514,7 +526,7 @@ export class LocalCodeEngine implements CodeEngine {
       }
       case 'session.status': {
         const status = statusFromWire(payload.status)
-        if (sessionId) this.sessionStatus.set(sessionId, status)
+        if (sessionId) this.rememberSessionStatus(sessionId, status)
         activity({ type: 'status', status })
         break
       }
@@ -552,7 +564,7 @@ export class LocalCodeEngine implements CodeEngine {
       case 'session.idle':
       case 'session.execution.succeeded':
       case 'session.next.interrupt.requested':
-        if (sessionId) this.sessionStatus.set(sessionId, 'idle')
+        if (sessionId) this.rememberSessionStatus(sessionId, 'idle')
         activity({ type: 'done' })
         break
       case 'session.execution.failed':
@@ -761,7 +773,7 @@ export class LocalCodeEngine implements CodeEngine {
   async prompt(input: { sessionId: string; text: string }): Promise<{ userMessageId?: string }> {
     const client = this.requireClient()
     const result = await client.session.prompt({ sessionID: input.sessionId, text: input.text })
-    this.sessionStatus.set(input.sessionId, 'busy')
+    this.rememberSessionStatus(input.sessionId, 'busy')
     const data = pickData(result) as { id?: unknown } | null
     return { userMessageId: data && typeof data.id === 'string' ? data.id : undefined }
   }

@@ -9,7 +9,9 @@ export function setupLogger(): void {
 
   log.initialize()
   log.transports.file.level = 'info'
-  log.transports.console.level = 'debug'
+  // A packaged app has no visible console; formatting every debug line there
+  // only burns main-thread time. Keep debug output for development.
+  log.transports.console.level = app.isPackaged ? 'warn' : 'debug'
 
   process.on('uncaughtException', (error) => {
     log.error('Uncaught exception:', error)

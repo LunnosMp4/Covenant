@@ -95,6 +95,8 @@ let scanPromise: Promise<InstalledApp[]> | null = null
 let scanPromiseIncludeSystemApps = false
 let cacheGeneration = 0
 const iconCache = new Map<string, string>()
+/** Icons are 128px data URLs (tens of KB each); keep the cache bounded. */
+const MAX_ICON_CACHE_ENTRIES = 256
 // Maps a Store app's launch path (shell:AppsFolder\...) to its resolved logo.
 const uwpIconSources = new Map<string, string>()
 
@@ -602,5 +604,9 @@ export async function getAppIcon(filePath: string): Promise<string> {
   }
 
   iconCache.set(normalizedPath, dataUrl)
+  if (iconCache.size > MAX_ICON_CACHE_ENTRIES) {
+    const oldestKey = iconCache.keys().next().value
+    if (oldestKey !== undefined) iconCache.delete(oldestKey)
+  }
   return dataUrl
 }

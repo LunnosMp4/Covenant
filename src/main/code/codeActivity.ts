@@ -44,6 +44,14 @@ export class CodeActivityTracker {
   private lastFinished = new Set<string>()
   private lastErrored = new Set<string>()
 
+  /**
+   * OpenCode keeps session ids forever, so the tracker used to hold one entry
+   * per session the app had ever seen and walked every one of them on each
+   * publish. A bounded FIFO keeps the accounting cheap; an evicted session that
+   * reports again is simply recreated from scratch (it is idle by then).
+   */
+  private static readonly MAX_TRACKED_SESSIONS = 200
+
   start(): void {
     const service = getCodeService()
     if (!service) return
@@ -78,6 +86,10 @@ export class CodeActivityTracker {
         unseen: false
       }
       this.sessions.set(sessionId, session)
+      if (this.sessions.size > CodeActivityTracker.MAX_TRACKED_SESSIONS) {
+        const oldestId = this.sessions.keys().next().value
+        if (oldestId !== undefined && oldestId !== sessionId) this.sessions.delete(oldestId)
+      }
     }
     return session
   }

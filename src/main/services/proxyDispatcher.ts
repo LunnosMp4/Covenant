@@ -21,19 +21,57 @@ function loadUndici(): Promise<UndiciModule> {
   return undiciPromise
 }
 
-/** Builds a proxy dispatcher, loading `undici` only when a proxy is set. */
+/**
+ * Dispatchers own a connection pool each. Creating one per request kept every
+ * pool alive for the process lifetime (one socket pool + fd set per AI call,
+ * usage refresh and search), so the same configurations are shared instead.
+ * The key set is tiny in practice (the configured proxy URL, plus the fixed
+ * loopback agent options), and the cache is bounded defensively anyway.
+ */
+const MAX_CACHED_DISPATCHERS = 8
+
+const proxyDispatchers = new Map<string, Dispatcher>()
+const agentDispatchers = new Map<string, Dispatcher>()
+
+function remember(cache: Map<string, Dispatcher>, key: string, dispatcher: Dispatcher): Dispatcher {
+  cache.set(key, dispatcher)
+  if (cache.size > MAX_CACHED_DISPATCHERS) {
+    const oldestKey = cache.keys().next().value
+    if (oldestKey !== undefined) {
+      const evicted = cache.get(oldestKey)
+      cache.delete(oldestKey)
+      void Promise.resolve(evicted?.close()).catch(() => undefined)
+    }
+  }
+  return dispatcher
+}
+
+/** Returns the shared proxy dispatcher for `proxyUrl`, loading `undici` once. */
 export async function createProxyDispatcher(
   proxyUrl: string | undefined
 ): Promise<Dispatcher | undefined> {
   if (!proxyUrl) return undefined
+  const cached = proxyDispatchers.get(proxyUrl)
+  if (cached) return cached
   const { ProxyAgent } = await loadUndici()
-  return new ProxyAgent(proxyUrl)
+  return remember(proxyDispatchers, proxyUrl, new ProxyAgent(proxyUrl))
 }
 
-/** Builds a plain agent (used for loopback / self-signed SearXNG endpoints). */
+/** Returns the shared plain agent (loopback / self-signed SearXNG endpoints). */
 export async function createAgentDispatcher(
   options: ConstructorParameters<UndiciModule['Agent']>[0]
 ): Promise<Dispatcher> {
+  const key = JSON.stringify(options)
+  const cached = agentDispatchers.get(key)
+  if (cached) return cached
   const { Agent } = await loadUndici()
-  return new Agent(options)
+  return remember(agentDispatchers, key, new Agent(options))
+}
+
+/** Test seam: drops every cached dispatcher. */
+export async function disposeProxyDispatchers(): Promise<void> {
+  const all = [...proxyDispatchers.values(), ...agentDispatchers.values()]
+  proxyDispatchers.clear()
+  agentDispatchers.clear()
+  await Promise.allSettled(all.map((dispatcher) => dispatcher.close()))
 }

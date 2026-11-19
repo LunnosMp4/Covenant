@@ -227,6 +227,15 @@ let cachedConfig: AppConfig | null = null
 let cachedConfigMtimeMs: number | null = null
 /** Tracks whether the on-disk file was normalised once in this process. */
 let configFileAligned = false
+/**
+ * `readConfig()` is called from the clipboard watcher, every AI request, every
+ * model refresh and every MCP lookup. The body is cached, but validating the
+ * cache still cost a synchronous `statSync` each time. A short TTL collapses
+ * those bursts into one stat without making external edits feel stale (a
+ * hand-edited config is picked up within a second).
+ */
+const CONFIG_MTIME_TTL_MS = 1000
+let lastMtimeCheckAt = 0
 
 function readConfigMtimeMs(configPath: string): number | null {
   try {
@@ -234,6 +243,16 @@ function readConfigMtimeMs(configPath: string): number | null {
   } catch {
     return null
   }
+}
+
+/** Revalidates the cached config against the file, at most once per TTL. */
+function configFileChanged(configPath: string): boolean {
+  if (!cachedConfig) return true
+  const now = Date.now()
+  if (now - lastMtimeCheckAt < CONFIG_MTIME_TTL_MS) return false
+  lastMtimeCheckAt = now
+  const mtimeMs = readConfigMtimeMs(configPath)
+  return mtimeMs === null || mtimeMs !== cachedConfigMtimeMs
 }
 
 export function writeConfig(config: AppConfig): void {
@@ -247,14 +266,14 @@ export function writeConfig(config: AppConfig): void {
   writeFileSync(configPath, JSON.stringify(config, null, 2), { encoding: 'utf-8' })
   cachedConfig = config
   cachedConfigMtimeMs = readConfigMtimeMs(configPath)
+  lastMtimeCheckAt = Date.now()
 }
 
 export function readConfig(): AppConfig {
   const configPath = getConfigPath()
 
   try {
-    const mtimeMs = readConfigMtimeMs(configPath)
-    if (cachedConfig && mtimeMs !== null && mtimeMs === cachedConfigMtimeMs) {
+    if (cachedConfig && !configFileChanged(configPath)) {
       return cachedConfig
     }
 
@@ -269,7 +288,8 @@ export function readConfig(): AppConfig {
     const normalized = normalizeConfig(parsed)
 
     cachedConfig = normalized
-    cachedConfigMtimeMs = mtimeMs
+    cachedConfigMtimeMs = readConfigMtimeMs(configPath)
+    lastMtimeCheckAt = Date.now()
 
     // Keep the file schema aligned when new defaults are introduced, but only
     // once per process instead of on every read.

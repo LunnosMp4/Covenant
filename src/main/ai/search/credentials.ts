@@ -20,6 +20,13 @@ function isStorageAvailable(): boolean {
   }
 }
 
+/**
+ * Decrypting via the OS keychain is synchronous and relatively expensive, and
+ * the same provider secret is read on every search request. Cache the decrypted
+ * value per provider and invalidate it on save/clear.
+ */
+const secretCache = new Map<string, string | undefined>()
+
 export function saveSearchSecret(providerId: string, secret: string): void {
   const trimmed = typeof secret === 'string' ? secret.trim() : ''
   if (!trimmed) throw new Error('Search credential is required')
@@ -27,14 +34,23 @@ export function saveSearchSecret(providerId: string, secret: string): void {
   const dir = credentialDir()
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   writeFileSync(credentialFile(providerId), safeStorage.encryptString(trimmed))
+  secretCache.set(providerId, trimmed)
 }
 
 export function getSearchSecret(providerId: string): string | undefined {
+  if (secretCache.has(providerId)) return secretCache.get(providerId)
+  // A transient keychain failure must not be cached as "no secret".
+  if (!isStorageAvailable()) return undefined
   try {
     const file = credentialFile(providerId)
-    if (!isStorageAvailable() || !existsSync(file)) return undefined
+    if (!existsSync(file)) {
+      secretCache.set(providerId, undefined)
+      return undefined
+    }
     const decrypted = safeStorage.decryptString(readFileSync(file))
-    return decrypted.trim() || undefined
+    const value = decrypted.trim() || undefined
+    secretCache.set(providerId, value)
+    return value
   } catch (error) {
     log.warn(`Failed to read search credential for ${providerId}`, error)
     return undefined
@@ -42,6 +58,7 @@ export function getSearchSecret(providerId: string): string | undefined {
 }
 
 export function clearSearchSecret(providerId: string): void {
+  secretCache.set(providerId, undefined)
   try {
     rmSync(credentialFile(providerId), { force: true })
   } catch (error) {

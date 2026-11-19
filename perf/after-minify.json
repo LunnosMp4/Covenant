@@ -1,0 +1,99 @@
+{
+  "capturedAt": "2026-11-19T09:44:45.796Z",
+  "renderer": {
+    "bytes": 6779331,
+    "files": 79,
+    "js": {
+      "bytes": 5773955,
+      "gzip": 1981867
+    },
+    "assets": 54
+  },
+  "main": {
+    "bytes": 607404,
+    "files": 3
+  },
+  "preload": {
+    "bytes": 16815,
+    "files": 1
+  },
+  "totalOut": {
+    "bytes": 7403550,
+    "files": 83
+  },
+  "critical": {
+    "files": 9,
+    "bytes": 554167,
+    "gzip": 161119,
+    "entry": "index-ClliKABI.js",
+    "entryBytes": 146548,
+    "appChunk": "App-C8HaOQpQ.js",
+    "appBytes": 139845
+  },
+  "css": {
+    "bytes": 84777,
+    "gzip": 15704
+  },
+  "fonts": {
+    "count": 19,
+    "ttf": 0,
+    "woff": 0,
+    "woff2": 256168,
+    "otf": 0,
+    "total": 256168
+  },
+  "mermaid": {
+    "chunks": 4,
+    "bytes": 1899396
+  },
+  "largestChunks": [
+    {
+      "name": "subset-shared.chunk-DEV1qM6h.js",
+      "bytes": 1820566
+    },
+    {
+      "name": "image-GAAHSSAO-ILT1A8nJ.js",
+      "bytes": 1129968
+    },
+    {
+      "name": "chartEngine-CLB5DDfm.js",
+      "bytes": 595922
+    },
+    {
+      "name": "NotesSurface-DSXhg8ef.js",
+      "bytes": 553807
+    },
+    {
+      "name": "AssistantMarkdown-CiQUq3Yk.js",
+      "bytes": 440130
+    },
+    {
+      "name": "TerminalView-lfcgBNd1.js",
+      "bytes": 293573
+    },
+    {
+      "name": "index-ClliKABI.js",
+      "bytes": 146548
+    },
+    {
+      "name": "App-C8HaOQpQ.js",
+      "bytes": 139845
+    },
+    {
+      "name": "config-CFPJfAP2.js",
+      "bytes": 130300
+    },
+    {
+      "name": "CodePanel-BpXg0YML.js",
+      "bytes": 66119
+    },
+    {
+      "name": "index-C0CYMduI.js",
+      "bytes": 53635
+    },
+    {
+      "name": "image-blob-reduce.esm-BLtmMM_J.js",
+      "bytes": 45802
+    }
+  ]
+}

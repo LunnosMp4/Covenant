@@ -17,7 +17,10 @@ const AUDIO_HEADERS: Record<string, string> = {
 /**
  * Recordings made before the duration fix lack a WebM Duration element, so
  * Chromium can't seek them. Patch each file once, lazily, before it is served.
+ * Capped so a long-lived process that plays many recordings doesn't accumulate
+ * one entry per segment forever.
  */
+const MAX_PREPARED_AUDIO_ENTRIES = 512
 const preparedAudio = new Map<string, Promise<void>>()
 
 function prepareSeekableAudio(
@@ -44,6 +47,10 @@ function prepareSeekableAudio(
   })
 
   preparedAudio.set(key, task)
+  if (preparedAudio.size > MAX_PREPARED_AUDIO_ENTRIES) {
+    const oldestKey = preparedAudio.keys().next().value
+    if (oldestKey !== undefined && oldestKey !== key) preparedAudio.delete(oldestKey)
+  }
   return task
 }
 

@@ -23,6 +23,14 @@ export function isGoKeyStorageAvailable(): boolean {
   }
 }
 
+/**
+ * Decrypting through the OS keychain is a synchronous, comparatively expensive
+ * call and several hot paths (provider checks, every model catalog refresh,
+ * every chat request) asked for the same key. The decrypted value is cached
+ * and invalidated whenever the credential is written or cleared.
+ */
+let cachedKey: { value: string | undefined } | null = null
+
 export function saveGoApiKey(key: string): void {
   const trimmed = typeof key === 'string' ? key.trim() : ''
   if (!trimmed) {
@@ -37,13 +45,22 @@ export function saveGoApiKey(key: string): void {
   }
   const encrypted = safeStorage.encryptString(trimmed)
   writeFileSync(credentialFile(), encrypted)
+  cachedKey = { value: trimmed }
 }
 
 export function getGoApiKey(): string | undefined {
+  if (cachedKey) return cachedKey.value
+  // A transient keychain failure must not be cached as "no key".
+  if (!isGoKeyStorageAvailable()) return undefined
   try {
-    if (!isGoKeyStorageAvailable() || !existsSync(credentialFile())) return undefined
+    if (!existsSync(credentialFile())) {
+      cachedKey = { value: undefined }
+      return undefined
+    }
     const decrypted = safeStorage.decryptString(readFileSync(credentialFile()))
-    return decrypted.trim() || undefined
+    const value = decrypted.trim() || undefined
+    cachedKey = { value }
+    return value
   } catch (error) {
     log.warn('Failed to read stored OpenCode Go credential', error)
     return undefined
@@ -55,6 +72,7 @@ export function hasGoApiKey(): boolean {
 }
 
 export function clearGoApiKey(): void {
+  cachedKey = { value: undefined }
   try {
     rmSync(credentialFile(), { force: true })
   } catch (error) {

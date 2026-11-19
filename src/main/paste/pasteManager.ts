@@ -262,13 +262,15 @@ export class PasteManager {
 
       const { width, height } = image.getSize()
       const png = image.toPNG()
-      let thumbnailBuffer: Buffer | undefined
-      if (width > 0) {
-        const thumb = width > THUMBNAIL_MAX_WIDTH
-          ? image.resize({ width: THUMBNAIL_MAX_WIDTH, quality: 'good' })
-          : image
-        thumbnailBuffer = thumb.toPNG()
-      }
+      // Below the thumbnail width the thumbnail *is* the original; reusing the
+      // encoded buffer avoids a second full PNG encode (and a duplicate
+      // allocation) for every captured screenshot.
+      const thumbnailBuffer: Buffer | undefined =
+        width > 0
+          ? width > THUMBNAIL_MAX_WIDTH
+            ? image.resize({ width: THUMBNAIL_MAX_WIDTH, quality: 'good' }).toPNG()
+            : png
+          : undefined
 
       return {
         imageBuffer: png,

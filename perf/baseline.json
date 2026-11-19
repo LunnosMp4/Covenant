@@ -1,0 +1,99 @@
+{
+  "capturedAt": "2026-11-19T09:25:39.076Z",
+  "renderer": {
+    "bytes": 19026566,
+    "files": 230,
+    "js": {
+      "bytes": 17174258,
+      "gzip": 4074020
+    },
+    "assets": 165
+  },
+  "main": {
+    "bytes": 1119674,
+    "files": 3
+  },
+  "preload": {
+    "bytes": 27047,
+    "files": 1
+  },
+  "totalOut": {
+    "bytes": 20173287,
+    "files": 234
+  },
+  "critical": {
+    "files": 9,
+    "bytes": 1029323,
+    "gzip": 219578,
+    "entry": "index-C6NWumcq.js",
+    "entryBytes": 235460,
+    "appChunk": "App-77tn02Qg.js",
+    "appBytes": 312501
+  },
+  "css": {
+    "bytes": 109521,
+    "gzip": 20235
+  },
+  "fonts": {
+    "count": 59,
+    "ttf": 513664,
+    "woff": 303116,
+    "woff2": 256168,
+    "otf": 0,
+    "total": 1072948
+  },
+  "mermaid": {
+    "chunks": 38,
+    "bytes": 7163982
+  },
+  "largestChunks": [
+    {
+      "name": "subset-shared.chunk-C62lBtwv.js",
+      "bytes": 1837759
+    },
+    {
+      "name": "percentages-BXMCSKIN--GAlKA0-.js",
+      "bytes": 1710020
+    },
+    {
+      "name": "chartEngine-0-PCyNNe.js",
+      "bytes": 1456233
+    },
+    {
+      "name": "index-CKAwnOF-.js",
+      "bytes": 1354428
+    },
+    {
+      "name": "cynefin-OW5HDTMX-C3u3MkRO.js",
+      "bytes": 1304473
+    },
+    {
+      "name": "NotesSurface-C_S5rKiE.js",
+      "bytes": 1031801
+    },
+    {
+      "name": "cytoscape.esm-CW-XoPjK.js",
+      "bytes": 959496
+    },
+    {
+      "name": "AssistantMarkdown-BR9_wr6x.js",
+      "bytes": 906730
+    },
+    {
+      "name": "katex-CqNtglxf.js",
+      "bytes": 484219
+    },
+    {
+      "name": "TerminalView-CkWNfYNW.js",
+      "bytes": 427948
+    },
+    {
+      "name": "architectureDiagram-5GKGNRK7-C0GEculB.js",
+      "bytes": 423295
+    },
+    {
+      "name": "App-77tn02Qg.js",
+      "bytes": 312501
+    }
+  ]
+}

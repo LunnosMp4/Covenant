@@ -222,6 +222,21 @@ export function resolveSubmitSystemPrompt({
 }
 
 export function normalizeMessageOrder(messages: ChatMessage[]): ChatMessage[] {
+  // Fast path: streaming updates preserve order, so checking is O(n) versus the
+  // copy + O(n log n) sort this used to do for every token. Only an actually
+  // out-of-order list pays for the sort.
+  let ordered = true
+  for (let index = 1; index < messages.length; index += 1) {
+    const previous = messages[index - 1]
+    const current = messages[index]
+    const delta = current.createdAt - previous.createdAt
+    if (delta < 0 || (delta === 0 && CHAT_ROLE_ORDER.indexOf(current.role) < CHAT_ROLE_ORDER.indexOf(previous.role))) {
+      ordered = false
+      break
+    }
+  }
+  if (ordered) return messages
+
   return [...messages].sort((a, b) => {
     if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt
     return CHAT_ROLE_ORDER.indexOf(a.role) - CHAT_ROLE_ORDER.indexOf(b.role)

@@ -57,17 +57,6 @@ function computeUsageCost(usage: ChatUsage, pricing: ModelPricing | undefined): 
   )
 }
 
-export function formatConversationTimestamp(timestamp: number): string {
-  const date = new Date(timestamp)
-  const monthDay = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  const time = date.toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  })
-  return `${monthDay}, ${time}`
-}
-
 export function formatUsageSummary(message: ChatMessage): string | undefined {
   const usage = message.usage
   if (!usage) {

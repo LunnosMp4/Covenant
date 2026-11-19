@@ -22,6 +22,79 @@ import { LOCAL_CONNECTION_ID } from '../../shared/code/connection'
 const codeSubscribers = new Set<Electron.WebContents>()
 let serviceSubscribed = false
 
+/**
+ * Streaming text/reasoning arrives one token at a time. Forwarding every token
+ * across IPC makes the renderer commit once per token (and structured-clone a
+ * payload each time), so deltas are coalesced per part for 50 ms, mirroring the
+ * chat stream sender. Every non-delta event flushes first, keeping the exact
+ * order the engine emitted; deltas for different parts carry independent ids.
+ */
+const CODE_DELTA_FLUSH_MS = 50
+
+interface DeltaBatch {
+  pending: Map<string, CodeEngineEvent>
+  timer: NodeJS.Timeout | null
+}
+
+const deltaBatches = new WeakMap<Electron.WebContents, DeltaBatch>()
+
+function isDeltaEvent(event: CodeEngineEvent): event is CodeEngineEvent & {
+  kind: 'activity'
+  event: { type: 'text-delta' | 'reasoning-delta'; delta?: string }
+} {
+  if (event.kind !== 'activity') return false
+  const type = event.event.type
+  return (type === 'text-delta' || type === 'reasoning-delta') && typeof event.event.delta === 'string'
+}
+
+function flushDeltas(sender: Electron.WebContents, batch: DeltaBatch): void {
+  if (batch.timer) {
+    clearTimeout(batch.timer)
+    batch.timer = null
+  }
+  if (batch.pending.size === 0) return
+  const events = [...batch.pending.values()]
+  batch.pending.clear()
+  if (sender.isDestroyed()) return
+  for (const event of events) sender.send('code:event', event)
+}
+
+function sendCodeEvent(sender: Electron.WebContents, event: CodeEngineEvent): void {
+  let batch = deltaBatches.get(sender)
+  if (!batch) {
+    batch = { pending: new Map(), timer: null }
+    deltaBatches.set(sender, batch)
+  }
+
+  if (isDeltaEvent(event)) {
+    const activity = event.event
+    const key = `${activity.sessionId}\u0000${activity.partId ?? ''}\u0000${activity.messageId ?? ''}\u0000${activity.type}`
+    const existing = batch.pending.get(key)
+    if (existing && existing.kind === 'activity') {
+      existing.event.delta = `${existing.event.delta ?? ''}${activity.delta}`
+      existing.event.timestamp = activity.timestamp
+    } else {
+      batch.pending.set(key, {
+        kind: 'activity',
+        event: { ...activity, delta: activity.delta }
+      })
+    }
+    if (!batch.timer) {
+      batch.timer = setTimeout(() => {
+        batch!.timer = null
+        flushDeltas(sender, batch!)
+      }, CODE_DELTA_FLUSH_MS)
+      batch.timer.unref?.()
+    }
+    return
+  }
+
+  flushDeltas(sender, batch)
+  if (sender.isDestroyed()) return
+  sender.send('code:event', event)
+}
+
+
 function attachSubscriber(sender: Electron.WebContents): void {
   if (codeSubscribers.has(sender)) return
   codeSubscribers.add(sender)
@@ -42,7 +115,7 @@ function emitCodeEvent(event: CodeEngineEvent): void {
       codeSubscribers.delete(sender)
       continue
     }
-    sender.send('code:event', event)
+    sendCodeEvent(sender, event)
   }
 }
 

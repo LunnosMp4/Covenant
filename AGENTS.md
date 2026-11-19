@@ -40,6 +40,13 @@ CI runs typecheck, tests, and a build on Windows/macOS/Linux (`.github/workflows
 - `src/renderer/src/types/renderer.ts` — barrel re-exporting shared domain types plus renderer-only types (`XpToastState`, `WorkflowExecutionState`). Import from here, not from `shared/*` directly, in the renderer.
 - Other renderer folders: `ui/` (generic primitives + icons), `chat/`, `launcher/`, `workflow/`, `tasks/`, `terminal/`, `paste/`, `utils/`, `constants/`, `types/`.
 
+## Performance
+
+Before optimizing anything, read `docs/OPTIMIZATION_GUIDE.md` (rules, measurement
+loop, what is already done, remaining opportunities, repo-specific traps) and
+`docs/PERFORMANCE.md` (last measured before/after). Measure with
+`npm run perf:report` / `perf:measure`; never estimate.
+
 ## Gotchas
 
 - OpenAI API key is main-process-only (loaded from `.env` via dotenv at `process.cwd()`). `get-config` redacts `apiKey`/`adminApiKey`; the renderer reads only `ai:key-status` and writes keys through `save-openai-settings`. Never expose them to the renderer.

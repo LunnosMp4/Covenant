@@ -1,0 +1,99 @@
+{
+  "capturedAt": "2026-11-19T09:28:58.969Z",
+  "renderer": {
+    "bytes": 11470475,
+    "files": 131,
+    "js": {
+      "bytes": 10437281,
+      "gzip": 2742451
+    },
+    "assets": 106
+  },
+  "main": {
+    "bytes": 1120459,
+    "files": 3
+  },
+  "preload": {
+    "bytes": 27047,
+    "files": 1
+  },
+  "totalOut": {
+    "bytes": 12617981,
+    "files": 135
+  },
+  "critical": {
+    "files": 9,
+    "bytes": 1029323,
+    "gzip": 219573,
+    "entry": "index-BO9OFibp.js",
+    "entryBytes": 235460,
+    "appChunk": "App--2sMdqxS.js",
+    "appBytes": 312501
+  },
+  "css": {
+    "bytes": 109521,
+    "gzip": 20235
+  },
+  "fonts": {
+    "count": 19,
+    "ttf": 0,
+    "woff": 0,
+    "woff2": 256168,
+    "otf": 0,
+    "total": 256168
+  },
+  "mermaid": {
+    "chunks": 5,
+    "bytes": 3719384
+  },
+  "largestChunks": [
+    {
+      "name": "subset-shared.chunk-BIY_9Wt7.js",
+      "bytes": 1837759
+    },
+    {
+      "name": "percentages-BXMCSKIN-DKBp2eA0.js",
+      "bytes": 1709912
+    },
+    {
+      "name": "chartEngine-0-PCyNNe.js",
+      "bytes": 1456233
+    },
+    {
+      "name": "NotesSurface-DN_xib1s.js",
+      "bytes": 1031801
+    },
+    {
+      "name": "AssistantMarkdown-R0f9BO--.js",
+      "bytes": 906730
+    },
+    {
+      "name": "TerminalView-D_TYkmjJ.js",
+      "bytes": 427948
+    },
+    {
+      "name": "App--2sMdqxS.js",
+      "bytes": 312501
+    },
+    {
+      "name": "config-DxAC2CRk.js",
+      "bytes": 280900
+    },
+    {
+      "name": "index-BO9OFibp.js",
+      "bytes": 235460
+    },
+    {
+      "name": "index-DyQ7rV2w.js",
+      "bytes": 127474
+    },
+    {
+      "name": "CodePanel-6RxCy_h5.js",
+      "bytes": 124395
+    },
+    {
+      "name": "image-blob-reduce.esm-BJZXdeib.js",
+      "bytes": 96349
+    }
+  ]
+}
