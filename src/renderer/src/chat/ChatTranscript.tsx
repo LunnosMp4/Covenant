@@ -1,4 +1,5 @@
 import { lazy, memo, Suspense, useMemo } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import type { ChatMessage } from '../../../shared/chat/chat'
 import { collectExcalidrawCheckpoints } from '../../../shared/chat/excalidraw'
 import { describeUiSpec } from '../../../shared/ui/describe'
@@ -108,6 +109,16 @@ function ChatMessageRow({
       .join('\n\n')
   }, [isAssistant, isStreaming, message.content, message.parts])
   const canCopy = isAssistant && !isStreaming && copyText.trim().length > 0
+  // The assistant bubble is created before the first stream event arrives.
+  // Show a typing indicator in that window instead of an empty pill; it fades
+  // out as soon as the answer or the reasoning block starts filling in.
+  const showTypingDots =
+    isAssistant &&
+    isStreaming &&
+    !showThinking &&
+    message.content.trim().length === 0 &&
+    !hasParts &&
+    (message.sources?.length ?? 0) === 0
 
   return (
     <div
@@ -191,6 +202,24 @@ function ChatMessageRow({
 
         {isAssistant ? (
           <>
+            <AnimatePresence initial={false}>
+              {showTypingDots ? (
+                <motion.span
+                  key="typing-dots"
+                  className="chat-typing"
+                  role="status"
+                  aria-label="Assistant is typing"
+                  initial={{ opacity: 0, y: 2 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -2 }}
+                  transition={{ duration: 0.14 }}
+                >
+                  <span className="chat-typing-dot" />
+                  <span className="chat-typing-dot" />
+                  <span className="chat-typing-dot" />
+                </motion.span>
+              ) : null}
+            </AnimatePresence>
             {message.parts && message.parts.length > 0 ? (
               <div className="chat-message-surfaces">
                 <Suspense

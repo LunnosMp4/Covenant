@@ -82,6 +82,7 @@ interface CovenantAPI {
     reportView: (view: WindowView) => void
     onSetView: (callback: (view: WindowView) => void) => () => void
     onToggleCodeMode: (callback: () => void) => () => void
+    onPinnedChanged: (callback: (pinned: boolean) => void) => () => void
     onNavigateSettingsTab: (callback: (tab: string) => void) => () => void
     onSettingsShown: (callback: (isRestore: boolean) => void) => () => void
     onToggleVisibility: (

@@ -189,6 +189,27 @@ export default function ShortcutsTab({
               onReset={() => onShortcutChange('toggleCodeMode', DEFAULT_SHORTCUTS.toggleCodeMode)}
             />
           </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-neutral-300">
+              Toggle Pin
+            </label>
+            <p className="mb-2 text-xs text-neutral-500">
+              Pins or unpins the Covenant window so it stays open when it loses focus. If the
+              window is hidden, it opens already pinned.
+            </p>
+            <ShortcutRecorder
+              value={shortcuts.togglePin}
+              onChange={(val) => onShortcutChange('togglePin', val)}
+              conflictWarning={
+                shortcuts.togglePin && shortcuts.openApp && shortcuts.togglePin === shortcuts.openApp
+                  ? 'This shortcut is also assigned to Open App'
+                  : null
+              }
+              defaultShortcut={DEFAULT_SHORTCUTS.togglePin}
+              onReset={() => onShortcutChange('togglePin', DEFAULT_SHORTCUTS.togglePin)}
+            />
+          </div>
         </div>
       </SectionCard>
     </div>

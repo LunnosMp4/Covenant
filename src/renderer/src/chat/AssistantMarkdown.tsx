@@ -1,4 +1,4 @@
-import { Children, memo, useState, type HTMLAttributes } from 'react'
+import { Children, memo, useMemo, useState, type HTMLAttributes } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -14,6 +14,7 @@ import 'prismjs/components/prism-powershell'
 import 'prismjs/components/prism-python'
 import { CheckIcon, CopyIcon, GlobeIcon, SpinnerIcon, TerminalSendIcon, ToolIcon } from '../ui/icons'
 import { Favicon } from './Favicon'
+import { splitStreamedMarkdown } from './markdownStream'
 import { formatSourceDomain } from '../utils/chat/chatUsage'
 import type { ReasoningStep } from '../../../shared/chat/chat'
 
@@ -238,24 +239,55 @@ const MARKDOWN_COMPONENTS = {
 }
 
 /**
+ * One markdown block. Memoised on its source so a completed block is never
+ * re-parsed: `react-markdown` re-parses its whole input on every render, and
+ * during a stream that would re-parse the entire answer ~20 times a second.
+ */
+const MarkdownChunk = memo(function MarkdownChunk({ source }: { source: string }): JSX.Element {
+  return (
+    <ReactMarkdown
+      remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+      rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+      components={MARKDOWN_COMPONENTS}
+    >
+      {source}
+    </ReactMarkdown>
+  )
+})
+
+/**
  * Markdown rendering is the most expensive part of a streaming chat commit, so
  * the plugin arrays and component map are module-level constants (previously
- * they were rebuilt on every render) and the component is memoised on content.
+ * they were rebuilt on every render).
+ *
+ * The answer is cut into complete top-level blocks plus the block still being
+ * written; each completed block is a memoised chunk, so a stream commit only
+ * parses the tail instead of re-parsing the whole answer (~20 times a second —
+ * the cost of that grows with the square of the answer length and is what made
+ * long answers freeze the window). See `markdownStream.ts`.
+ *
+ * The chunks render as fragments inside a single `.chat-markdown` wrapper, so
+ * the DOM — and every sibling margin — is identical to parsing the answer in one
+ * piece.
  */
 export const AssistantMarkdown = memo(function AssistantMarkdown({
   content
 }: {
   content: string
 }): JSX.Element {
-  const query = preprocessLatexDelimiters(content)
+  const { blocks, tail } = useMemo(
+    () => splitStreamedMarkdown(preprocessLatexDelimiters(content)),
+    [content]
+  )
+
   return (
-    <ReactMarkdown
-      remarkPlugins={MARKDOWN_REMARK_PLUGINS}
-      rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
-      className="chat-markdown"
-      components={MARKDOWN_COMPONENTS}
-    >
-      {query}
-    </ReactMarkdown>
+    <div className="chat-markdown">
+      {blocks.map((block, index) => (
+        // Blocks are append-only while an answer streams, so the index is a
+        // stable identity for a completed block.
+        <MarkdownChunk key={index} source={block} />
+      ))}
+      <MarkdownChunk source={tail} />
+    </div>
   )
 })

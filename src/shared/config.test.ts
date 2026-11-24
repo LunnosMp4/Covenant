@@ -67,6 +67,7 @@ describe('normalizeShortcuts', () => {
     expect(normalized.openLastConversation).toBe(DEFAULT_SHORTCUTS.openLastConversation)
     expect(normalized.openAppTerminal).toBe(DEFAULT_SHORTCUTS.openAppTerminal)
     expect(normalized.openTasks).toBe(DEFAULT_SHORTCUTS.openTasks)
+    expect(normalized.togglePin).toBe(DEFAULT_SHORTCUTS.togglePin)
   })
 
   it('ignores non-string values', () => {

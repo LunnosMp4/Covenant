@@ -241,6 +241,7 @@ export interface ShortcutConfig {
   openNotes: string
   openCode: string
   toggleCodeMode: string
+  togglePin: string
 }
 
 export const DEFAULT_SHORTCUTS: ShortcutConfig = {
@@ -251,7 +252,8 @@ export const DEFAULT_SHORTCUTS: ShortcutConfig = {
   openPaste: 'Alt+V',
   openNotes: 'Alt+N',
   openCode: 'Alt+C',
-  toggleCodeMode: 'Alt+M'
+  toggleCodeMode: 'Alt+M',
+  togglePin: 'Alt+P'
 }
 
 export function normalizeAdminApiKey(value: unknown): string {
@@ -279,7 +281,8 @@ export function normalizeShortcuts(raw: unknown): ShortcutConfig {
     openNotes: typeof obj.openNotes === 'string' ? obj.openNotes : DEFAULT_SHORTCUTS.openNotes,
     openCode: typeof obj.openCode === 'string' ? obj.openCode : DEFAULT_SHORTCUTS.openCode,
     toggleCodeMode:
-      typeof obj.toggleCodeMode === 'string' ? obj.toggleCodeMode : DEFAULT_SHORTCUTS.toggleCodeMode
+      typeof obj.toggleCodeMode === 'string' ? obj.toggleCodeMode : DEFAULT_SHORTCUTS.toggleCodeMode,
+    togglePin: typeof obj.togglePin === 'string' ? obj.togglePin : DEFAULT_SHORTCUTS.togglePin
   }
 }
 

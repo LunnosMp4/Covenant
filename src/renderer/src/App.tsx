@@ -708,6 +708,18 @@ export default function App(): JSX.Element {
     }
   }, [applyView])
 
+  // The pin shortcut is handled in main (it owns the blur-to-hide gate); mirror
+  // the resulting value so the pin button reflects the shortcut.
+  useEffect(() => {
+    if (!window.api?.window.onPinnedChanged) return undefined
+    const unsubscribe = window.api.window.onPinnedChanged((pinned) => {
+      setIsPinned(pinned)
+    })
+    return () => {
+      unsubscribe()
+    }
+  }, [])
+
   // The native window keeps its full expanded size; the renderer measures the
   // viewport once so it can size the expanded content without resizing the
   // window (which would flash and jitter).
@@ -2080,6 +2092,12 @@ export default function App(): JSX.Element {
 
       setActiveConversation(placeholderConversation)
       upsertConversation(placeholderConversation)
+      // Claim the placeholder before the stream id is negotiated: the row can
+      // already render its pending indicator while the request starts.
+      setActiveStreamMessageId(assistantMessageId)
+      setActiveStreamConversationId(placeholderConversation.id)
+      activeStreamMessageIdRef.current = assistantMessageId
+      activeStreamConversationIdRef.current = placeholderConversation.id
       streamBufferRef.current = { content: '', reasoning: '' }
 
       if (window.api.chat.askCovenantStream) {
@@ -2088,9 +2106,17 @@ export default function App(): JSX.Element {
             isTerminalLinked && terminalLinkedSessionId ? terminalLinkedSessionId : undefined,
           conversationId: placeholderConversation.id
         })
+        // The window can be hidden while the stream id is being negotiated; the
+        // exit animation clears `isLoading` for idle requests, so restore it
+        // here and keep the refs in sync immediately (the effect that mirrors
+        // them runs too late for that race).
+        setIsLoading(true)
         setActiveStreamId(streamResponse.id)
         setActiveStreamMessageId(assistantMessageId)
         setActiveStreamConversationId(placeholderConversation.id)
+        activeStreamIdRef.current = streamResponse.id
+        activeStreamMessageIdRef.current = assistantMessageId
+        activeStreamConversationIdRef.current = placeholderConversation.id
         keepLoading = true
       } else {
         const response = await window.api.chat.askCovenant(requestMessages)
@@ -2135,6 +2161,12 @@ export default function App(): JSX.Element {
     } finally {
       if (!keepLoading) {
         setIsLoading(false)
+        setActiveStreamId(null)
+        setActiveStreamMessageId(null)
+        setActiveStreamConversationId(null)
+        activeStreamIdRef.current = null
+        activeStreamMessageIdRef.current = null
+        activeStreamConversationIdRef.current = null
         if (mode === 'ai') {
           inputRef.current?.focus()
         }
@@ -2966,7 +2998,10 @@ export default function App(): JSX.Element {
           setIsExpanded(false)
           setIsWide(false)
           setIsAltHeld(false)
-          setIsLoading(false)
+          // A stream keeps running while the window is hidden: keep the busy
+          // state (stop button, typing indicator) intact so it is still there
+          // when the window is reopened mid-answer.
+          if (!activeStreamIdRef.current) setIsLoading(false)
           setActiveSurface(null)
           setIsHistoryOpen(false)
           setMode('ai')

@@ -239,11 +239,17 @@ simply raise the poll interval without checking how capture latency feels.
 Keep the active note in memory, write only on change, and update the index once
 per meeting.
 
-### 5.4 Streamed markdown re-parses the whole answer
-`chat/AssistantMarkdown.tsx` is memoised on `content`, but `content` changes per
-flush, so `react-markdown` + `rehype-katex` + Prism re-parse the entire answer.
-Block-level memoisation (keep completed blocks stable, parse only the tail) is
-the safe way to fix this — do **not** switch to plain text while streaming.
+### 5.4 Streamed markdown re-parses the whole answer — **done**
+`chat/AssistantMarkdown.tsx` used to re-parse the entire answer on every flush.
+`chat/markdownStream.ts` now cuts the answer into completed top-level blocks plus
+the block still being written; each completed block is a memoised chunk, so a
+commit only parses the tail. Cut points are limited to places where CommonMark
+cannot join the lines across the cut (never inside a fenced code or `$$` block, a
+loose list, a blockquote, an indented code block, or a document with reference
+link definitions), so the rendered DOM is unchanged. Measured on a 29 kB
+table-heavy answer: 67 → 0 long tasks, 175 → 4 frame gaps > 30 ms. Do **not**
+switch to plain text while streaming.
+
 
 ### 5.5 `App.tsx` re-renders on every streamed token
 `activeConversation` is replaced per delta, so `App` re-renders and recomputes

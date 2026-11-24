@@ -764,6 +764,25 @@ function toggleCodeMode(): void {
   mainWindow.webContents.send('toggle-code-mode')
 }
 
+/**
+ * Global shortcut for the window pin. The main process owns the value (it gates
+ * the blur-to-hide behaviour), so it flips it here and tells the renderer to
+ * mirror the button state. Showing the window first means the shortcut is also
+ * useful from the hidden state.
+ */
+function togglePinnedWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+
+  if (!isVisible) {
+    showWindow()
+    isPinned = true
+  } else {
+    isPinned = !isPinned
+  }
+
+  mainWindow.webContents.send('pinned-changed', isPinned)
+}
+
 function getShortcutDisplay(shortcut: string): string {
   return shortcut || 'Disabled'
 }
@@ -941,6 +960,17 @@ export function registerShortcuts(config: AppConfig): void {
       }
     } catch (error) {
       console.warn(`Error registering global shortcut '${shortcuts.toggleCodeMode}':`, error)
+    }
+  }
+
+  if (shortcuts.togglePin) {
+    try {
+      const ok = globalShortcut.register(shortcuts.togglePin, togglePinnedWindow)
+      if (!ok) {
+        console.warn(`Failed to register global shortcut: ${shortcuts.togglePin} (may conflict with another app)`)
+      }
+    } catch (error) {
+      console.warn(`Error registering global shortcut '${shortcuts.togglePin}':`, error)
     }
   }
 

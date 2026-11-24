@@ -93,6 +93,15 @@ const api = {
         ipcRenderer.removeListener('toggle-code-mode', listener)
       }
     },
+    onPinnedChanged: (callback: (pinned: boolean) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, pinned: boolean) => {
+        callback(pinned)
+      }
+      ipcRenderer.on('pinned-changed', listener)
+      return () => {
+        ipcRenderer.removeListener('pinned-changed', listener)
+      }
+    },
     onNavigateSettingsTab: (callback: (tab: string) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, tab: string) => {
         callback(tab)

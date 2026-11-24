@@ -107,6 +107,24 @@ Per-surface chunks (first time the surface opens):
 | Code transcript cost | recomputed per code token | memoised |
 | Notes segment counters | recomputed every 250 ms | memoised |
 | Windows click-through | `getComputedStyle` per node, 10×/s | `checkVisibility()` (single style pass) |
+| Streamed answer markdown | whole answer re-parsed on every flush (~20/s), cost grows with the square of its length | completed top-level blocks are memoised; only the block being written is parsed (`chat/markdownStream.ts`) |
+
+#### Streamed markdown: measured in the running app
+
+Instrumented renderer (CDP CPU profile + `PerformanceObserver`), real app build,
+a 29 kB table/list-heavy answer streamed at ~2.4 kB/s through the real IPC path:
+
+| Metric | Before | After |
+|---|---:|---:|
+| Long tasks (> 50 ms) during the answer | **67–68** | **0** |
+| Frame gaps > 30 ms | 175 | 4 |
+| Event-loop lag > 20 ms | 83 | 9 |
+| Worst frame gap | 100 ms | 34–38 ms |
+
+The rendered markup is byte-identical apart from the whitespace text nodes
+between block-level tags (verified by diffing the post-stream `innerHTML` of
+`.chat-markdown`): 218 841 → 218 711 chars, identical after collapsing
+inter-tag whitespace.
 
 ### Duplicated code / dead code
 
